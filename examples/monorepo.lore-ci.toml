@@ -1,0 +1,37 @@
+[[pipelines]]
+name = "client"
+runner_os = "windows"
+changes = ["Client/**"]
+working_directory = "Client"
+stages = ["check"]
+
+[[pipelines.jobs]]
+name = "client-check"
+stage = "check"
+script = ["./ci.ps1"]
+timeout_seconds = 60
+
+[[pipelines]]
+name = "server"
+runner_os = "macos"
+changes = ["Server/**"]
+working_directory = "Server"
+stages = ["check", "test", "build"]
+
+[[pipelines.jobs]]
+name = "format"
+stage = "check"
+script = ["cargo fmt --check"]
+timeout_seconds = 60
+
+[[pipelines.jobs]]
+name = "unit-tests"
+stage = "test"
+script = ["cargo test"]
+timeout_seconds = 300
+
+[[pipelines.jobs]]
+name = "docker-build"
+stage = "build"
+script = ["docker build --tag \"lorehub-test-project-server:${LORE_REVISION}\" ."]
+timeout_seconds = 600

@@ -1,0 +1,10 @@
+target
+.git
+.env
+.work
+.idea
+.codex
+.agents
+deploy/secrets
+*.pem
+*.key

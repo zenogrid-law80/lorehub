@@ -1,0 +1,21 @@
+[Unit]
+Description=LoreHub API coordinator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lorehub
+Group=lorehub
+EnvironmentFile=/etc/lorehub/environment
+Environment=LOREHUB_RUNNER_RELEASES_DIR=/var/lib/lorehub/runner-releases
+StateDirectory=lorehub
+StateDirectoryMode=0750
+ExecStart=/usr/local/bin/lorehub serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

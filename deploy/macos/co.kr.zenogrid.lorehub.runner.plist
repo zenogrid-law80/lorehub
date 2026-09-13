@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>co.kr.zenogrid.lorehub.runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/law80/GitHub/lorehub/deploy/macos/run-runner.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/law80/GitHub/lorehub</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/law80/GitHub/lorehub/.runner-macos/runner.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/law80/GitHub/lorehub/.runner-macos/runner.stderr.log</string>
+</dict>
+</plist>

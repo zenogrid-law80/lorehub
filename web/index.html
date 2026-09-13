@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#17142f">
+    <title>LoreHub · CI workspace</title>
+    <script src="/assets/theme.js"></script>
+    <link rel="stylesheet" href="/assets/app.css">
+    <script src="/assets/app.js" defer></script>
+    <script src="/assets/management.js" defer></script>
+  </head>
+  <body>
+    <div id="loading-view" class="loading-view" aria-live="polite">
+      <div class="brand-mark brand-mark--large" aria-hidden="true">L</div>
+      <p>워크스페이스를 불러오는 중…</p>
+    </div>
+
+    <main id="login-view" class="login-view" hidden>
+      <section class="login-panel">
+        <a class="brand brand--login" href="/" aria-label="LoreHub 홈">
+          <span class="brand-mark" aria-hidden="true">L</span>
+          <span>LoreHub</span>
+        </a>
+        <div class="login-copy">
+          <p class="eyebrow">LORE NATIVE DEV PLATFORM</p>
+          <h1>코드에서 배포까지,<br>하나의 흐름으로.</h1>
+          <p>Lore revision을 안전하게 실행하고 파이프라인의 모든 단계를 한곳에서 확인하세요.</p>
+        </div>
+        <div class="login-art" aria-hidden="true">
+          <div class="flow-node flow-node--repo"><span>01</span>revision</div>
+          <div class="flow-line"></div>
+          <div class="flow-node flow-node--build"><span>02</span>pipeline</div>
+          <div class="flow-line"></div>
+          <div class="flow-node flow-node--ship"><span>03</span>release</div>
+        </div>
+      </section>
+      <section class="login-card-wrap">
+        <div class="login-card">
+          <label class="language-picker language-picker--login">
+            <span class="sr-only">Language</span>
+            <select class="language-select" aria-label="Language">
+              <option value="en">English</option>
+              <option value="ko">한국어</option>
+              <option value="zh-CN">简体中文</option>
+            </select>
+          </label>
+          <div class="login-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21.35 12.22c0-.71-.06-1.24-.2-1.8h-8.93v3.27h5.24a4.52 4.52 0 0 1-1.94 2.88l-.02.11 2.82 2.16h.2c1.83-1.68 2.83-4.15 2.83-6.62Z" fill="#4285F4"/><path d="M12.22 21.5c2.55 0 4.69-.83 6.26-2.66l-3-2.27c-.8.55-1.87.94-3.26.94a5.66 5.66 0 0 1-5.35-3.9l-.1.01-2.93 2.24-.04.1a9.45 9.45 0 0 0 8.42 5.54Z" fill="#34A853"/><path d="M6.87 13.61a5.8 5.8 0 0 1-.32-1.89c0-.66.11-1.3.31-1.9v-.1L3.9 7.45l-.1.05a9.67 9.67 0 0 0 0 8.46l3.07-2.35Z" fill="#FBBC05"/><path d="M12.22 5.94c1.81 0 3.03.78 3.72 1.4l2.6-2.52A8.86 8.86 0 0 0 12.22 2 9.45 9.45 0 0 0 3.8 7.5l3.06 2.33a5.68 5.68 0 0 1 5.36-3.89Z" fill="#EB4335"/></svg>
+          </div>
+          <p class="eyebrow">ZENOGRID WORKSPACE</p>
+          <h2>LoreHub에 로그인</h2>
+          <p class="login-description">조직 계정으로 로그인해 프로젝트와 CI 파이프라인을 관리합니다.</p>
+          <a class="button button--google" href="/auth/google/login">
+            <span>Google 계정으로 계속</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>
+          </a>
+          <p class="domain-note"><span aria-hidden="true">●</span> @zenogrid.co.kr 계정만 사용할 수 있습니다</p>
+        </div>
+        <p class="login-footer">Lore VCS 기반 개발 플랫폼</p>
+      </section>
+    </main>
+
+    <div id="app-view" class="app-shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="LoreHub 홈">
+          <span class="brand-mark" aria-hidden="true">L</span>
+          <span>LoreHub</span>
+        </a>
+        <nav class="primary-nav" aria-label="주 메뉴">
+          <div class="nav-group" data-nav-group="workspace">
+            <p class="nav-group-label">Workspace</p>
+            <a class="nav-item is-active" href="#overview" data-section="overview">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
+              <span>Overview</span>
+            </a>
+            <a class="nav-item" href="#pipelines" data-section="pipelines">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 9-3-3m3 3-3 3"/></svg>
+              <span>Pipelines</span>
+              <span id="nav-active-count" class="nav-count" hidden>0</span>
+            </a>
+            <a class="nav-item" href="#graphs" data-section="graphs">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v3.5h6V15m6-6v3.5h-6"/></svg>
+              <span>Execution graphs</span>
+              <span id="nav-graph-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+          </div>
+          <div class="nav-group" data-nav-group="runtime">
+            <p class="nav-group-label">Sources and runtime</p>
+            <a class="nav-item" href="#repositories" data-section="repositories">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5C5 4.12 8.13 3 12 3s7 1.12 7 2.5S15.87 8 12 8 5 6.88 5 5.5Zm0 0v6C5 12.88 8.13 14 12 14s7-1.12 7-2.5v-6m-14 6v6C5 18.88 8.13 20 12 20s7-1.12 7-2.5v-6"/></svg>
+              <span>Repositories</span>
+              <span id="nav-repository-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+            <a class="nav-item" href="#runners" data-section="runners">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/></svg>
+              <span>Runners</span>
+              <span id="nav-runner-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+          </div>
+          <div class="nav-group" data-nav-group="management">
+            <p class="nav-group-label">Management</p>
+          </div>
+        </nav>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-status"><span class="pulse"></span><span>Coordinator online</span></div>
+        <p class="sidebar-version">LoreHub v0.2.13</p>
+      </aside>
+
+      <div class="content-shell">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark" aria-hidden="true">L</span><strong>LoreHub</strong></div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+            <span class="sr-only">파이프라인 검색</span>
+            <input id="pipeline-search" type="search" placeholder="Search pipelines…" autocomplete="off">
+            <kbd>⌘ K</kbd>
+          </label>
+          <div class="topbar-actions">
+            <label class="language-picker">
+              <span class="sr-only">Language</span>
+              <select class="language-select" aria-label="Language">
+                <option value="en">English</option>
+                <option value="ko">한국어</option>
+                <option value="zh-CN">简体中文</option>
+              </select>
+            </label>
+            <button id="refresh-button" class="icon-button" type="button" aria-label="새로고침" title="새로고침">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66L20 8m0-5v5h-5"/></svg>
+            </button>
+            <span class="topbar-divider"></span>
+            <button id="user-menu-button" class="user-button" type="button" aria-expanded="false">
+              <img id="user-picture" alt="" hidden>
+              <span id="user-initials" class="user-avatar" aria-hidden="true">U</span>
+              <span class="user-copy"><strong id="user-name">User</strong><small id="user-email"></small></span>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+            </button>
+            <div id="user-menu" class="user-menu" hidden>
+              <label class="user-menu-theme" for="theme-select">
+                <span>테마</span>
+                <select id="theme-select" aria-label="테마">
+                  <option value="system">시스템</option>
+                  <option value="light">라이트</option>
+                  <option value="dark">다크</option>
+                </select>
+              </label>
+              <div class="user-menu-divider"></div>
+              <button id="logout-button" type="button">로그아웃</button>
+            </div>
+          </div>
+        </header>
+
+        <main class="page-content">
+          <section id="overview-heading" class="page-heading overview-view">
+            <div>
+              <p class="breadcrumb">Zenogrid <span>/</span> CI workspace</p>
+              <h1 id="welcome-heading">Good morning, Developer.</h1>
+              <p>현재 워크스페이스의 파이프라인 상태입니다.</p>
+            </div>
+            <button id="new-pipeline-button" class="button button--primary" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+              New pipeline
+            </button>
+          </section>
+
+          <section id="pipelines-heading" class="page-heading pipelines-view" hidden>
+            <div>
+              <p class="breadcrumb">Zenogrid <span>/</span> CI workspace</p>
+              <h1>Pipelines</h1>
+              <p>워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.</p>
+            </div>
+            <button class="button button--primary js-open-pipeline" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+              New pipeline
+            </button>
+          </section>
+
+          <section class="stats-grid overview-view" aria-label="파이프라인 요약">
+            <article class="stat-card stat-card--total">
+              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 12-3-3m3 3-3 3"/></svg></div>
+              <div><p>Total pipelines</p><strong id="stat-total">—</strong><small>최근 100건</small></div>
+            </article>
+            <article class="stat-card stat-card--success">
+              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></div>
+              <div><p>Succeeded</p><strong id="stat-success">—</strong><small id="success-rate">성공률 —</small></div>
+            </article>
+            <article class="stat-card stat-card--active">
+              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7L8 5Z"/></svg></div>
+              <div><p>Active</p><strong id="stat-active">—</strong><small>Queued + running</small></div>
+            </article>
+            <article class="stat-card stat-card--failed">
+              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3h.01M10 3 2.8 16a2 2 0 0 0 1.75 3h14.9a2 2 0 0 0 1.75-3L14 3a2 2 0 0 0-4 0Z"/></svg></div>
+              <div><p>Needs attention</p><strong id="stat-failed">—</strong><small>Failed pipelines</small></div>
+            </article>
+          </section>
+
+          <section class="pipeline-panel overview-view" id="pipelines">
+            <div class="panel-header">
+              <div><h2>Recent pipelines</h2><p>최신 Lore revision 실행 내역</p></div>
+              <div class="status-tabs" role="group" aria-label="상태 필터">
+                <button class="status-tab is-active" type="button" data-status="all">All</button>
+                <button class="status-tab" type="button" data-status="running">Active</button>
+                <button class="status-tab" type="button" data-status="finished">Finished</button>
+              </div>
+            </div>
+            <div class="pipeline-filters pipelines-view" aria-label="파이프라인 상세 필터" hidden>
+              <label class="pipeline-filter-field" for="pipeline-repository-filter">
+                <span>Repository</span>
+                <select id="pipeline-repository-filter">
+                  <option value="">All repositories</option>
+                </select>
+              </label>
+              <label class="pipeline-filter-field" for="pipeline-branch-filter">
+                <span>Branch</span>
+                <select id="pipeline-branch-filter">
+                  <option value="">All branches</option>
+                </select>
+              </label>
+              <label class="pipeline-filter-field" for="pipeline-name-filter">
+                <span>Pipeline</span>
+                <select id="pipeline-name-filter">
+                  <option value="">All pipelines</option>
+                </select>
+              </label>
+              <button id="pipeline-filter-reset" class="button button--ghost pipeline-filter-reset" type="button">Reset filters</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Status</th><th>Pipeline</th><th>Revision</th><th>Created</th><th>Duration</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody id="pipeline-table-body">
+                  <tr><td colspan="6"><div class="table-loading"><span></span><span></span><span></span></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="empty-state" class="empty-state" hidden>
+              <div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3"/></svg></div>
+              <h3>파이프라인이 없습니다</h3>
+              <p>Lore repository와 revision을 지정해 첫 실행을 시작하세요.</p>
+              <button class="button button--secondary js-open-pipeline" type="button">New pipeline</button>
+            </div>
+            <div class="panel-footer"><span id="pipeline-count">0 pipelines</span><button id="load-more-pipelines" class="button button--ghost" type="button" hidden>이전 실행 더 보기</button><span id="last-updated">업데이트 대기 중</span></div>
+          </section>
+
+          <section id="graphs-page" class="graphs-page" hidden>
+            <div class="page-heading">
+              <div>
+                <p class="breadcrumb">Zenogrid <span>/</span> CI routing</p>
+                <h1>Pipeline graphs</h1>
+                <p>폴더 변경이 어떤 파이프라인과 Runner, stage를 실행하는지 확인합니다.</p>
+              </div>
+            </div>
+            <section class="stats-grid graph-stats" aria-label="Pipeline graph 요약">
+              <article class="stat-card stat-card--total">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v3.5h6V15m6-6v3.5h-6"/></svg></div>
+                <div><p>Routes</p><strong id="graph-stat-routes">—</strong><small>최근 pipeline별 경로</small></div>
+              </article>
+              <article class="stat-card stat-card--active">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6l2 2h8v12H4V5Z"/></svg></div>
+                <div><p>Folder rules</p><strong id="graph-stat-folders">—</strong><small>고유한 changes 규칙</small></div>
+              </article>
+              <article class="stat-card stat-card--success">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/></svg></div>
+                <div><p>Runner targets</p><strong id="graph-stat-runners">—</strong><small>대상 운영체제</small></div>
+              </article>
+            </section>
+            <section class="pipeline-panel graph-panel">
+              <div class="panel-header">
+                <div><h2>Repository branch tree</h2><p>Repository와 branch별로 pipeline 실행 그래프를 구분합니다.</p></div>
+                <span id="graph-count" class="repository-total">0 routes</span>
+              </div>
+              <div id="pipeline-graph-list" class="pipeline-graph-list" aria-live="polite">
+                <div class="table-loading"><span></span><span></span><span></span></div>
+              </div>
+              <div id="graph-empty-state" class="empty-state" hidden>
+                <div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v3.5h6V15m6-6v3.5h-6"/></svg></div>
+                <h3>표시할 routing graph가 없습니다</h3>
+                <p>changes와 runner_os가 있는 pipeline이 실행되면 여기에 표시됩니다.</p>
+              </div>
+              <div class="panel-footer"><span>그래프를 선택하면 실행 상세를 엽니다.</span><span id="graph-last-updated">업데이트 대기 중</span></div>
+            </section>
+          </section>
+
+          <section id="repositories-page" class="repositories-page" hidden>
+            <div class="page-heading">
+              <div>
+                <p class="breadcrumb">Zenogrid <span>/</span> Lore server</p>
+                <h1>Repositories</h1>
+                <p>현재 Lore 서버의 repository를 생성하고 연결 주소를 관리합니다.</p>
+              </div>
+              <button id="new-repository-button" class="button button--primary" type="button">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+                New repository
+              </button>
+            </div>
+            <div class="repository-server-card">
+              <span class="server-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5.5C5 4.12 8.13 3 12 3s7 1.12 7 2.5S15.87 8 12 8 5 6.88 5 5.5Zm0 0v6C5 12.88 8.13 14 12 14s7-1.12 7-2.5v-6m-14 6v6C5 18.88 8.13 20 12 20s7-1.12 7-2.5v-6"/></svg></span>
+              <div><strong>Current Lore server</strong><code id="repository-server-url">lores://lorehub.zenogrid.co.kr:41337</code></div>
+              <button id="create-lore-token-button" class="button button--ghost" type="button">CLI access token</button>
+              <span class="server-online"><i></i> Online</span>
+            </div>
+            <section class="pipeline-panel repository-panel">
+              <div class="panel-header">
+                <div><h2>Repository list</h2><p>서버에서 조회한 Lore repository</p></div>
+                <span id="repository-count" class="repository-total">0 repositories</span>
+              </div>
+              <div id="repository-list" class="repository-list">
+                <div class="table-loading"><span></span><span></span><span></span></div>
+              </div>
+              <div id="repository-empty-state" class="empty-state" hidden>
+                <div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5C5 4.12 8.13 3 12 3s7 1.12 7 2.5S15.87 8 12 8 5 6.88 5 5.5Zm0 0v6C5 12.88 8.13 14 12 14s7-1.12 7-2.5v-6m-14 6v6C5 18.88 8.13 20 12 20s7-1.12 7-2.5v-6"/></svg></div>
+                <h3>Repository가 없습니다</h3>
+                <p>현재 Lore 서버에 첫 repository를 만드세요.</p>
+                <button class="button button--secondary js-open-repository" type="button">New repository</button>
+              </div>
+              <div class="panel-footer"><span>Google Workspace 로그인 사용자만 관리할 수 있습니다.</span><span id="repository-last-updated">업데이트 대기 중</span></div>
+            </section>
+          </section>
+
+          <section id="runners-page" class="runners-page" hidden>
+            <div class="page-heading">
+              <div>
+                <p class="breadcrumb">Zenogrid <span>/</span> CI infrastructure</p>
+                <h1>Runners</h1>
+                <p>등록된 runner의 운영체제, 연결 상태와 현재 작업을 확인합니다.</p>
+              </div>
+            </div>
+            <section class="runner-download-panel" aria-labelledby="runner-download-title">
+              <div class="runner-download-copy">
+                <span class="runner-download-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14"/></svg></span>
+                <div><h2 id="runner-download-title">Runner 다운로드</h2><p>LoreHub runner와 Lore CLI, 설치 도구가 포함된 플랫폼별 패키지입니다.</p></div>
+              </div>
+              <div class="runner-download-actions">
+                <a class="button button--download" href="/downloads/runners/linux-x86_64" download>
+                  <span class="download-platform">Linux</span><small>tar.gz · x86_64</small>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4L6 9M4 17h12"/></svg>
+                </a>
+                <a class="button button--download" href="/downloads/runners/windows-x86_64" download>
+                  <span class="download-platform">Windows</span><small>MSI · x86_64</small>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4L6 9M4 17h12"/></svg>
+                </a>
+                <a class="button button--download" href="/downloads/runners/macos-aarch64" download>
+                  <span class="download-platform">macOS</span><small>tar.gz · Apple silicon</small>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4L6 9M4 17h12"/></svg>
+                </a>
+              </div>
+            </section>
+            <section class="stats-grid runner-stats" aria-label="Runner 요약">
+              <article class="stat-card stat-card--total">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/></svg></div>
+                <div><p>Total runners</p><strong id="runner-stat-total">—</strong><small>등록된 전체 runner</small></div>
+              </article>
+              <article class="stat-card stat-card--success">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></div>
+                <div><p>Online</p><strong id="runner-stat-online">—</strong><small>15초 내 heartbeat</small></div>
+              </article>
+              <article class="stat-card stat-card--failed">
+                <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3h.01M10 3 2.8 16a2 2 0 0 0 1.75 3h14.9a2 2 0 0 0 1.75-3L14 3a2 2 0 0 0-4 0Z"/></svg></div>
+                <div><p>Offline</p><strong id="runner-stat-offline">—</strong><small>종료 또는 heartbeat 만료</small></div>
+              </article>
+            </section>
+            <section class="pipeline-panel runner-panel">
+              <div class="panel-header">
+                <div><h2>Registered runners</h2><p>5초 간격으로 상태가 갱신됩니다</p></div>
+                <span id="runner-count" class="repository-total">0 runners</span>
+              </div>
+              <div class="table-wrap runner-table-wrap">
+                <table class="runner-table">
+                  <thead><tr><th>Status</th><th>Runner</th><th>Operating system</th><th>Architecture</th><th>Version</th><th>Docker</th><th>Last seen</th><th>Current job</th><th>Actions</th></tr></thead>
+                  <tbody id="runner-table-body"><tr><td colspan="9"><div class="table-loading"><span></span><span></span><span></span></div></td></tr></tbody>
+                </table>
+              </div>
+              <div id="runner-empty-state" class="empty-state" hidden>
+                <div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/></svg></div>
+                <h3>등록된 runner가 없습니다</h3>
+                <p>Linux, Windows 또는 macOS에서 lorehub worker를 실행하면 자동으로 표시됩니다.</p>
+              </div>
+              <div class="panel-footer"><span>Offline Runner는 작업 메뉴에서 등록 해제할 수 있습니다.</span><span id="runner-last-updated">업데이트 대기 중</span></div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="new-pipeline-dialog" class="modal">
+      <form id="pipeline-form" method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">RUN CI</p><h2>New pipeline</h2></div>
+          <button class="modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro">실행할 Lore 저장소와 branch를 선택하세요.</p>
+        <label class="field"><span>Repository</span><select id="repository-url" name="repository_url" required></select><small>현재 Lore 서버에 등록된 저장소</small></label>
+        <label class="field"><span>Branch</span><select id="branch" name="branch" required disabled></select><small>main branch가 기본으로 선택됩니다.</small></label>
+        <label class="field"><span>Revision</span><input id="revision" name="revision" type="text" required minlength="64" maxlength="64" pattern="[0-9a-fA-F]{64}" spellcheck="false" autocomplete="off" readonly><small>선택한 branch의 최신 revision</small></label>
+        <label class="field"><span>Pipeline</span><select id="pipeline-name" name="pipeline_name" disabled></select><small>선택한 revision의 .lore-ci.toml에 정의된 pipeline</small></label>
+        <div class="modal-actions"><button class="button button--ghost modal-cancel" type="button">Cancel</button><button id="run-pipeline-button" class="button button--primary" type="submit"><span>Run pipeline</span><span class="button-spinner" hidden></span></button></div>
+      </form>
+    </dialog>
+
+    <dialog id="repository-branches-dialog" class="modal">
+      <form id="repository-branches-form" method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">AUTO CI</p><h2>Pipeline branches</h2></div>
+          <button class="repository-branches-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro"><strong id="repository-branches-name"></strong> 저장소에서 <code>pipelines &gt; changes</code> 자동 실행을 감지할 branch를 선택하세요.</p>
+        <div id="repository-branches-list" class="repository-branches-list" aria-live="polite"></div>
+        <p class="management-note">선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.</p>
+        <div class="modal-actions"><button class="button button--ghost repository-branches-modal-cancel" type="button">Cancel</button><button id="save-repository-branches-button" class="button button--primary" type="submit">Save branches</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="new-repository-dialog" class="modal">
+      <form id="repository-form" method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">LORE SERVER</p><h2>New repository</h2></div>
+          <button class="repository-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro">현재 서버에 새로운 Lore repository를 생성합니다.</p>
+        <label class="field"><span>Repository name</span><input id="repository-name" name="name" type="text" required minlength="1" maxlength="100" pattern="[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?" spellcheck="false" autocomplete="off" placeholder="project-name"><small>영문자·숫자로 시작하고 끝나며 점, 대시, 밑줄 사용 가능</small></label>
+        <label class="field"><span>Description <em>optional</em></span><input id="repository-description" name="description" type="text" maxlength="500" placeholder="Repository purpose"></label>
+        <div class="modal-actions"><button class="button button--ghost repository-modal-cancel" type="button">Cancel</button><button id="create-repository-button" class="button button--primary" type="submit"><span>Create repository</span><span class="button-spinner" hidden></span></button></div>
+      </form>
+    </dialog>
+
+    <dialog id="delete-repository-dialog" class="modal modal--danger">
+      <form id="delete-repository-form" method="dialog">
+        <div class="modal-header"><div><p class="eyebrow">DANGER ZONE</p><h2>Delete repository</h2></div><button class="delete-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>
+        <p class="modal-intro"><strong id="delete-repository-name"></strong> repository와 서버에 저장된 데이터를 삭제합니다. 이 작업은 되돌릴 수 없습니다.</p>
+        <label class="field"><span>확인을 위해 repository 이름 입력</span><input id="delete-repository-confirmation" type="text" required autocomplete="off"></label>
+        <div class="modal-actions"><button class="button button--ghost delete-modal-cancel" type="button">Cancel</button><button id="confirm-delete-repository-button" class="button button--danger" type="submit">Delete repository</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="remove-runner-dialog" class="modal modal--danger">
+      <form id="remove-runner-form" method="dialog">
+        <div class="modal-header"><div><p class="eyebrow">DANGER ZONE</p><h2>Remove Runner</h2></div><button class="runner-remove-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>
+        <p class="modal-intro"><strong id="remove-runner-name"></strong> Runner의 등록 정보를 삭제합니다. Runner 프로그램과 작업 파일은 유지되며, Runner가 다시 실행되면 자동으로 등록됩니다.</p>
+        <label class="field"><span>확인을 위해 Runner 이름 입력</span><input id="remove-runner-confirmation" type="text" required autocomplete="off"></label>
+        <div class="modal-actions"><button class="button button--ghost runner-remove-modal-cancel" type="button">Cancel</button><button id="confirm-remove-runner-button" class="button button--danger" type="submit">Remove Runner</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="lore-token-dialog" class="modal">
+      <form method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">CLI AUTHENTICATION</p><h2>Lore access token</h2></div>
+          <button class="token-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro">Google 로그인 계정으로 발급된 토큰입니다. 1시간 동안 유효하며 다른 사람과 공유하지 마세요.</p>
+        <label class="field"><span>Access token</span><textarea id="lore-access-token" rows="5" readonly spellcheck="false"></textarea></label>
+        <div class="token-command"><code>lore --identity-token "$LORE_ACCESS_TOKEN" --access-token "$LORE_ACCESS_TOKEN" repository list lores://lorehub.zenogrid.co.kr:41337</code></div>
+        <div class="modal-actions"><button id="copy-lore-token-button" class="button button--primary" type="button">Copy token</button><button class="button button--ghost token-modal-close" type="button">Close</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="pipeline-detail-dialog" class="detail-drawer">
+      <div class="drawer-shell">
+        <div class="drawer-header">
+          <div><p id="detail-repository" class="eyebrow">PIPELINE</p><h2 id="detail-title">Pipeline</h2></div>
+          <button class="drawer-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <div id="detail-summary" class="detail-summary"></div>
+        <section id="execution-graph-section" class="execution-graph-section" aria-labelledby="execution-graph-title" hidden>
+          <div class="drawer-section-heading"><h3 id="execution-graph-title">Execution graph</h3><span>folder routing</span></div>
+          <div id="execution-graph" class="execution-graph"></div>
+        </section>
+        <div class="drawer-section-heading"><h3>Jobs</h3><span id="job-count"></span></div>
+        <div id="job-list" class="job-list"></div>
+        <div class="drawer-section-heading"><h3>Job log</h3><span class="live-indicator"><i></i> live</span></div>
+        <pre id="pipeline-log" class="terminal" tabindex="0"><span class="terminal-muted">로그를 불러오는 중…</span></pre>
+        <div class="drawer-actions"><button id="cancel-pipeline-button" class="button button--danger" type="button">Cancel pipeline</button><button class="button button--ghost drawer-close" type="button">Close</button></div>
+      </div>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

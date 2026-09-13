@@ -1,0 +1,162 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: lorehub
+      POSTGRES_PASSWORD: lorehub
+      POSTGRES_DB: lorehub
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lorehub -d lorehub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  runner:
+    image: lorehub-runner:local
+    profiles: ["runner"]
+    platform: ${LORE_RUNNER_PLATFORM:-linux/amd64}
+    build:
+      context: .
+      dockerfile: deploy/runner.Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: ${RUNNER_DATABASE_URL:-postgres://lorehub:lorehub@host.docker.internal:5432/lorehub}
+      LOREHUB_RUNNER_NAME: ${LOREHUB_RUNNER_NAME:-compose-linux-runner-01}
+      LOREHUB_PUBLIC_URL: ${LOREHUB_PUBLIC_URL:-https://lorehub.zenogrid.co.kr}
+      LORE_BIN: /usr/local/bin/lore
+      LOREHUB_WORK_DIR: /var/lib/lorehub/work
+      # Container runners are updated by rebuilding the image.
+      LOREHUB_AUTO_UPDATE: "false"
+      LORE_JWT_PRIVATE_KEY: /run/secrets/lore_jwt_private_key
+      LORE_JWT_JWKS: /run/secrets/lore_jwks
+      RUST_LOG: ${RUNNER_RUST_LOG:-lorehub=info}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - runner_work:/var/lib/lorehub
+      - runner_cargo_cache:/home/lorehub/.cargo
+    secrets:
+      - lore_jwt_private_key
+      - lore_jwks
+    security_opt:
+      - no-new-privileges:true
+
+  reverse-proxy:
+    image: nginx:1.28-alpine
+    profiles: ["tls"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+
+  certbot:
+    image: certbot/certbot:v5.7.0
+    profiles: ["tls"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_work:/var/lib/letsencrypt
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:3.3.1
+    profiles: ["repository"]
+    restart: unless-stopped
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    user: root
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    security_opt:
+      - no-new-privileges:true
+
+  dynamodb-init:
+    image: amazon/aws-cli:2.36.43
+    profiles: ["repository"]
+    depends_on:
+      dynamodb-local:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/scripts/init-dynamodb.sh"]
+    environment:
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION: ${S3_REGION:-ap-northeast-2}
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_FRAGMENTS_TABLE: ${LORE_DYNAMODB_FRAGMENTS_TABLE:-lorehub-fragments}
+      DYNAMODB_FRAGMENT_STATE_TABLE: ${LORE_DYNAMODB_FRAGMENT_STATE_TABLE:-lorehub-fragment-state}
+      DYNAMODB_MUTABLE_TABLE: ${LORE_DYNAMODB_MUTABLE_TABLE:-lorehub-mutable}
+      DYNAMODB_LOCKS_TABLE: ${LORE_DYNAMODB_LOCKS_TABLE:-lorehub-locks}
+    volumes:
+      - ./deploy/init-dynamodb.sh:/scripts/init-dynamodb.sh:ro
+    security_opt:
+      - no-new-privileges:true
+
+  lore-server:
+    image: lore-server:local
+    platform: ${LORE_SERVER_PLATFORM:-linux/amd64}
+    profiles: ["repository"]
+    build:
+      context: ${LORE_SOURCE_DIR:-../lore}
+      dockerfile: lore-server/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 35s
+    depends_on:
+      dynamodb-init:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+      AWS_REGION: ${S3_REGION:-ap-northeast-2}
+      AWS_EC2_METADATA_DISABLED: "true"
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__S3_ENDPOINT_URL: ${S3_ENDPOINT:-https://s3.ap-northeast-2.amazonaws.com}
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__S3_REGION: ${S3_REGION:-ap-northeast-2}
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__DYNAMODB_FRAGMENTS_TABLE: ${LORE_DYNAMODB_FRAGMENTS_TABLE:-lorehub-fragments}
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__DYNAMODB_FRAGMENT_STATE_TABLE: ${LORE_DYNAMODB_FRAGMENT_STATE_TABLE:-lorehub-fragment-state}
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      LORE__PLUGINS__AWS__IMMUTABLE_STORE__DYNAMODB_REGION: ${S3_REGION:-ap-northeast-2}
+      LORE__PLUGINS__AWS__MUTABLE_STORE__DYNAMODB_TABLE: ${LORE_DYNAMODB_MUTABLE_TABLE:-lorehub-mutable}
+      LORE__PLUGINS__AWS__MUTABLE_STORE__DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      LORE__PLUGINS__AWS__MUTABLE_STORE__DYNAMODB_REGION: ${S3_REGION:-ap-northeast-2}
+      LORE__PLUGINS__AWS__LOCK_STORE__DYNAMODB_TABLE: ${LORE_DYNAMODB_LOCKS_TABLE:-lorehub-locks}
+      LORE__PLUGINS__AWS__LOCK_STORE__DYNAMODB_ENDPOINT_URL: http://dynamodb-local:8000
+      LORE__PLUGINS__AWS__LOCK_STORE__DYNAMODB_REGION: ${S3_REGION:-ap-northeast-2}
+    ports:
+      - "${LORE_SERVER_BIND_IP:-127.0.0.1}:41337:41337/tcp"
+      - "${LORE_SERVER_BIND_IP:-127.0.0.1}:41337:41337/udp"
+      - "127.0.0.1:41339:41339/tcp"
+    volumes:
+      - ./deploy/lore-server.toml:/etc/lore/config/local.toml:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  letsencrypt:
+  certbot_work:
+  lore_data:
+  dynamodb_data:
+  runner_work:
+  runner_cargo_cache:
+
+secrets:
+  lore_jwt_private_key:
+    file: ./deploy/secrets/lore-jwt-private.pem
+  lore_jwks:
+    file: ./deploy/secrets/lore-jwks.json

@@ -1,0 +1,46 @@
+[package]
+name = "lorehub"
+version = "0.2.13"
+edition = "2024"
+rust-version = "1.88"
+description = "A Lore-native development platform with CI and PostgreSQL"
+
+[features]
+default = ["embedded-runner-installers"]
+embedded-runner-installers = []
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+jsonwebtoken = { version = "9", default-features = false, features = ["use_pem"] }
+prost = "0.14"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
+subtle = "2"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+toml = "0.8"
+tonic = { version = "0.14", features = ["transport"] }
+tonic-prost = "0.14"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[build-dependencies]
+tonic-prost-build = "0.14"

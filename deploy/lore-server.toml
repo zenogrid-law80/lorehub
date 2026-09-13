@@ -1,0 +1,35 @@
+[server.quic.certificate]
+cert_file = "/etc/letsencrypt/live/lorehub.zenogrid.co.kr/fullchain.pem"
+pkey_file = "/etc/letsencrypt/live/lorehub.zenogrid.co.kr/privkey.pem"
+
+[server.grpc.certificate]
+cert_file = "/etc/letsencrypt/live/lorehub.zenogrid.co.kr/fullchain.pem"
+pkey_file = "/etc/letsencrypt/live/lorehub.zenogrid.co.kr/privkey.pem"
+
+[server.auth]
+jwt_issuer = "https://lorehub.zenogrid.co.kr"
+jwt_audience = ["zenogrid.co.kr"]
+
+[server.auth.jwk]
+endpoint = "https://lorehub.zenogrid.co.kr/.well-known/jwks.json"
+
+[environment.endpoint]
+auth_url = "https://lorehub.zenogrid.co.kr"
+
+[immutable_store]
+mode = "aws"
+
+[mutable_store]
+mode = "aws"
+
+[lock_store]
+mode = "aws"
+
+[server.http]
+store_health_check = true
+
+[plugins.aws.immutable_store]
+s3_force_path_style = false
+
+[topology]
+provider = "none"

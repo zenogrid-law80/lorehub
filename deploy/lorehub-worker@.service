@@ -1,0 +1,23 @@
+[Unit]
+Description=LoreHub shell worker %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lorehub
+Group=lorehub
+EnvironmentFile=/etc/lorehub/environment
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+StateDirectory=lorehub-%i
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/lorehub-%i
+ExecStart=/var/lib/lorehub-%i/bin/lorehub worker --work-dir /var/lib/lorehub-%i/work
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+stages = ["check", "test", "build"]
+
+[[jobs]]
+name = "format"
+stage = "check"
+script = ["cargo fmt --check"]
+timeout_seconds = 60
+
+[[jobs]]
+name = "unit-tests"
+stage = "test"
+script = ["cargo test --locked --lib"]
+timeout_seconds = 600
+
+[[jobs]]
+name = "release"
+stage = "build"
+script = ["cargo build --locked --release"]
+timeout_seconds = 1800

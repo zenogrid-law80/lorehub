@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="LoreHub Runner" Language="1033" Version="@VERSION@" Manufacturer="Zenogrid" UpgradeCode="D78E31EF-6509-4C41-AEAD-53AF46E333A2">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="LoreHub Windows x86_64 Runner" />
+    <MajorUpgrade DowngradeErrorMessage="A newer LoreHub Runner is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="LoreHub" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="RunnerFiles" Guid="B6D86DC3-68EC-4EF2-B6F1-03AD14BAEBE9" Win64="yes">
+        <File Id="LoreHubExe" Source="lorehub.exe" KeyPath="yes" />
+        <File Id="LoreExe" Source="lore.exe" />
+        <File Id="RunnerLauncher" Source="run-runner.ps1" />
+        <File Id="RunnerConfigure" Source="configure-runner.ps1" />
+        <File Id="RunnerUninstall" Source="uninstall-runner.ps1" />
+        <File Id="RunnerEnvironmentExample" Source="runner.env.example" />
+        <File Id="RunnerReadme" Source="README.txt" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Complete" Title="LoreHub Runner" Level="1">
+      <ComponentRef Id="RunnerFiles" />
+    </Feature>
+
+    <!-- INSTALLFOLDER ends in a backslash. Appending a dot keeps the same directory
+         while preventing Windows argv parsing from escaping the closing quote. -->
+    <CustomAction Id="ConfigureRunner" FileKey="LoreHubExe" Execute="deferred" Impersonate="no" Return="check"
+      ExeCommand="install-windows-runner --install-directory &quot;[INSTALLFOLDER].&quot; --data-directory &quot;[CommonAppDataFolder]LoreHub&quot;" />
+    <CustomAction Id="UnregisterRunner" FileKey="LoreHubExe" Execute="deferred" Impersonate="no" Return="ignore"
+      ExeCommand="uninstall-windows-runner" />
+
+    <InstallExecuteSequence>
+      <Custom Action="UnregisterRunner" Before="RemoveFiles">REMOVE~=&quot;ALL&quot;</Custom>
+      <Custom Action="ConfigureRunner" After="InstallFiles">NOT REMOVE</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

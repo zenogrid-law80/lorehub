@@ -1,0 +1,9 @@
+/target/
+/.env
+/.work/
+/.idea/
+/deploy/secrets/
+/.lore
+/deploy/runner-releases/lorehub-runner-*
+/.runner-macos/
+/.coordinator-macos/
