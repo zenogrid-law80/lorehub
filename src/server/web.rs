@@ -161,8 +161,11 @@ mod tests {
         assert!(INDEX.contains("/downloads/runners/linux-x86_64"));
         assert!(INDEX.contains("/downloads/runners/windows-x86_64"));
         assert!(INDEX.contains("/downloads/runners/macos-aarch64"));
-        assert!(!WINDOWS_RUNNER.is_empty());
-        assert!(!MACOS_RUNNER.is_empty());
+        #[cfg(feature = "embedded-runner-installers")]
+        {
+            assert!(!WINDOWS_RUNNER.is_empty());
+            assert!(!MACOS_RUNNER.is_empty());
+        }
 
         let response = linux_runner().await;
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/gzip");

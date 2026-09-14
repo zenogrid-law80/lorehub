@@ -295,6 +295,11 @@ impl Worker {
                     .env("LORE_IDENTITY_TOKEN", token)
                     .env("LORE_ACCESS_TOKEN", token);
             }
+            for name in ["ECR_ACCESS_KEY_ID", "ECR_ACCESS_KEY", "ECR_REGION"] {
+                if let Some(value) = std::env::var_os(name) {
+                    shell.env(name, value);
+                }
+            }
             let execution = Execution {
                 job: Some(job.id),
                 ..execution

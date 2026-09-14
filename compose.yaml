@@ -35,6 +35,9 @@ services:
       LORE_JWT_PRIVATE_KEY: /run/secrets/lore_jwt_private_key
       LORE_JWT_JWKS: /run/secrets/lore_jwks
       RUST_LOG: ${RUNNER_RUST_LOG:-lorehub=info}
+      ECR_ACCESS_KEY_ID: ${ECR_ACCESS_KEY_ID:-}
+      ECR_ACCESS_KEY: ${ECR_ACCESS_KEY:-}
+      ECR_REGION: ${ECR_REGION:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
