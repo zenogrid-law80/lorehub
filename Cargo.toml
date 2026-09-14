@@ -1,6 +1,6 @@
 [package]
 name = "lorehub"
-version = "0.2.13"
+version = "0.2.14"
 edition = "2024"
 rust-version = "1.88"
 description = "A Lore-native development platform with CI and PostgreSQL"
