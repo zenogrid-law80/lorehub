@@ -374,6 +374,8 @@ notepad C:\ProgramData\LoreHub\runner.env
 Start-ScheduledTask -TaskName "LoreHub Runner"
 ```
 
+Rust 서버를 SYSTEM runner에서 빌드할 때는 관리자 Command Prompt에서 설치 패키지의 `install-server-build-prerequisites.bat`를 한 번 실행하세요. 이 스크립트는 Visual Studio 2022 Build Tools의 C++ workload와 Windows SDK를 설치하고, Rust를 `C:\ProgramData\LoreHub\toolchains`에 설치합니다. `runner.env.example`의 `CARGO_HOME`, `RUSTUP_HOME`, `PATH` 항목을 `C:\ProgramData\LoreHub\runner.env`에 유지해야 SYSTEM job이 해당 도구를 찾습니다. Runner는 job 환경에 이 두 Rust 경로를 전달하고, `%PATH%`처럼 환경 변수를 포함한 `runner.env` 값을 확장합니다.
+
 MSI를 직접 만들 때는 Windows x86_64 실행 파일을 준비한 뒤 `build-msi.sh`를 사용합니다. macOS 빌드 호스트에서는 `brew install msitools`가 필요합니다.
 
 ```powershell

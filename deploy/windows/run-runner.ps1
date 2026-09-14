@@ -21,7 +21,8 @@ Get-Content $environmentFile | ForEach-Object {
     if ($line -and -not $line.StartsWith("#")) {
         $parts = $line.Split("=", 2)
         if ($parts.Count -ne 2) { throw "Invalid environment entry: $line" }
-        [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1], "Process")
+        $value = [Environment]::ExpandEnvironmentVariables($parts[1])
+        [Environment]::SetEnvironmentVariable($parts[0].Trim(), $value, "Process")
     }
 }
 

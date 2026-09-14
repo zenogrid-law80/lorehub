@@ -113,6 +113,8 @@ pub fn prepare(mut command: Command, cwd: &Path) -> Command {
         "ComSpec",
         "PATHEXT",
         "LANG",
+        "CARGO_HOME",
+        "RUSTUP_HOME",
     ]
     .as_slice();
     for key in inherited {
