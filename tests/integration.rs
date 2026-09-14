@@ -365,6 +365,32 @@ async fn authenticated_api_and_log_cursor(pool: PgPool) {
     assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
     sqlx::query("INSERT INTO lore_resources (resource_id,name,owner_subject) VALUES ('api-test-resource','example',$1)")
         .bind(user_id.to_string()).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO ci_pipeline_routes (resource_id,repository_url,branch,revision,pipeline_name,category,runner_os,trigger_patterns,working_directory,graph_definition) VALUES ('api-test-resource','lores://127.0.0.1:41337/example','main',$1,'server','server','linux',ARRAY['src/**'],'src','{\"stages\":[]}')")
+        .bind("a".repeat(64))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/repositories/example/pipelines?revision={}",
+                    "a".repeat(64)
+                ))
+                .header("cookie", &cookies)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let choices: serde_json::Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(
+        choices,
+        serde_json::json!([{ "name": "server", "category": "server", "runner_os": "linux" }])
+    );
     let mut untrusted_repository = input();
     untrusted_repository.repository_url = "lores://untrusted.example/example".into();
     let response = app

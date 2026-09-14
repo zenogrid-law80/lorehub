@@ -399,7 +399,7 @@ struct PipelineRevision {
     revision: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, sqlx::FromRow)]
 struct PipelineChoice {
     name: Option<String>,
     category: Option<String>,
@@ -418,7 +418,17 @@ async fn list_repository_pipelines(
             "revision must be a full 64-character Lore revision hash".into(),
         ));
     }
-    require_repository_owner(&state.pool, &name, &session).await?;
+    let resource_id = require_repository_owner(&state.pool, &name, &session).await?;
+    let routes: Vec<PipelineChoice> = sqlx::query_as(
+        "SELECT pipeline_name AS name, category, runner_os FROM ci_pipeline_routes WHERE resource_id = $1 AND revision = $2 ORDER BY category, pipeline_name",
+    )
+    .bind(&resource_id)
+    .bind(&query.revision)
+    .fetch_all(&state.pool)
+    .await?;
+    if !routes.is_empty() {
+        return Ok(Json(routes));
+    }
     let access_token = user_access_token(&state, &session).await?;
     let config = state
         .repositories
