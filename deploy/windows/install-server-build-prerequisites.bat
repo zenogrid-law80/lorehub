@@ -29,17 +29,31 @@ if errorlevel 1 (
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if exist "%VSWHERE%" (
-    "%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath >nul 2>&1
-    if not errorlevel 1 (
+    for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2^>nul`) do (
+        if exist "%%~fI\VC\Auxiliary\Build\vcvars64.bat" set "MSVC_ROOT=%%~fI"
+    )
+    if defined MSVC_ROOT (
         echo Visual Studio C++ Build Tools are already installed.
         exit /b 0
     )
 )
 
+rem Visual Studio Installer may find a per-user/new-version instance while the
+rem LoreHub Runner SYSTEM account cannot discover it through vswhere. Accept a
+rem machine-wide instance only when its MSVC environment script is readable.
+for /d %%V in ("%ProgramFiles%\Microsoft Visual Studio\*\*") do (
+    if exist "%%~fV\VC\Auxiliary\Build\vcvars64.bat" set "MSVC_ROOT=%%~fV"
+)
+if defined MSVC_ROOT (
+    echo Visual Studio C++ Build Tools are installed at %MSVC_ROOT%.
+    echo The LoreHub Runner SYSTEM account must be able to read this path.
+    exit /b 0
+)
+
 echo Installing Visual Studio 2022 Build Tools and the Windows SDK...
 winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --accept-source-agreements --accept-package-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
 if errorlevel 1 (
-    echo Visual Studio Build Tools installation failed.
+    echo Visual Studio Build Tools installation failed. An administrator may see Visual Studio while the LoreHub Runner SYSTEM account still cannot discover its C++ toolchain.
     exit /b 1
 )
 exit /b 0

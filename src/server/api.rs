@@ -274,12 +274,8 @@ async fn issue_lore_token(
     State(state): State<AppState>,
     Extension(session): Extension<AuthSession>,
 ) -> Result<(HeaderMap, Json<IssuedToken>), ApiError> {
-    let resources = sqlx::query_scalar(
-        "SELECT resource_id FROM lore_resources WHERE owner_subject = $1 ORDER BY resource_id",
-    )
-    .bind(session.user.id.to_string())
-    .fetch_all(&state.pool)
-    .await?;
+    let resources =
+        super::repository_access::resource_ids(&state.pool, &session.user.id.to_string()).await?;
     let token = token_issuer(&state)?
         .issue_user(&session.user, resources)
         .map_err(|error| {
@@ -304,12 +300,8 @@ fn token_issuer(state: &AppState) -> Result<&TokenIssuer, ApiError> {
 }
 
 async fn user_access_token(state: &AppState, session: &AuthSession) -> Result<String, ApiError> {
-    let resources = sqlx::query_scalar(
-        "SELECT resource_id FROM lore_resources WHERE owner_subject = $1 ORDER BY resource_id",
-    )
-    .bind(session.user.id.to_string())
-    .fetch_all(&state.pool)
-    .await?;
+    let resources =
+        super::repository_access::resource_ids(&state.pool, &session.user.id.to_string()).await?;
     token_issuer(state)?
         .issue_user(&session.user, resources)
         .map(|token| token.access_token)
@@ -387,7 +379,7 @@ async fn list_repository_branches(
     Extension(session): Extension<AuthSession>,
     Path(name): Path<String>,
 ) -> Result<Json<Vec<Branch>>, ApiError> {
-    require_repository_owner(&state.pool, &name, &session).await?;
+    require_repository_access(&state.pool, &name, &session).await?;
     let access_token = user_access_token(&state, &session).await?;
     Ok(Json(
         state.repositories.branches(&name, &access_token).await?,
@@ -418,7 +410,7 @@ async fn list_repository_pipelines(
             "revision must be a full 64-character Lore revision hash".into(),
         ));
     }
-    let resource_id = require_repository_owner(&state.pool, &name, &session).await?;
+    let resource_id = require_repository_access(&state.pool, &name, &session).await?;
     let routes: Vec<PipelineChoice> = sqlx::query_as(
         "SELECT pipeline_name AS name, category, runner_os FROM ci_pipeline_routes WHERE resource_id = $1 AND revision = $2 ORDER BY category, pipeline_name",
     )
@@ -493,7 +485,7 @@ async fn repository_pipeline_branches(
     Extension(session): Extension<AuthSession>,
     Path(name): Path<String>,
 ) -> Result<Json<RepositoryPipelineBranches>, ApiError> {
-    let resource_id = require_repository_owner(&state.pool, &name, &session).await?;
+    let resource_id = require_repository_access(&state.pool, &name, &session).await?;
     let access_token = user_access_token(&state, &session).await?;
     let branches = state.repositories.branches(&name, &access_token).await?;
     let stored: Option<Vec<String>> = sqlx::query_scalar(
@@ -525,7 +517,7 @@ async fn update_repository_pipeline_branches(
     Path(name): Path<String>,
     Json(mut input): Json<RepositoryPipelineBranchesInput>,
 ) -> Result<StatusCode, ApiError> {
-    let resource_id = require_repository_owner(&state.pool, &name, &session).await?;
+    let resource_id = require_repository_access(&state.pool, &name, &session).await?;
     input.branches.sort();
     input.branches.dedup();
     if input.branches.len() > 200
@@ -586,24 +578,20 @@ async fn update_repository_pipeline_branches(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn require_repository_owner(
+async fn require_repository_access(
     pool: &PgPool,
     repository_name: &str,
     session: &AuthSession,
 ) -> Result<String, ApiError> {
-    let resource_id: Option<String> = sqlx::query_scalar(
-        "SELECT resource_id FROM lore_resources WHERE name = $1 AND owner_subject = $2",
-    )
-    .bind(repository_name)
-    .bind(session.user.id.to_string())
-    .fetch_optional(pool)
-    .await?;
+    let resource_id: Option<String> =
+        super::repository_access::by_name(pool, &session.user.id.to_string(), repository_name)
+            .await?;
     if let Some(resource_id) = resource_id {
         Ok(resource_id)
     } else {
         Err(ApiError(
             StatusCode::FORBIDDEN,
-            "repository owner access required".into(),
+            "repository owner or administrator access required".into(),
         ))
     }
 }
@@ -627,7 +615,7 @@ async fn submit(
             "repository_url must match the configured Lore server".into(),
         ));
     }
-    let resource_id = require_repository_owner(&state.pool, &repository_name, &session).await?;
+    let resource_id = require_repository_access(&state.pool, &repository_name, &session).await?;
     let needs_access_token = input.branch.is_some() || input.pipeline_name.is_some();
     let access_token = if needs_access_token {
         Some(user_access_token(&state, &session).await?)
@@ -920,7 +908,7 @@ async fn pipeline_graphs(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<PipelineGraphRoute>>, ApiError> {
     let rows: Vec<PipelineGraphRow> = sqlx::query_as(
-        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.category, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route LEFT JOIN LATERAL (SELECT id, status, created_at FROM pipelines WHERE repository_url = route.repository_url AND branch = route.branch AND revision = route.revision AND pipeline_name = route.pipeline_name ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true ORDER BY route.repository_url, route.branch, route.category, route.pipeline_name",
+        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.category, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route LEFT JOIN LATERAL (SELECT id, status, created_at FROM pipelines WHERE repository_url = route.repository_url AND pipeline_name = route.pipeline_name AND (branch = route.branch OR (branch ~ '^[0-9a-fA-F]{32}$' AND revision = route.revision)) ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true ORDER BY route.repository_url, route.branch, route.category, route.pipeline_name",
     )
     .fetch_all(&state.pool)
     .await?;

@@ -333,19 +333,87 @@ impl Worker {
             .filter(|name| !name.is_empty())
             .context("pipeline repository URL requires a repository name")?
             .to_owned();
-        let resource_id: String = sqlx::query_scalar(
-            "SELECT resource_id FROM lore_resources WHERE name = $1 AND owner_subject = $2",
+        let resource_id = crate::server::repository_access::by_name(
+            &self.pool,
+            &submitter.to_string(),
+            &repository_name,
         )
-        .bind(repository_name)
-        .bind(submitter.to_string())
-        .fetch_optional(&self.pool)
         .await?
-        .context("pipeline submitter no longer owns the repository")?;
+        .context("pipeline submitter no longer has repository access")?;
         Ok(Some(
             issuer
                 .issue_worker(&self.id.to_string(), resource_id)?
                 .access_token,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ci::config::SubmitPipeline;
+
+    #[sqlx::test]
+    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+    async fn administrator_pipeline_gets_scoped_worker_token_until_demotion(pool: PgPool) {
+        let admin = Uuid::new_v4();
+        let owner = Uuid::new_v4();
+        for id in [admin, owner] {
+            sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+                .bind(id)
+                .bind(id.to_string())
+                .bind(format!("{id}@zenogrid.co.kr"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES('urc-project','project',$1)")
+            .bind(owner.to_string()).execute(&pool).await.unwrap();
+        let issuer = TokenIssuer::from_files(
+            "tests/fixtures/test-private.pem",
+            "tests/fixtures/test-jwks.json",
+            "http://127.0.0.1:8080",
+            "zenogrid.co.kr",
+        )
+        .unwrap();
+        let worker = Worker {
+            pool: pool.clone(),
+            id: Uuid::new_v4(),
+            work_dir: PathBuf::new(),
+            lore_bin: String::new(),
+            token_issuer: Some(issuer.clone()),
+        };
+        let input = SubmitPipeline {
+            repository_url: "lores://127.0.0.1:41337/project".into(),
+            revision: "a".repeat(64),
+            branch: None,
+            pipeline_name: None,
+        };
+        let pipeline = db::submit_for_user(&pool, &input, admin).await.unwrap();
+        let token = worker
+            .worker_access_token(&pipeline)
+            .await
+            .unwrap()
+            .unwrap();
+        let verified = issuer.verify_access_token(&token).unwrap();
+        assert_eq!(verified.subject, format!("lorehub-worker:{}", worker.id));
+        assert!(verified.has_exact_resource("urc-project"));
+        assert!(!verified.has_exact_resource("urc-other"));
+        assert!(!verified.has_wildcard());
+        sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+            .bind(admin)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(worker.worker_access_token(&pipeline).await.is_err());
+        let owner_pipeline = db::submit_for_user(&pool, &input, owner).await.unwrap();
+        assert!(
+            worker
+                .worker_access_token(&owner_pipeline)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }
 

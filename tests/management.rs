@@ -51,6 +51,263 @@ async fn request(
 
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool: PgPool) {
+    use lorehub::server::tokens::TokenIssuer;
+    let tokens = TokenIssuer::from_files(
+        "tests/fixtures/test-private.pem",
+        "tests/fixtures/test-jwks.json",
+        "http://127.0.0.1:8080",
+        "zenogrid.co.kr",
+    )
+    .unwrap();
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(
+            "/usr/bin/false",
+            "lores://127.0.0.1:41337",
+            "lores://127.0.0.1:41337",
+        )
+        .unwrap(),
+        Some(tokens.clone()),
+    );
+    let admin = Uuid::new_v4();
+    let owner = Uuid::new_v4();
+    for id in [admin, owner] {
+        sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec()).bind(id).bind(Sha256::digest(b"test-csrf").to_vec()).execute(&pool).await.unwrap();
+    }
+    sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES('urc-test','test-project',$1)").bind(owner.to_string()).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO ci_pipeline_routes(resource_id,repository_url,branch,revision,pipeline_name,category,runner_os,trigger_patterns,working_directory,graph_definition) VALUES('urc-test','lores://127.0.0.1:41337/test-project','main',$1,'build','server','linux',ARRAY['**'],'.','{\"stages\":[]}'::jsonb)")
+        .bind("a".repeat(64)).execute(&pool).await.unwrap();
+    let pipeline_path = format!(
+        "/api/v1/repositories/test-project/pipelines?revision={}",
+        "a".repeat(64)
+    );
+    assert_eq!(
+        request(&app, Some(admin), "GET", &pipeline_path, Value::Null, false)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let repositories = request(
+        &app,
+        Some(admin),
+        "GET",
+        "/api/v1/workspace-repositories",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(repositories.0, StatusCode::OK);
+    assert_eq!(repositories.1[0]["name"], "test-project");
+    let token = request(
+        &app,
+        Some(admin),
+        "POST",
+        "/api/v1/lore-token",
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(token.0, StatusCode::OK);
+    assert!(
+        tokens
+            .verify_access_token(token.1["access_token"].as_str().unwrap())
+            .unwrap()
+            .has_exact_resource("urc-test")
+    );
+    let submission =
+        json!({"repository_url":"lores://127.0.0.1:41337/test-project", "revision":"a".repeat(64)});
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            "/api/v1/pipelines",
+            submission.clone(),
+            false
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            "/api/v1/pipelines",
+            submission.clone(),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let view = request(
+        &app,
+        Some(admin),
+        "POST",
+        "/api/v1/sparse-views",
+        json!({"name":"Admin view", "resource_id":"urc-test", "mode":"full", "rules":""}),
+        true,
+    )
+    .await;
+    assert_eq!(view.0, StatusCode::CREATED);
+    let view_path = format!("/api/v1/sparse-views/{}", view.1["id"].as_str().unwrap());
+    let views = request(
+        &app,
+        Some(admin),
+        "GET",
+        "/api/v1/sparse-views",
+        Value::Null,
+        false,
+    )
+    .await
+    .1;
+    assert_eq!(views[0]["can_manage"], true);
+    let update = json!({"name":"Updated admin view", "mode":"full", "rules":""});
+    assert_eq!(
+        request(&app, Some(admin), "POST", &view_path, update.clone(), true)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let group = request(
+        &app,
+        Some(admin),
+        "POST",
+        "/api/v1/account-groups",
+        json!({"name":"Admin group", "description":"", "member_ids":[]}),
+        true,
+    )
+    .await;
+    assert_eq!(group.0, StatusCode::CREATED);
+    let group_path = format!(
+        "/api/v1/account-groups/{}/views",
+        group.1["id"].as_str().unwrap()
+    );
+    let selection_path = format!("{group_path}/urc-test");
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            &selection_path,
+            json!({"view_id":view.1["id"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, Some(admin), "GET", &group_path, Value::Null, false)
+            .await
+            .1[0]["can_manage"],
+        true
+    );
+
+    sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+        .bind(admin)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(&app, Some(admin), "GET", &pipeline_path, Value::Null, false)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            "/api/v1/pipelines",
+            submission,
+            true
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "GET",
+            "/api/v1/workspace-repositories",
+            Value::Null,
+            false
+        )
+        .await
+        .1,
+        json!([])
+    );
+    let token = request(
+        &app,
+        Some(admin),
+        "POST",
+        "/api/v1/lore-token",
+        Value::Null,
+        true,
+    )
+    .await
+    .1;
+    assert!(
+        !tokens
+            .verify_access_token(token["access_token"].as_str().unwrap())
+            .unwrap()
+            .has_exact_resource("urc-test")
+    );
+    assert_eq!(
+        request(&app, Some(admin), "POST", &view_path, update, true)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&app, Some(admin), "GET", &group_path, Value::Null, false)
+            .await
+            .1[0]["can_manage"],
+        false
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            &selection_path,
+            json!({"view_id":view.1["id"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&app, Some(owner), "GET", &pipeline_path, Value::Null, false)
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
 async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     let auth = AuthService::new(
         pool.clone(),
@@ -361,7 +618,7 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     assert_eq!(
         request(
             &app,
-            Some(owner),
+            Some(member),
             "POST",
             "/api/v1/sparse-views",
             json!({"name":"Other", "resource_id":"urc-other", "mode":"sparse", "rules":"**\n!/src/"}),

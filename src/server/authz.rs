@@ -42,15 +42,14 @@ impl AuthzService {
             .map_err(|_| Status::unauthenticated("invalid or expired access token"))
     }
 
-    async fn owns(&self, identity: &VerifiedToken, resource_id: &str) -> Result<bool, Status> {
-        sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM lore_resources WHERE resource_id = $1 AND owner_subject = $2)",
-        )
-        .bind(resource_id)
-        .bind(&identity.subject)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|_| Status::internal("check Lore resource ownership"))
+    async fn can_access(
+        &self,
+        identity: &VerifiedToken,
+        resource_id: &str,
+    ) -> Result<bool, Status> {
+        super::repository_access::can_access(&self.pool, &identity.subject, resource_id)
+            .await
+            .map_err(|_| Status::internal("check Lore resource access"))
     }
 }
 
@@ -77,7 +76,7 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
                 identity.has_exact_resource(&resource_id)
             } else {
                 identity.has_exact_resource(&resource_id)
-                    && self.owns(&identity, &resource_id).await?
+                    && self.can_access(&identity, &resource_id).await?
             };
             let permission = epic_urc::ResourcePermission {
                 resource_id,
@@ -101,19 +100,14 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
     ) -> Result<Response<epic_urc::LookupUserPermissionsResponse>, Status> {
         let identity = self.authenticate(request.metadata())?;
         let filter = request.into_inner().resource_filter;
-        let ids: Vec<String> = if filter == "urc"
-            && !identity.subject.starts_with("lorehub-worker:")
-        {
-            sqlx::query_scalar(
-                "SELECT resource_id FROM lore_resources WHERE owner_subject = $1 ORDER BY resource_id",
-            )
-            .bind(&identity.subject)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|_| Status::internal("load Lore resources"))?
-        } else {
-            Vec::new()
-        };
+        let ids: Vec<String> =
+            if filter == "urc" && !identity.subject.starts_with("lorehub-worker:") {
+                super::repository_access::resource_ids(&self.pool, &identity.subject)
+                    .await
+                    .map_err(|_| Status::internal("load Lore resources"))?
+            } else {
+                Vec::new()
+            };
         Ok(Response::new(epic_urc::LookupUserPermissionsResponse {
             resource_permission: ids
                 .into_iter()
@@ -193,13 +187,9 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|_| Status::internal("load CLI user"))?;
-        let resources: Vec<String> = sqlx::query_scalar(
-            "SELECT resource_id FROM lore_resources WHERE owner_subject=$1 ORDER BY resource_id",
-        )
-        .bind(user.id.to_string())
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|_| Status::internal("load CLI user resources"))?;
+        let resources = super::repository_access::resource_ids(&self.pool, &user.id.to_string())
+            .await
+            .map_err(|_| Status::internal("load CLI user resources"))?;
         let issued = self
             .tokens
             .issue_user(&user, resources)
@@ -260,7 +250,7 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
             ));
         }
         for resource in &resources {
-            if !resource.starts_with("urc-") || !self.owns(&identity, resource).await? {
+            if !resource.starts_with("urc-") || !self.can_access(&identity, resource).await? {
                 return Err(Status::permission_denied("repository access denied"));
             }
         }
@@ -344,15 +334,18 @@ impl ucs::auth::rebac_api_server::RebacApi for AuthzService {
     ) -> Result<Response<ucs::auth::DeleteResourceResponse>, Status> {
         let identity = self.authenticate(request.metadata())?;
         let resource = request.into_inner();
-        let deleted =
-            sqlx::query("DELETE FROM lore_resources WHERE resource_id = $1 AND owner_subject = $2")
-                .bind(&resource.resource_id)
-                .bind(&identity.subject)
-                .execute(&self.pool)
-                .await
-                .map_err(|_| Status::internal("delete Lore resource"))?;
-        if deleted.rows_affected() == 0 {
-            return Err(Status::permission_denied("repository owner required"));
+        if !identity.has_exact_resource(&resource.resource_id)
+            || !super::repository_access::delete(
+                &self.pool,
+                &identity.subject,
+                &resource.resource_id,
+            )
+            .await
+            .map_err(|_| Status::internal("delete Lore resource"))?
+        {
+            return Err(Status::permission_denied(
+                "repository owner or administrator required",
+            ));
         }
         Ok(Response::new(ucs::auth::DeleteResourceResponse {}))
     }
@@ -379,4 +372,269 @@ pub async fn serve(
         .serve_with_shutdown(bind, shutdown.cancelled_owned())
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use epic_urc::urc_auth_api_server::UrcAuthApi;
+    use ucs::auth::rebac_api_server::RebacApi;
+    use uuid::Uuid;
+
+    fn request<T>(body: T, token: &str) -> Request<T> {
+        let mut request = Request::new(body);
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        request
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+    async fn administrators_access_all_resources_and_demotion_revokes_existing_tokens(
+        pool: PgPool,
+    ) {
+        let tokens = TokenIssuer::from_files(
+            "tests/fixtures/test-private.pem",
+            "tests/fixtures/test-jwks.json",
+            "http://127.0.0.1:8080",
+            "zenogrid.co.kr",
+        )
+        .unwrap();
+        let admin = Uuid::new_v4();
+        let owner = Uuid::new_v4();
+        for id in [admin, owner] {
+            sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+                .bind(id)
+                .bind(id.to_string())
+                .bind(format!("{id}@zenogrid.co.kr"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        for (resource, subject) in [("urc-admin", admin), ("urc-project", owner)] {
+            sqlx::query(
+                "INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES($1,$1,$2)",
+            )
+            .bind(resource)
+            .bind(subject.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let user: User =
+            sqlx::query_as("SELECT id,email,name,picture_url,role FROM users WHERE id=$1")
+                .bind(admin)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let ids = super::super::repository_access::resource_ids(&pool, &admin.to_string())
+            .await
+            .unwrap();
+        assert_eq!(ids, ["urc-admin", "urc-project"]);
+        assert_eq!(
+            super::super::repository_access::resource_ids(&pool, &owner.to_string())
+                .await
+                .unwrap(),
+            ["urc-project"]
+        );
+        let token = tokens.issue_user(&user, ids).unwrap().access_token;
+        let service = AuthzService {
+            pool: pool.clone(),
+            tokens,
+            public_url: "http://127.0.0.1:8080".into(),
+        };
+        let lookup = || {
+            request(
+                epic_urc::LookupUserPermissionsRequest {
+                    resource_filter: "urc".into(),
+                    ..Default::default()
+                },
+                &token,
+            )
+        };
+        let check = || {
+            request(
+                epic_urc::CheckUserPermissionRequest {
+                    resource_id: vec![
+                        "urc-admin".into(),
+                        "urc-project".into(),
+                        "urc-missing".into(),
+                    ],
+                    ..Default::default()
+                },
+                &token,
+            )
+        };
+        let exchange = || {
+            request(
+                epic_urc::ExchangeUserTokenForMultiresourceTokenRequest {
+                    resource_id: vec!["urc-project".into()],
+                    ..Default::default()
+                },
+                &token,
+            )
+        };
+        assert_eq!(
+            service
+                .lookup_user_permissions(lookup())
+                .await
+                .unwrap()
+                .into_inner()
+                .resource_permission
+                .len(),
+            2
+        );
+        let permissions = service
+            .check_user_permission(check())
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(permissions.allowed_resource_permission.len(), 2);
+        assert_eq!(
+            permissions.denied_resource_permission[0].resource_id,
+            "urc-missing"
+        );
+        let exchanged = service
+            .exchange_user_token_for_multiresource_token(exchange())
+            .await
+            .unwrap()
+            .into_inner()
+            .token
+            .unwrap();
+        assert!(
+            service
+                .tokens
+                .verify_access_token(&exchanged.user_token)
+                .unwrap()
+                .has_exact_resource("urc-project")
+        );
+
+        // CLI login must receive the same complete resource list as web tokens.
+        let session_code = random_token();
+        sqlx::query("INSERT INTO cli_auth_sessions(session_hash,client_state,user_id,expires_at) VALUES($1,'test-state',$2,now()+interval '1 minute')")
+            .bind(token_hash(&session_code)).bind(admin).execute(&pool).await.unwrap();
+        let cli = service
+            .get_auth_session(Request::new(epic_urc::GetAuthSessionRequest {
+                session_code,
+                client_state: "test-state".into(),
+            }))
+            .await
+            .unwrap()
+            .into_inner()
+            .user_token
+            .unwrap();
+        assert!(
+            service
+                .tokens
+                .verify_access_token(&cli.user_token)
+                .unwrap()
+                .has_exact_resource("urc-project")
+        );
+
+        // Worker tokens stay limited to the one repository in their claim.
+        let worker = service
+            .tokens
+            .issue_worker("test", "urc-project".into())
+            .unwrap()
+            .access_token;
+        let worker_permissions = service
+            .check_user_permission(request(
+                epic_urc::CheckUserPermissionRequest {
+                    resource_id: vec!["urc-project".into(), "urc-admin".into()],
+                    ..Default::default()
+                },
+                &worker,
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(worker_permissions.allowed_resource_permission.len(), 1);
+        assert_eq!(
+            worker_permissions.denied_resource_permission[0].resource_id,
+            "urc-admin"
+        );
+        assert!(
+            service
+                .delete_resource(request(
+                    ucs::auth::DeleteResourceRequest {
+                        resource_id: "urc-project".into()
+                    },
+                    &worker
+                ))
+                .await
+                .is_err()
+        );
+
+        sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+            .bind(admin)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .lookup_user_permissions(lookup())
+                .await
+                .unwrap()
+                .into_inner()
+                .resource_permission
+                .len(),
+            1
+        );
+        assert_eq!(
+            service
+                .check_user_permission(check())
+                .await
+                .unwrap()
+                .into_inner()
+                .allowed_resource_permission
+                .len(),
+            1
+        );
+        assert_eq!(
+            service
+                .exchange_user_token_for_multiresource_token(exchange())
+                .await
+                .unwrap_err()
+                .code(),
+            tonic::Code::PermissionDenied
+        );
+        assert!(
+            service
+                .delete_resource(request(
+                    ucs::auth::DeleteResourceRequest {
+                        resource_id: "urc-project".into()
+                    },
+                    &token
+                ))
+                .await
+                .is_err()
+        );
+        assert!(
+            super::super::repository_access::by_name(&pool, &admin.to_string(), "urc-project")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        sqlx::query("UPDATE users SET role='admin' WHERE id=$1")
+            .bind(admin)
+            .execute(&pool)
+            .await
+            .unwrap();
+        service
+            .delete_resource(request(
+                ucs::auth::DeleteResourceRequest {
+                    resource_id: "urc-project".into(),
+                },
+                &token,
+            ))
+            .await
+            .unwrap();
+        assert!(
+            !super::super::repository_access::can_access(&pool, &admin.to_string(), "urc-project")
+                .await
+                .unwrap()
+        );
+    }
 }

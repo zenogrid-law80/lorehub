@@ -181,7 +181,7 @@ lore \
 unset LORE_ACCESS_TOKEN
 ```
 
-현재 Lore CLI의 repository service는 identity token을, repository 데이터 작업은 access token을 사용하므로 두 옵션에 같은 LoreHub JWT를 전달합니다. token은 `zenogrid.co.kr` audience와 현재 사용자가 소유한 repository의 resource ID만 포함하며 만료 후 다시 발급해야 합니다. 목록·조회·삭제와 파이프라인 생성도 소유권을 확인합니다. 웹 관리 API의 생성 작업에만 일회성 wildcard JWT를 내부에서 사용하고, 권한 서비스가 생성한 resource를 해당 Google 사용자에게 귀속시킵니다.
+현재 Lore CLI의 repository service는 identity token을, repository 데이터 작업은 access token을 사용하므로 두 옵션에 같은 LoreHub JWT를 전달합니다. token은 `zenogrid.co.kr` audience와 현재 사용자가 접근 가능한 repository의 resource ID만 포함하며 만료 후 다시 발급해야 합니다. 일반 사용자는 본인 소유 리포지토리에만 접근할 수 있고, 관리자는 모든 리포지토리의 목록·조회·삭제와 파이프라인 생성·실행을 사용할 수 있습니다. 웹과 CLI 권한 검사는 DB의 현재 역할을 확인하므로 관리자 해제 후에는 기존 토큰으로도 다른 사용자 리포지토리에 접근할 수 없습니다. 역할 변경 후 CLI에서 새로 허용된 리포지토리를 보려면 토큰을 다시 발급하거나 로그인하세요. 웹 관리 API의 생성 작업에만 일회성 wildcard JWT를 내부에서 사용하고, 권한 서비스가 생성한 resource를 해당 Google 사용자에게 귀속시킵니다.
 
 Lore 서버는 environment endpoint의 `auth_url`도 LoreHub로 공지하므로 QUIC 저장소 데이터 요청에 access token이 전달됩니다. 워커는 clone 직전에 5분짜리 JWT를 자동 발급해 `--identity-token`과 `--access-token`으로 넘깁니다. 따라서 OS 계정에 Lore 자격 증명을 별도로 저장할 필요가 없습니다. 워커에도 coordinator와 같은 `LOREHUB_PUBLIC_URL`, `LORE_JWT_PRIVATE_KEY`, `LORE_JWT_JWKS` 설정이 필요합니다. `LORE_BIN`은 `lore`처럼 PATH에서 찾는 이름 또는 절대 경로를 지정하세요. 워커의 PATH에는 빌드에 필요한 Rust 등의 도구가 있어야 합니다.
 
@@ -437,8 +437,9 @@ CLI 기본 릴리스 디렉터리는 `deploy/runner-releases`이며 `LOREHUB_RUN
 - 그룹 생성자는 이름·설명과 기존 계정의 구성원 목록을 관리합니다. 생성자는 항상 구성원으로
   포함되며, 그룹 목록에는 자신이 소유하거나 참여한 그룹만 표시됩니다.
 - 그룹 소유자는 자신이 소유한 리포지토리에 대해 그룹별 view 프리셋을 저장할 수 있습니다.
+  관리자라면 모든 리포지토리에서 본인 view 프리셋을 만들고 본인 그룹에 연결할 수 있습니다.
   그룹 구성원은 저장된 프리셋을 조회·다운로드할 수 있습니다. 그룹 가입은 Lore 리포지토리의
-  접근 권한을 부여하지 않으며, 기존 리포지토리 소유권 검사는 그대로 적용됩니다.
+  접근 권한을 부여하지 않으며, 리포지토리 소유자 또는 관리자 권한 검사가 적용됩니다.
 - 전체 workspace 모드는 모든 경로를 포함하는 빈 view 파일을 제공합니다. Sparse 모드는
   Lore view 원문을 순서대로 저장합니다. 일반 패턴은 제외하고 `!` 패턴은 포함하며, 뒤의
   규칙이 우선합니다. 예를 들어 다음 파일은 `client`와 `shared`를 포함하고 생성물을 제외합니다.

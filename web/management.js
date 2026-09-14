@@ -16,7 +16,7 @@ const managementCopy = {
   groupHint: ["그룹 생성자만 이름과 구성원을 변경할 수 있습니다. 소유자는 항상 구성원으로 포함됩니다.", "Only the creator can edit the group. The owner is always a member.", "只有创建者可以编辑组。所有者始终是成员。"],
   groupSelect: ["계정 그룹", "Account group", "账号组"], repoSelect: ["리포지토리", "Repository", "仓库"], chooseGroup: ["그룹을 선택하세요", "Choose a group", "选择组"], chooseRepo: ["리포지토리를 선택하세요", "Choose a repository", "选择仓库"],
   noGroup: ["먼저 계정 그룹을 생성하거나 그룹에 참여하세요.", "Create or join an account group first.", "请先创建或加入账号组。"],
-  noRepo: ["설정 가능한 리포지토리가 없습니다. 그룹 소유자는 본인 소유 리포지토리의 설정을 추가할 수 있습니다.", "No repositories available. Group owners can add presets for repositories they own.", "暂无可用仓库。组所有者可以为其拥有的仓库添加预设。"],
+  noRepo: ["설정 가능한 리포지토리가 없습니다. 리포지토리 소유자와 관리자가 설정을 추가할 수 있습니다.", "No repositories available. Repository owners and administrators can add presets.", "暂无可用仓库。仓库所有者和管理员可以添加预设。"],
   full: ["전체 workspace", "Full workspace", "完整工作区"], sparse: ["Sparse workspace", "Sparse workspace", "稀疏工作区"], mode: ["Workspace 범위", "Workspace scope", "工作区范围"],
   rules: ["View 규칙", "View rules", "视图规则"], ruleHint: ["한 줄에 규칙 하나. 일반 패턴은 제외, ! 패턴은 포함입니다. 뒤의 규칙이 우선하며 #은 주석입니다.", "One rule per line. Patterns exclude; ! patterns include. Later rules win; # starts a comment.", "每行一条规则。普通模式排除，! 模式包含。后面的规则优先；# 表示注释。"],
   presetHint: ["Sparse View는 리포지토리별 재사용 프리셋입니다. 그룹은 목록에서 하나를 선택하며, 선택만으로 리포지토리 접근 권한이 부여되지는 않습니다.", "Sparse Views are reusable repository presets. Groups select one from the list; selection does not grant repository access.", "稀疏视图是可复用的仓库预设。组从列表中选择一个；选择不会授予仓库访问权限。"],

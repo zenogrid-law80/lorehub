@@ -11,6 +11,7 @@ pub mod authz;
 mod management;
 pub mod releases;
 pub mod repositories;
+pub(crate) mod repository_access;
 pub mod tokens;
 pub mod triggers;
 pub mod web;

@@ -135,6 +135,7 @@ async fn selected_manual_pipeline_preserves_execution_snapshot(pool: PgPool) {
         .unwrap();
     let mut request = input();
     request.pipeline_name = Some("build".into());
+    request.branch = Some("main".into());
     let selected = db::SelectedPipeline {
         pipeline_name: "build".into(),
         category: "server".into(),
@@ -147,6 +148,23 @@ async fn selected_manual_pipeline_preserves_execution_snapshot(pool: PgPool) {
     };
     let mut tx = pool.begin().await.unwrap();
     let pipeline = db::submit_selected_for_user(&mut tx, &request, user_id, &selected)
+        .await
+        .unwrap();
+    let rerun = db::submit_selected_for_user(&mut tx, &request, user_id, &selected)
+        .await
+        .unwrap();
+    assert_ne!(pipeline.id, rerun.id);
+    tx.commit().await.unwrap();
+    // Manual attempts do not consume the once-per-push key. Push retries still
+    // deduplicate, and a previous push does not prevent another manual attempt.
+    for expected in [1, 0] {
+        let result = sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name,previous_revision) VALUES($1,$2,$3,'main','build',$4) ON CONFLICT DO NOTHING")
+            .bind(Uuid::new_v4()).bind(&request.repository_url).bind(&request.revision).bind("0".repeat(64))
+            .execute(&pool).await.unwrap();
+        assert_eq!(result.rows_affected(), expected);
+    }
+    let mut tx = pool.begin().await.unwrap();
+    db::submit_selected_for_user(&mut tx, &request, user_id, &selected)
         .await
         .unwrap();
     tx.commit().await.unwrap();
@@ -708,9 +726,16 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
         .await
         .unwrap();
     let legacy_pipeline_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO pipelines (id,repository_url,branch,revision,pipeline_name,runner_os) VALUES ($1,'lores://127.0.0.1:41337/shared-graph','0123456789abcdef0123456789abcdef',$2,'build','linux')")
+    sqlx::query("INSERT INTO pipelines (id,repository_url,branch,revision,pipeline_name,runner_os,created_at) VALUES ($1,'lores://127.0.0.1:41337/shared-graph','0123456789abcdef0123456789abcdef',$2,'build','linux',now()-interval '1 day')")
         .bind(legacy_pipeline_id)
         .bind("b".repeat(64))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let previous_revision_pipeline_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO pipelines (id,repository_url,branch,revision,pipeline_name,runner_os) VALUES ($1,'lores://127.0.0.1:41337/shared-graph','main',$2,'build','linux')")
+        .bind(previous_revision_pipeline_id)
+        .bind("a".repeat(64))
         .execute(&pool)
         .await
         .unwrap();
@@ -735,6 +760,10 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
     assert_eq!(graphs.as_array().unwrap().len(), 1);
     assert_eq!(graphs[0]["pipeline_name"], "build");
     assert_eq!(graphs[0]["category"], "server");
+    assert_eq!(
+        graphs[0]["latest_pipeline_id"],
+        previous_revision_pipeline_id.to_string()
+    );
     assert!(
         graphs[0]["revision_number"]
             .as_i64()
@@ -757,10 +786,15 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
     assert_eq!(response.status(), StatusCode::OK);
     let pipelines: serde_json::Value =
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    assert_eq!(pipelines[0]["id"], legacy_pipeline_id.to_string());
-    assert_eq!(pipelines[0]["branch"], "main");
+    let legacy_pipeline = pipelines
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pipeline| pipeline["id"] == legacy_pipeline_id.to_string())
+        .unwrap();
+    assert_eq!(legacy_pipeline["branch"], "main");
     assert_eq!(
-        pipelines[0]["revision_number"],
+        legacy_pipeline["revision_number"],
         graphs[0]["revision_number"]
     );
 }

@@ -318,7 +318,8 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
 .pipeline-graph-card h2 { margin: 3px 0 10px; font-size: 16px; letter-spacing: -.025em; }
 .graph-card-eyebrow { margin: 0; color: #9995a3; font-size: 9px; font-weight: 760; letter-spacing: .08em; text-transform: uppercase; }
 .graph-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.graph-open-button { min-height: 34px; padding-inline: 12px; font-size: 10px; }
+.graph-card-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.graph-run-button, .graph-open-button { min-height: 34px; padding-inline: 12px; font-size: 10px; }
 .graph-page-flow { padding: 4px 2px 8px; }
 .graph-page-flow .execution-node { flex-basis: 158px; min-height: 88px; background: white; }
 .graph-page-flow .execution-connector { flex-basis: 38px; }
@@ -459,7 +460,7 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
   .graph-category-list { padding: 8px; }
   .pipeline-graph-card { padding: 18px 13px; }
   .pipeline-graph-card > header { align-items: stretch; flex-direction: column; }
-  .graph-open-button { align-self: flex-start; }
+  .graph-card-actions { align-self: flex-start; flex-wrap: wrap; }
   .runner-table th, .runner-table td { display: table-cell; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

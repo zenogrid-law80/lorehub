@@ -208,7 +208,7 @@ impl RepositoryService {
             ])
             .args([
                 "--repository",
-                "repository",
+                ".",
                 "--remote",
                 "file",
                 "write",
@@ -219,7 +219,10 @@ impl RepositoryService {
                 "--output",
             ])
             .arg(&path)
-            .current_dir(workspace.path())
+            // Lore resolves --path from the working directory, even when
+            // --repository is supplied. Read inside the checkout and write
+            // outside it so the requested revision cannot overwrite its files.
+            .current_dir(workspace.path().join("repository"))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -491,15 +494,22 @@ case "$8" in
   clone)
     [ "$9" = -- ]
     mkdir -p "${11}"
+    # Simulate the current branch config materialized during clone.
+    printf '%s\n' 'invalid current branch config' > "${11}/.lore-ci.toml"
     ;;
   --repository)
-    [ "$9" = repository ]
+    [ "$9" = . ]
+    [ "$(basename "$PWD")" = repository ]
+    [ -f .lore-ci.toml ]
     [ "${10}" = --remote ]
     [ "${11} ${12}" = 'file write' ]
     [ "${13}" = --path ]
     [ "${14}" = .lore-ci.toml ]
     [ "${15}" = --revision ]
     [ "${17}" = --output ]
+    [ "${16}" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]
+    # Like Lore, refuse to overwrite a file created by clone.
+    [ ! -e "${18}" ]
     cat > "${18}" <<'EOF'
 [[pipelines]]
 name = "build"

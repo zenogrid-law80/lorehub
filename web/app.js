@@ -788,18 +788,52 @@ function pipelineGraphCard(detail) {
   if (pipeline.sparse_view_name) metadata.append(viewBadge(pipeline.sparse_view_name));
   metadata.append(textNode(runMeta, "runner-meta"));
   identity.append(eyebrow, title, metadata);
+  const actions = document.createElement("div");
+  actions.className = "graph-card-actions";
+  const run = document.createElement("button");
+  run.type = "button";
+  run.className = "button button--primary graph-run-button";
+  run.textContent = t("dynamic.runPipeline");
+  run.addEventListener("click", () => void runPipelineFromGraph(detail, run));
   const open = document.createElement("button");
   open.type = "button";
   open.className = "button button--ghost graph-open-button";
   open.textContent = detail.route.latest_pipeline_id ? t("dynamic.viewRun") : t("dynamic.noRuns");
   open.disabled = !detail.route.latest_pipeline_id;
   if (detail.route.latest_pipeline_id) open.addEventListener("click", () => void openPipeline(detail.route.latest_pipeline_id));
-  header.append(identity, open);
+  actions.append(run, open);
+  header.append(identity, actions);
   const graph = document.createElement("div");
   graph.className = "execution-graph graph-page-flow";
   populateExecutionGraph(graph, pipeline, detail.jobs, detail.graph);
   card.append(header, graph);
   return card;
+}
+
+async function runPipelineFromGraph(detail, button) {
+  const route = detail.route;
+  button.disabled = true;
+  button.textContent = t("dynamic.starting");
+  try {
+    const pipeline = await api("/api/v1/pipelines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({
+        repository_url: route.repository_url,
+        branch: route.branch,
+        revision: route.revision,
+        pipeline_name: route.pipeline_name,
+      }),
+    });
+    toast(t("dynamic.pipelineQueued"), "success");
+    await Promise.all([loadPipelines(false), loadPipelineGraphs(false)]);
+    await openPipeline(pipeline.id);
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = t("dynamic.runPipeline");
+  }
 }
 
 function renderRunners() {

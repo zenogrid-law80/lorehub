@@ -293,7 +293,7 @@ async fn repositories(
     State(s): State<AppState>,
     Extension(session): Extension<AuthSession>,
 ) -> Result<Json<Vec<Resource>>, ApiError> {
-    Ok(Json(sqlx::query_as("SELECT resource_id,name FROM lore_resources WHERE owner_subject=$1 ORDER BY lower(name)").bind(session.user.id.to_string()).fetch_all(&s.pool).await?))
+    Ok(Json(sqlx::query_as("SELECT resource_id,name FROM lore_resources WHERE owner_subject=$1 OR EXISTS(SELECT 1 FROM users WHERE id::text=$1 AND role='admin') ORDER BY lower(name)").bind(session.user.id.to_string()).fetch_all(&s.pool).await?))
 }
 #[derive(Serialize, FromRow)]
 struct SparseWorkspaceView {
@@ -311,7 +311,7 @@ async fn sparse_views(
     State(s): State<AppState>,
     Extension(session): Extension<AuthSession>,
 ) -> Result<Json<Vec<SparseWorkspaceView>>, ApiError> {
-    Ok(Json(sqlx::query_as("SELECT v.id,v.name,v.resource_id,r.name AS repository_name,v.mode,v.rules,v.owner_id,v.updated_at,(v.owner_id=$1 AND r.owner_subject=$2) AS can_manage FROM sparse_workspace_views v JOIN lore_resources r USING(resource_id) WHERE $3 OR v.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_view_selections selected JOIN account_groups g ON g.id=selected.group_id WHERE selected.view_id=v.id AND (g.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_members member WHERE member.group_id=g.id AND member.user_id=$1))) ORDER BY lower(v.name),v.id")
+    Ok(Json(sqlx::query_as("SELECT v.id,v.name,v.resource_id,r.name AS repository_name,v.mode,v.rules,v.owner_id,v.updated_at,(v.owner_id=$1 AND (r.owner_subject=$2 OR $3)) AS can_manage FROM sparse_workspace_views v JOIN lore_resources r USING(resource_id) WHERE $3 OR v.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_view_selections selected JOIN account_groups g ON g.id=selected.group_id WHERE selected.view_id=v.id AND (g.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_members member WHERE member.group_id=g.id AND member.user_id=$1))) ORDER BY lower(v.name),v.id")
         .bind(session.user.id).bind(session.user.id.to_string()).bind(session.user.role == "admin").fetch_all(&s.pool).await?))
 }
 
@@ -339,7 +339,7 @@ async fn group_views(
             "Group membership required.".into(),
         ));
     }
-    Ok(Json(sqlx::query_as("SELECT selected.resource_id,r.name AS repository_name,v.id AS view_id,v.name AS view_name,v.mode,v.rules,v.updated_at,(g.owner_id=$2 AND v.owner_id=$2 AND r.owner_subject=$3) AS can_manage FROM account_group_view_selections selected JOIN sparse_workspace_views v ON v.id=selected.view_id AND v.resource_id=selected.resource_id JOIN lore_resources r ON r.resource_id=selected.resource_id JOIN account_groups g ON g.id=selected.group_id WHERE selected.group_id=$1 ORDER BY lower(r.name)")
+    Ok(Json(sqlx::query_as("SELECT selected.resource_id,r.name AS repository_name,v.id AS view_id,v.name AS view_name,v.mode,v.rules,v.updated_at,(g.owner_id=$2 AND v.owner_id=$2 AND (r.owner_subject=$3 OR EXISTS(SELECT 1 FROM users WHERE id=$2 AND role='admin'))) AS can_manage FROM account_group_view_selections selected JOIN sparse_workspace_views v ON v.id=selected.view_id AND v.resource_id=selected.resource_id JOIN lore_resources r ON r.resource_id=selected.resource_id JOIN account_groups g ON g.id=selected.group_id WHERE selected.group_id=$1 ORDER BY lower(r.name)")
         .bind(id).bind(session.user.id).bind(session.user.id.to_string()).fetch_all(&s.pool).await?))
 }
 #[derive(Deserialize)]
@@ -417,7 +417,7 @@ async fn create_sparse_view(
     };
     rules.normalize()?;
     let repository_name: Option<String> = sqlx::query_scalar(
-        "SELECT name FROM lore_resources WHERE resource_id=$1 AND owner_subject=$2",
+        "SELECT name FROM lore_resources WHERE resource_id=$1 AND (owner_subject=$2 OR EXISTS(SELECT 1 FROM users WHERE id::text=$2 AND role='admin'))",
     )
     .bind(&input.resource_id)
     .bind(session.user.id.to_string())
@@ -426,7 +426,7 @@ async fn create_sparse_view(
     let Some(repository_name) = repository_name else {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
-            "Repository ownership required.".into(),
+            "Repository owner or administrator required.".into(),
         ));
     };
     let id = Uuid::new_v4();
@@ -466,7 +466,7 @@ async fn update_sparse_view(
         rules: input.rules,
     };
     rules.normalize()?;
-    let changed = sqlx::query("UPDATE sparse_workspace_views v SET name=$1,mode=$2,rules=$3,updated_at=now() FROM lore_resources r WHERE v.id=$4 AND v.owner_id=$5 AND r.resource_id=v.resource_id AND r.owner_subject=$6")
+    let changed = sqlx::query("UPDATE sparse_workspace_views v SET name=$1,mode=$2,rules=$3,updated_at=now() FROM lore_resources r WHERE v.id=$4 AND v.owner_id=$5 AND r.resource_id=v.resource_id AND (r.owner_subject=$6 OR EXISTS(SELECT 1 FROM users WHERE id=$5 AND role='admin'))")
         .bind(name).bind(rules.mode).bind(rules.rules).bind(id).bind(session.user.id).bind(session.user.id.to_string()).execute(&s.pool).await.map_err(view_conflict)?;
     if changed.rows_affected() == 0 {
         return Err(ApiError(
@@ -507,12 +507,12 @@ async fn select_view(
     Json(input): Json<SelectViewInput>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = s.pool.begin().await?;
-    let allowed: Option<Uuid> = sqlx::query_scalar("SELECT g.id FROM account_groups g JOIN sparse_workspace_views v ON v.id=$3 JOIN lore_resources r ON r.resource_id=$4 WHERE g.id=$1 AND g.owner_id=$2 AND v.owner_id=$2 AND v.resource_id=$4 AND r.owner_subject=$5 FOR UPDATE OF g,v,r")
+    let allowed: Option<Uuid> = sqlx::query_scalar("SELECT g.id FROM account_groups g JOIN sparse_workspace_views v ON v.id=$3 JOIN lore_resources r ON r.resource_id=$4 WHERE g.id=$1 AND g.owner_id=$2 AND v.owner_id=$2 AND v.resource_id=$4 AND (r.owner_subject=$5 OR EXISTS(SELECT 1 FROM users WHERE id=$2 AND role='admin')) FOR UPDATE OF g,v,r")
         .bind(group_id).bind(session.user.id).bind(input.view_id).bind(&resource_id).bind(session.user.id.to_string()).fetch_optional(&mut *tx).await?;
     if allowed.is_none() {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
-            "Group, repository, and Sparse View ownership required.".into(),
+            "Group and Sparse View ownership, and repository access required.".into(),
         ));
     }
     sqlx::query("INSERT INTO account_group_view_selections(group_id,resource_id,view_id) VALUES($1,$2,$3) ON CONFLICT(group_id,resource_id) DO UPDATE SET view_id=EXCLUDED.view_id,selected_at=now()")
