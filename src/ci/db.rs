@@ -12,6 +12,7 @@ pub struct Pipeline {
     pub revision: String,
     pub revision_number: i64,
     pub pipeline_name: Option<String>,
+    pub category: Option<String>,
     pub runner_os: Option<String>,
     pub branch: Option<String>,
     pub previous_revision: Option<String>,
@@ -37,6 +38,7 @@ pub struct Pipeline {
 
 pub struct SelectedPipeline {
     pub pipeline_name: String,
+    pub category: String,
     pub runner_os: String,
     pub trigger_patterns: Vec<String>,
     pub working_directory: String,
@@ -141,7 +143,7 @@ pub async fn submit_selected_for_user(
     selected: &SelectedPipeline,
 ) -> sqlx::Result<Pipeline> {
     sqlx::query_as(
-        "INSERT INTO pipelines (id, repository_url, revision, branch, submitted_by, pipeline_name, runner_os, trigger_patterns, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
+        "INSERT INTO pipelines (id, repository_url, revision, branch, submitted_by, pipeline_name, category, runner_os, trigger_patterns, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
     )
     .bind(Uuid::new_v4())
     .bind(&input.repository_url)
@@ -149,6 +151,7 @@ pub async fn submit_selected_for_user(
     .bind(&input.branch)
     .bind(user_id)
     .bind(&selected.pipeline_name)
+    .bind(&selected.category)
     .bind(&selected.runner_os)
     .bind(&selected.trigger_patterns)
     .bind(&selected.working_directory)

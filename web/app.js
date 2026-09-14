@@ -44,7 +44,7 @@ Object.assign(I18N.en, {
   "search.repositories.placeholder": "Search repositories…", "search.repositories.label": "Search repositories",
   "search.runners.placeholder": "Search Runners…", "search.runners.label": "Search Runners",
   "Runner OS": "Runner OS", "Any OS": "Any OS", "dynamic.profile": "{name} profile",
-  "Sparse View": "Sparse View", "View rules": "View rules", "dynamic.viewSnapshot": "build-time snapshot",
+  "Sparse View": "Sparse View", "View rules": "View rules", "Category": "Category", "dynamic.uncategorized": "Uncategorized", "dynamic.countCategories": "{count} categories", "dynamic.viewSnapshot": "build-time snapshot",
   "dynamic.openPipeline": "Open {repository} pipeline details", "dynamic.invalidLoreUrl": "Enter a lores:// URL.",
   "dynamic.creating": "Creating…", "unit.second": "{count}s", "unit.minuteSecond": "{minutes}m {seconds}s",
   "dynamic.jobs.one": "{count} job", "dynamic.jobs.other": "{count} jobs",
@@ -81,7 +81,7 @@ Object.assign(I18N.ko, {
   "search.repositories.placeholder": "저장소 검색…", "search.repositories.label": "저장소 검색",
   "search.runners.placeholder": "Runner 검색…", "search.runners.label": "Runner 검색",
   "Runner OS": "Runner 운영체제", "Any OS": "모든 운영체제", "dynamic.profile": "{name} 프로필",
-  "Sparse View": "Sparse View", "View rules": "View 규칙", "dynamic.viewSnapshot": "빌드 시점 스냅샷",
+  "Sparse View": "Sparse View", "View rules": "View 규칙", "Category": "카테고리", "dynamic.uncategorized": "미분류", "dynamic.countCategories": "카테고리 {count}개", "dynamic.viewSnapshot": "빌드 시점 스냅샷",
   "dynamic.openPipeline": "{repository} 파이프라인 상세 열기", "dynamic.invalidLoreUrl": "lores:// 주소를 입력하세요.",
   "dynamic.creating": "생성 중…", "unit.second": "{count}초", "unit.minuteSecond": "{minutes}분 {seconds}초",
   "Remove Runner": "Runner 등록 해제",
@@ -106,7 +106,7 @@ Object.assign(I18N["zh-CN"], {
   "search.repositories.placeholder": "搜索仓库…", "search.repositories.label": "搜索仓库",
   "search.runners.placeholder": "搜索 Runner…", "search.runners.label": "搜索 Runner",
   "Runner OS": "Runner 操作系统", "Any OS": "任意操作系统", "dynamic.profile": "{name} 的头像",
-  "Sparse View": "稀疏视图", "View rules": "视图规则", "dynamic.viewSnapshot": "构建时快照",
+  "Sparse View": "稀疏视图", "View rules": "视图规则", "Category": "类别", "dynamic.uncategorized": "未分类", "dynamic.countCategories": "{count} 个类别", "dynamic.viewSnapshot": "构建时快照",
   "dynamic.openPipeline": "打开 {repository} 流水线详情", "dynamic.invalidLoreUrl": "请输入 lores:// 地址。",
   "dynamic.creating": "正在创建…", "unit.second": "{count}秒", "unit.minuteSecond": "{minutes}分 {seconds}秒",
   "LoreHub runner와 Lore CLI, 설치 도구가 포함된 플랫폼별 패키지입니다.": "各平台安装包包含 LoreHub Runner、Lore CLI 和安装工具。",
@@ -167,6 +167,7 @@ const state = {
   pipelineGraphs: [],
   graphCollapsedRepositories: new Set(),
   graphCollapsedBranches: new Set(),
+  graphCollapsedCategories: new Set(),
   repositoryServerUrl: "",
   section: "overview",
   repositoryToDelete: null,
@@ -578,6 +579,7 @@ async function loadPipelineGraphs(notify) {
       if (route.latest_pipeline_id) {
         const detail = await api(`/api/v1/pipelines/${encodeURIComponent(route.latest_pipeline_id)}`);
         detail.pipeline.pipeline_name = route.pipeline_name;
+        detail.pipeline.category = route.category;
         detail.pipeline.runner_os = route.runner_os;
         detail.pipeline.branch = route.branch;
         detail.pipeline.trigger_patterns = route.trigger_patterns;
@@ -604,6 +606,7 @@ async function loadPipelineGraphs(notify) {
           revision: route.revision,
           revision_number: route.revision_number,
           pipeline_name: route.pipeline_name,
+          category: route.category,
           runner_os: route.runner_os,
           branch: route.branch,
           trigger_patterns: route.trigger_patterns,
@@ -629,6 +632,10 @@ async function loadPipelineGraphs(notify) {
   }
 }
 
+function pipelineCategory(pipeline) {
+  return pipeline.category || t("dynamic.uncategorized");
+}
+
 function renderPipelineGraphs() {
   const details = state.pipelineGraphs.filter(({ pipeline }) => {
     const terms = [
@@ -636,6 +643,7 @@ function renderPipelineGraphs() {
       pipeline.pipeline_name,
       pipeline.runner_os,
       pipeline.branch,
+      pipelineCategory(pipeline),
       pipeline.status,
       pipeline.sparse_view_name,
       ...(pipeline.trigger_patterns || []),
@@ -653,8 +661,11 @@ function renderPipelineGraphs() {
     if (!repositories.has(repositoryUrl)) repositories.set(repositoryUrl, new Map());
     const branches = repositories.get(repositoryUrl);
     const branch = detail.pipeline.branch || "—";
-    if (!branches.has(branch)) branches.set(branch, []);
-    branches.get(branch).push(detail);
+    if (!branches.has(branch)) branches.set(branch, new Map());
+    const categories = branches.get(branch);
+    const category = pipelineCategory(detail.pipeline);
+    if (!categories.has(category)) categories.set(category, []);
+    categories.get(category).push(detail);
   }
 
   for (const [repositoryUrl, branches] of repositories) {
@@ -675,7 +686,10 @@ function renderPipelineGraphs() {
       textNode("▱", "graph-tree-icon"),
       textNode(repositoryName(repositoryUrl), "graph-tree-title"),
     );
-    const repositoryRouteCount = Array.from(branches.values()).reduce((count, pipelines) => count + pipelines.length, 0);
+    const repositoryRouteCount = Array.from(branches.values()).reduce(
+      (count, categories) => count + Array.from(categories.values()).reduce((total, pipelines) => total + pipelines.length, 0),
+      0,
+    );
     repositorySummary.append(
       repositoryIdentity,
       textNode(`${tc("dynamic.countBranches", branches.size)} · ${tc("dynamic.countRoutes", repositoryRouteCount)}`, "graph-tree-count"),
@@ -684,7 +698,7 @@ function renderPipelineGraphs() {
 
     const branchList = document.createElement("div");
     branchList.className = "graph-branch-list";
-    for (const [branch, pipelines] of branches) {
+    for (const [branch, categories] of branches) {
       const branchKey = `${repositoryUrl}\u0000${branch}`;
       const branchTree = document.createElement("details");
       branchTree.className = "graph-branch-tree";
@@ -702,11 +716,39 @@ function renderPipelineGraphs() {
         textNode("⑂", "graph-tree-icon graph-tree-icon--branch"),
         textNode(branch, "graph-tree-title"),
       );
-      branchSummary.append(branchIdentity, textNode(tc("dynamic.countPipelines", pipelines.length), "graph-tree-count"));
-      const pipelineList = document.createElement("div");
-      pipelineList.className = "graph-branch-pipelines";
-      for (const detail of pipelines) pipelineList.append(pipelineGraphCard(detail));
-      branchTree.append(branchSummary, pipelineList);
+      const routeCount = Array.from(categories.values()).reduce((count, pipelines) => count + pipelines.length, 0);
+      branchSummary.append(
+        branchIdentity,
+        textNode(`${t("dynamic.countCategories", { count: categories.size })} · ${tc("dynamic.countPipelines", routeCount)}`, "graph-tree-count"),
+      );
+      const categoryList = document.createElement("div");
+      categoryList.className = "graph-category-list";
+      for (const [category, pipelines] of categories) {
+        const categoryKey = `${branchKey}\u0000${category}`;
+        const categoryTree = document.createElement("details");
+        categoryTree.className = "graph-category-tree";
+        categoryTree.open = Boolean(state.query) || !state.graphCollapsedCategories.has(categoryKey);
+        categoryTree.addEventListener("toggle", () => {
+          if (categoryTree.open) state.graphCollapsedCategories.delete(categoryKey);
+          else state.graphCollapsedCategories.add(categoryKey);
+        });
+        const categorySummary = document.createElement("summary");
+        categorySummary.className = "graph-category-summary";
+        const categoryIdentity = document.createElement("span");
+        categoryIdentity.className = "graph-tree-identity";
+        categoryIdentity.append(
+          textNode("›", "graph-tree-marker"),
+          textNode("◇", "graph-tree-icon graph-tree-icon--category"),
+          textNode(category, "graph-tree-title"),
+        );
+        categorySummary.append(categoryIdentity, textNode(tc("dynamic.countPipelines", pipelines.length), "graph-tree-count"));
+        const pipelineList = document.createElement("div");
+        pipelineList.className = "graph-category-pipelines";
+        for (const detail of pipelines) pipelineList.append(pipelineGraphCard(detail));
+        categoryTree.append(categorySummary, pipelineList);
+        categoryList.append(categoryTree);
+      }
+      branchTree.append(branchSummary, categoryList);
       branchList.append(branchTree);
     }
     repositoryTree.append(branchList);
@@ -734,7 +776,7 @@ function pipelineGraphCard(detail) {
   const identity = document.createElement("div");
   const eyebrow = document.createElement("p");
   eyebrow.className = "graph-card-eyebrow";
-  eyebrow.textContent = t("Pipeline");
+  eyebrow.textContent = pipelineCategory(pipeline);
   const title = document.createElement("h2");
   title.textContent = pipeline.pipeline_name;
   const metadata = document.createElement("div");
@@ -1282,7 +1324,7 @@ async function selectPipelineBranch() {
     }
     for (const choice of choices) {
       const root = choice.name === null;
-      const label = root ? t("dynamic.defaultPipeline") : `${choice.name} · ${choice.runner_os}`;
+      const label = root ? t("dynamic.defaultPipeline") : `${choice.category} / ${choice.name} · ${choice.runner_os}`;
       const pipelineOption = new Option(label, choice.name || "");
       pipelineOption.dataset.root = root ? "true" : "";
       elements["pipeline-name"].append(pipelineOption);
@@ -1347,7 +1389,7 @@ async function openPipeline(id) {
   }
   state.selectedId = id;
   if (!elements["pipeline-detail-dialog"].open) elements["pipeline-detail-dialog"].showModal();
-  elements["detail-title"].textContent = t("dynamic.pipelineTitle", { id: id.slice(0, 8) });
+  elements["detail-title"].textContent = t("dynamic.loading");
   elements["job-list"].replaceChildren(textNode(t("dynamic.loading"), "job-empty"));
   elements["pipeline-log"].replaceChildren(textNode(t("dynamic.loadingLogs"), "terminal-muted"));
   try { await loadPipelineDetail(id); } catch (error) { toast(error.message, "error"); }
@@ -1365,8 +1407,12 @@ async function loadPipelineDetail(id) {
   if (state.selectedId !== id) return;
   state.detailLogs.push(...logs);
   const pipeline = detail.pipeline;
-  elements["detail-repository"].textContent = pipeline.repository_url;
-  elements["detail-title"].textContent = t("dynamic.pipelineTitle", { id: pipeline.id.slice(0, 8) });
+  elements["detail-repository"].textContent = [
+    repositoryName(pipeline.repository_url),
+    pipeline.branch,
+    pipeline.category && pipelineCategory(pipeline),
+  ].filter(Boolean).join(" / ");
+  elements["detail-title"].textContent = pipeline.pipeline_name || revisionLabel(pipeline);
   renderDetailSummary(pipeline, detail.sparse_view_rules);
   renderExecutionGraph(pipeline, detail.jobs, detail.graph);
   renderJobs(detail.jobs);
@@ -1500,6 +1546,7 @@ function renderDetailSummary(pipeline, sparseViewRules) {
     [t("Duration"), duration(pipeline.started_at, pipeline.finished_at)],
   ];
   if (pipeline.branch) values.splice(2, 0, [t("Branch"), pipeline.branch]);
+  if (pipeline.category) values.push([t("Category"), pipelineCategory(pipeline)]);
   if (pipeline.pipeline_name) values.push([t("Pipeline"), pipeline.pipeline_name], [t("Runner OS"), osLabel(pipeline.runner_os)]);
   if (pipeline.sparse_view_name) values.push([t("Sparse View"), pipeline.sparse_view_name]);
   for (const [label, value] of values) {

@@ -86,6 +86,8 @@ pub struct PipelineFile {
 #[serde(deny_unknown_fields)]
 pub struct NamedPipeline {
     pub name: String,
+    #[serde(default = "default_category")]
+    pub category: String,
     pub runner_os: String,
     #[serde(default)]
     pub sparse_view: Option<String>,
@@ -147,6 +149,7 @@ impl PipelineFile {
                     valid_name(&pipeline.name) && names.insert(pipeline.name.clone()),
                     "invalid or duplicate pipeline name"
                 );
+                ensure!(valid_name(&pipeline.category), "invalid pipeline category");
                 ensure!(
                     matches!(pipeline.runner_os.as_str(), "windows" | "macos" | "linux"),
                     "runner_os must be windows, macos or linux"
@@ -225,6 +228,10 @@ impl PipelineFile {
 
 fn default_timeout() -> u64 {
     3600
+}
+
+fn default_category() -> String {
+    "uncategorized".into()
 }
 
 impl PipelineConfig {

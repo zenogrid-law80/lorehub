@@ -137,6 +137,7 @@ async fn selected_manual_pipeline_preserves_execution_snapshot(pool: PgPool) {
     request.pipeline_name = Some("build".into());
     let selected = db::SelectedPipeline {
         pipeline_name: "build".into(),
+        category: "server".into(),
         runner_os: "linux".into(),
         trigger_patterns: vec!["src/**".into()],
         working_directory: "src".into(),
@@ -150,6 +151,7 @@ async fn selected_manual_pipeline_preserves_execution_snapshot(pool: PgPool) {
         .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(pipeline.pipeline_name.as_deref(), Some("build"));
+    assert_eq!(pipeline.category.as_deref(), Some("server"));
     assert_eq!(pipeline.runner_os.as_deref(), Some("linux"));
     assert_eq!(pipeline.working_directory.as_deref(), Some("src"));
     assert_eq!(pipeline.sparse_view_name.as_deref(), Some("Build"));
@@ -673,7 +675,7 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO ci_pipeline_routes (resource_id,repository_url,branch,revision,pipeline_name,runner_os,trigger_patterns,working_directory,graph_definition) VALUES ('shared-graph-resource','lores://127.0.0.1:41337/shared-graph','main',$1,'build','linux',$2,'','{\"stages\":[]}')")
+    sqlx::query("INSERT INTO ci_pipeline_routes (resource_id,repository_url,branch,revision,pipeline_name,category,runner_os,trigger_patterns,working_directory,graph_definition) VALUES ('shared-graph-resource','lores://127.0.0.1:41337/shared-graph','main',$1,'build','server','linux',$2,'','{\"stages\":[]}')")
         .bind("b".repeat(64))
         .bind(vec!["**".to_string()])
         .execute(&pool)
@@ -706,6 +708,7 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(graphs.as_array().unwrap().len(), 1);
     assert_eq!(graphs[0]["pipeline_name"], "build");
+    assert_eq!(graphs[0]["category"], "server");
     assert!(
         graphs[0]["revision_number"]
             .as_i64()

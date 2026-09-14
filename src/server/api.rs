@@ -402,6 +402,7 @@ struct PipelineRevision {
 #[derive(Serialize)]
 struct PipelineChoice {
     name: Option<String>,
+    category: Option<String>,
     runner_os: Option<String>,
 }
 
@@ -435,6 +436,7 @@ async fn list_repository_pipelines(
             .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
         return Ok(Json(vec![PipelineChoice {
             name: None,
+            category: None,
             runner_os: None,
         }]));
     }
@@ -444,6 +446,7 @@ async fn list_repository_pipelines(
             .iter()
             .map(|pipeline| PipelineChoice {
                 name: Some(pipeline.name.clone()),
+                category: Some(pipeline.category.clone()),
                 runner_os: Some(pipeline.runner_os.clone()),
             })
             .collect(),
@@ -673,6 +676,7 @@ async fn submit(
                 .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
         let selected = SelectedPipeline {
             pipeline_name: pipeline.name.clone(),
+            category: pipeline.category.clone(),
             runner_os: pipeline.runner_os.clone(),
             trigger_patterns: pipeline.changes.clone(),
             working_directory: pipeline.working_directory.clone(),
@@ -873,6 +877,7 @@ struct PipelineGraphRow {
     revision: String,
     revision_number: i64,
     pipeline_name: String,
+    category: String,
     runner_os: String,
     trigger_patterns: Vec<String>,
     working_directory: String,
@@ -890,6 +895,7 @@ struct PipelineGraphRoute {
     revision: String,
     revision_number: i64,
     pipeline_name: String,
+    category: String,
     runner_os: String,
     trigger_patterns: Vec<String>,
     working_directory: String,
@@ -904,7 +910,7 @@ async fn pipeline_graphs(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<PipelineGraphRoute>>, ApiError> {
     let rows: Vec<PipelineGraphRow> = sqlx::query_as(
-        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route LEFT JOIN LATERAL (SELECT id, status, created_at FROM pipelines WHERE repository_url = route.repository_url AND branch = route.branch AND revision = route.revision AND pipeline_name = route.pipeline_name ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true ORDER BY route.repository_url, route.branch, route.pipeline_name",
+        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.category, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route LEFT JOIN LATERAL (SELECT id, status, created_at FROM pipelines WHERE repository_url = route.repository_url AND branch = route.branch AND revision = route.revision AND pipeline_name = route.pipeline_name ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true ORDER BY route.repository_url, route.branch, route.category, route.pipeline_name",
     )
     .fetch_all(&state.pool)
     .await?;
@@ -924,6 +930,7 @@ async fn pipeline_graphs(
                 revision: row.revision,
                 revision_number: row.revision_number,
                 pipeline_name: row.pipeline_name,
+                category: row.category,
                 runner_os: row.runner_os,
                 trigger_patterns: row.trigger_patterns,
                 working_directory: row.working_directory,

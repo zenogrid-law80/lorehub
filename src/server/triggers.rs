@@ -543,12 +543,13 @@ async fn sync_routes(
         .await?;
     if let Some(config) = config {
         for pipeline in &config.pipelines {
-            sqlx::query("INSERT INTO ci_pipeline_routes (resource_id, repository_url, branch, revision, pipeline_name, runner_os, trigger_patterns, working_directory, graph_definition) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            sqlx::query("INSERT INTO ci_pipeline_routes (resource_id, repository_url, branch, revision, pipeline_name, category, runner_os, trigger_patterns, working_directory, graph_definition) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
                 .bind(resource_id)
                 .bind(url)
                 .bind(branch)
                 .bind(revision)
                 .bind(&pipeline.name)
+                .bind(&pipeline.category)
                 .bind(&pipeline.runner_os)
                 .bind(&pipeline.changes)
                 .bind(&pipeline.working_directory)
@@ -640,9 +641,9 @@ pub async fn enqueue(
         let changed_path_count = i32::try_from(matching_paths.len())?;
         let changed_paths: Vec<_> = matching_paths.into_iter().take(32).collect();
         let graph_definition = pipeline_graph_definition(pipeline)?;
-        let result = sqlx::query("INSERT INTO pipelines (id, repository_url, revision, submitted_by, pipeline_name, runner_os, branch, previous_revision, trigger_patterns, changed_paths, changed_path_count, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT DO NOTHING")
+        let result = sqlx::query("INSERT INTO pipelines (id, repository_url, revision, submitted_by, pipeline_name, category, runner_os, branch, previous_revision, trigger_patterns, changed_paths, changed_path_count, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT DO NOTHING")
             .bind(Uuid::new_v4()).bind(url).bind(revision).bind(owner)
-            .bind(&pipeline.name).bind(&pipeline.runner_os).bind(branch).bind(previous)
+            .bind(&pipeline.name).bind(&pipeline.category).bind(&pipeline.runner_os).bind(branch).bind(previous)
             .bind(&trigger_patterns).bind(&changed_paths).bind(changed_path_count).bind(&pipeline.working_directory).bind(graph_definition)
             .bind(sparse_view_name).bind(sparse_view_rules)
             .execute(&mut **tx).await?;
