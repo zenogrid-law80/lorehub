@@ -25,9 +25,9 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      DATABASE_URL: ${RUNNER_DATABASE_URL:-postgres://lorehub:lorehub@host.docker.internal:5432/lorehub}
       LOREHUB_RUNNER_NAME: ${LOREHUB_RUNNER_NAME:-compose-linux-runner-01}
       LOREHUB_PUBLIC_URL: ${LOREHUB_PUBLIC_URL:-https://lorehub.zenogrid.co.kr}
+      LOREHUB_COORDINATOR_URL: ${LOREHUB_COORDINATOR_URL:-http://host.docker.internal:8080}
       LORE_BIN: /usr/local/bin/lore
       LOREHUB_WORK_DIR: /var/lib/lorehub/work
       # Container runners are updated by rebuilding the image.

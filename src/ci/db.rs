@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool, Postgres, Transaction, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 use super::config::{PipelineConfig, SubmitPipeline};
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Deserialize, Serialize, FromRow)]
 pub struct Pipeline {
     pub id: Uuid,
     pub repository_url: String,
@@ -21,9 +21,9 @@ pub struct Pipeline {
     pub changed_path_count: i32,
     pub working_directory: Option<String>,
     pub sparse_view_name: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     pub sparse_view_rules: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     pub graph_definition: Option<String>,
     pub status: String,
     pub worker_id: Option<Uuid>,
@@ -47,7 +47,7 @@ pub struct SelectedPipeline {
     pub sparse_view_rules: Option<String>,
 }
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Deserialize, Serialize, FromRow)]
 pub struct Job {
     pub id: Uuid,
     pub pipeline_id: Uuid,
@@ -329,4 +329,34 @@ pub async fn log(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Append runner output only while its pipeline lease is active.
+///
+/// The ownership check and insert are one statement so finish/cancel cannot race
+/// a separate authorization query. When a job is supplied, it must belong to the
+/// same pipeline.
+pub async fn worker_log(
+    pool: &PgPool,
+    worker: Uuid,
+    pipeline: Uuid,
+    job: Option<Uuid>,
+    stream: &str,
+    content: &str,
+) -> sqlx::Result<bool> {
+    let result = sqlx::query(
+        "INSERT INTO logs (pipeline_id,job_id,stream,content) \
+         SELECT p.id,$3,$4,$5 FROM pipelines p \
+         WHERE p.id=$1 AND p.worker_id=$2 AND p.status='running' \
+           AND NOT p.cancel_requested AND p.lease_until>now() \
+           AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM jobs j WHERE j.id=$3 AND j.pipeline_id=p.id))",
+    )
+    .bind(pipeline)
+    .bind(worker)
+    .bind(job)
+    .bind(stream)
+    .bind(content.replace('\0', "�"))
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
 }

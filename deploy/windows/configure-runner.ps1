@@ -21,7 +21,7 @@ if (-not (Test-Path $environmentFile)) {
     Copy-Item $environmentExample $environmentFile
 }
 
-# Runner configuration can contain database credentials and signing-key paths.
+# Runner configuration can contain signing-key paths.
 & icacls.exe $DataDirectory /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

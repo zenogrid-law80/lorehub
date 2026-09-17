@@ -1,26 +1,23 @@
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result, ensure};
-use sqlx::PgPool;
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
+    CoordinatorClient,
     executor::{self, Execution},
     update::{SelfUpdater, UpdateCheck},
 };
 use crate::{
-    ci::{
-        config::PipelineFile,
-        db::{self, Pipeline},
-    },
+    ci::{config::PipelineFile, db::Pipeline},
     server::tokens::TokenIssuer,
     vcs::lore,
 };
 
 pub struct Worker {
-    pub pool: PgPool,
+    pub coordinator: CoordinatorClient,
     pub id: Uuid,
     pub work_dir: PathBuf,
     pub lore_bin: String,
@@ -56,19 +53,10 @@ impl Worker {
         ensure!(version.status.success(), "Lore CLI is unavailable");
         let name = runner_name(self.id);
         let docker_available = detect_docker().await;
-        db::register_runner(
-            &self.pool,
-            self.id,
-            &name,
-            std::env::consts::OS,
-            std::env::consts::ARCH,
-            env!("CARGO_PKG_VERSION"),
-            docker_available,
-        )
-        .await?;
+        self.coordinator.register(&name, docker_available).await?;
         let presence_stop = CancellationToken::new();
         let presence = tokio::spawn({
-            let pool = self.pool.clone();
+            let coordinator = self.coordinator.clone();
             let id = self.id;
             let stop = presence_stop.clone();
             async move {
@@ -77,7 +65,7 @@ impl Worker {
                 loop {
                     tokio::select! {
                         _ = stop.cancelled() => break,
-                        _ = interval.tick() => match db::touch_runner(&pool, id).await {
+                        _ = interval.tick() => match coordinator.touch().await {
                             Ok(true) => {}
                             Ok(false) => tracing::warn!(runner_id = %id, "runner registration disappeared"),
                             Err(error) => tracing::warn!(runner_id = %id, %error, "runner heartbeat failed"),
@@ -114,8 +102,7 @@ impl Worker {
                         }
                     }
                 }
-                db::reap(&self.pool).await?;
-                if let Some(pipeline) = db::claim(&self.pool, self.id).await? {
+                if let Some(pipeline) = self.coordinator.claim().await? {
                     self.execute_claimed(pipeline, &shutdown).await?;
                     if once {
                         break;
@@ -137,7 +124,7 @@ impl Worker {
         if let Err(error) = presence.await {
             tracing::warn!(%error, "runner heartbeat task failed");
         }
-        if let Err(error) = db::stop_runner(&self.pool, self.id).await {
+        if let Err(error) = self.coordinator.stop().await {
             tracing::warn!(runner_id = %self.id, %error, "failed to record runner shutdown");
         }
         outcome?;
@@ -152,19 +139,36 @@ impl Worker {
         let cancel = shutdown.child_token();
         let stop_heartbeat = CancellationToken::new();
         let heartbeat = {
-            let pool = self.pool.clone();
+            let coordinator = self.coordinator.clone();
             let id = pipeline.id;
-            let worker = self.id;
             let cancel = cancel.clone();
             let stop = stop_heartbeat.clone();
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(5));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut consecutive_failures = 0;
                 loop {
                     tokio::select! {
                         _ = stop.cancelled() => break,
                         _ = interval.tick() => {
-                            let active = tokio::time::timeout(Duration::from_secs(5), db::heartbeat(&pool, id, worker)).await;
-                            if !matches!(active, Ok(Ok(true))) {
+                            match tokio::time::timeout(Duration::from_secs(5), coordinator.heartbeat(id)).await {
+                                Ok(Ok(true)) => consecutive_failures = 0,
+                                Ok(Ok(false)) => {
+                                    tracing::warn!(pipeline_id = %id, "pipeline lease is no longer active");
+                                    cancel.cancel();
+                                    break;
+                                }
+                                Ok(Err(error)) => {
+                                    consecutive_failures += 1;
+                                    tracing::warn!(pipeline_id = %id, consecutive_failures, %error, "pipeline heartbeat failed");
+                                }
+                                Err(_) => {
+                                    consecutive_failures += 1;
+                                    tracing::warn!(pipeline_id = %id, consecutive_failures, "pipeline heartbeat timed out");
+                                }
+                            }
+                            if consecutive_failures >= 3 {
+                                tracing::warn!(pipeline_id = %id, "canceling pipeline after repeated heartbeat failures");
                                 cancel.cancel();
                                 break;
                             }
@@ -181,7 +185,10 @@ impl Worker {
         } else {
             "failed"
         };
-        let result = db::finish(&self.pool, pipeline.id, self.id, status, error.as_deref()).await;
+        let result = self
+            .coordinator
+            .finish(pipeline.id, status, error.as_deref())
+            .await;
         stop_heartbeat.cancel();
         heartbeat.await?;
         result?;
@@ -196,7 +203,7 @@ impl Worker {
         let root = workspace.path().canonicalize()?;
         let checkout = root.join("source");
         let execution = Execution {
-            pool: &self.pool,
+            coordinator: &self.coordinator,
             pipeline: pipeline.id,
             job: None,
             cancel,
@@ -226,7 +233,9 @@ impl Worker {
             || "Cloning the requested Lore revision\n".to_owned(),
             |view| format!("Cloning the requested Lore revision with sparse view {view}\n"),
         );
-        db::log(&self.pool, pipeline.id, None, "system", &clone_message).await?;
+        self.coordinator
+            .log(pipeline.id, None, "system", &clone_message)
+            .await?;
         ensure!(
             execution.run(clone, Duration::from_secs(300)).await? == 0,
             "Lore clone failed"
@@ -272,10 +281,10 @@ impl Worker {
             working_directory.starts_with(&checkout) && working_directory.is_dir(),
             "working_directory must be a directory inside the checkout"
         );
-        let jobs = db::create_jobs(&self.pool, pipeline.id, self.id, &config).await?;
+        let jobs = self.coordinator.create_jobs(pipeline.id, &config).await?;
         for (job, spec) in jobs.iter().zip(&config.jobs) {
             ensure!(!cancel.is_cancelled(), "pipeline canceled");
-            db::job_status(&self.pool, job.id, self.id, "running", None).await?;
+            self.coordinator.job_status(job.id, "running", None).await?;
             let job_token = self.worker_access_token(pipeline).await?;
             let mut shell = executor::shell(&spec.script, &working_directory);
             // All entries share one platform shell so directory and environment changes persist.
@@ -307,113 +316,25 @@ impl Worker {
             let code = execution
                 .run(shell, Duration::from_secs(spec.timeout_seconds))
                 .await?;
-            db::job_status(
-                &self.pool,
-                job.id,
-                self.id,
-                if code == 0 { "succeeded" } else { "failed" },
-                Some(code),
-            )
-            .await?;
+            self.coordinator
+                .job_status(
+                    job.id,
+                    if code == 0 { "succeeded" } else { "failed" },
+                    Some(code),
+                )
+                .await?;
             ensure!(code == 0, "job {} failed with exit code {code}", job.name);
         }
         Ok(())
     }
 
     async fn worker_access_token(&self, pipeline: &Pipeline) -> Result<Option<String>> {
-        let Some(issuer) = &self.token_issuer else {
+        let Some(_issuer) = &self.token_issuer else {
             return Ok(None);
         };
-        let submitter = pipeline
-            .submitted_by
-            .context("authenticated worker requires a pipeline submitter")?;
-        let repository_name = url::Url::parse(&pipeline.repository_url)?
-            .path_segments()
-            .and_then(|mut segments| segments.next_back())
-            .filter(|name| !name.is_empty())
-            .context("pipeline repository URL requires a repository name")?
-            .to_owned();
-        let resource_id = crate::server::repository_access::by_name(
-            &self.pool,
-            &submitter.to_string(),
-            &repository_name,
-        )
-        .await?
-        .context("pipeline submitter no longer has repository access")?;
         Ok(Some(
-            issuer
-                .issue_worker(&self.id.to_string(), resource_id)?
-                .access_token,
+            self.coordinator.worker_access_token(pipeline.id).await?,
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ci::config::SubmitPipeline;
-
-    #[sqlx::test]
-    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
-    async fn administrator_pipeline_gets_scoped_worker_token_until_demotion(pool: PgPool) {
-        let admin = Uuid::new_v4();
-        let owner = Uuid::new_v4();
-        for id in [admin, owner] {
-            sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
-                .bind(id)
-                .bind(id.to_string())
-                .bind(format!("{id}@zenogrid.co.kr"))
-                .execute(&pool)
-                .await
-                .unwrap();
-        }
-        sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES('urc-project','project',$1)")
-            .bind(owner.to_string()).execute(&pool).await.unwrap();
-        let issuer = TokenIssuer::from_files(
-            "tests/fixtures/test-private.pem",
-            "tests/fixtures/test-jwks.json",
-            "http://127.0.0.1:8080",
-            "zenogrid.co.kr",
-        )
-        .unwrap();
-        let worker = Worker {
-            pool: pool.clone(),
-            id: Uuid::new_v4(),
-            work_dir: PathBuf::new(),
-            lore_bin: String::new(),
-            token_issuer: Some(issuer.clone()),
-        };
-        let input = SubmitPipeline {
-            repository_url: "lores://127.0.0.1:41337/project".into(),
-            revision: "a".repeat(64),
-            branch: None,
-            pipeline_name: None,
-        };
-        let pipeline = db::submit_for_user(&pool, &input, admin).await.unwrap();
-        let token = worker
-            .worker_access_token(&pipeline)
-            .await
-            .unwrap()
-            .unwrap();
-        let verified = issuer.verify_access_token(&token).unwrap();
-        assert_eq!(verified.subject, format!("lorehub-worker:{}", worker.id));
-        assert!(verified.has_exact_resource("urc-project"));
-        assert!(!verified.has_exact_resource("urc-other"));
-        assert!(!verified.has_wildcard());
-        sqlx::query("UPDATE users SET role='user' WHERE id=$1")
-            .bind(admin)
-            .execute(&pool)
-            .await
-            .unwrap();
-        assert!(worker.worker_access_token(&pipeline).await.is_err());
-        let owner_pipeline = db::submit_for_user(&pool, &input, owner).await.unwrap();
-        assert!(
-            worker
-                .worker_access_token(&owner_pipeline)
-                .await
-                .unwrap()
-                .is_some()
-        );
     }
 }
 

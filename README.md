@@ -1,6 +1,6 @@
 # LoreHub
 
-Lore VCS 기반 개발 플랫폼입니다. 기존 `lore-runner`의 CI 기능을 LoreHub 내부 runner로 통합했습니다. GitLab과 유사한 정보 구조의 웹 대시보드에서 현재 Lore 서버의 repository를 관리하고, 특정 Lore revision의 파이프라인을 생성해 상태, job, 로그를 확인하거나 취소할 수 있습니다. Axum API 서버가 실행 요청을 받고, 워커가 PostgreSQL 큐에서 파이프라인을 가져와 Lore CLI로 소스를 내려받습니다. 실행 설정은 **요청한 revision에 포함된 `.lore-ci.toml`**에서 읽습니다.
+Lore VCS 기반 개발 플랫폼입니다. 기존 `lore-runner`의 CI 기능을 LoreHub 내부 runner로 통합했습니다. GitLab과 유사한 정보 구조의 웹 대시보드에서 현재 Lore 서버의 repository를 관리하고, 특정 Lore revision의 파이프라인을 생성해 상태, job, 로그를 확인하거나 취소할 수 있습니다. Axum coordinator가 실행 요청과 runner API를 제공하고, 워커는 이 API에서 파이프라인을 받아 Lore CLI로 소스를 내려받습니다. 실행 설정은 **요청한 revision에 포함된 `.lore-ci.toml`**에서 읽습니다.
 
 Git checkout, GitLab API, Git commit SHA를 사용하지 않습니다. Lore의 64자리 revision hash를 사용합니다.
 
@@ -10,9 +10,9 @@ Git checkout, GitLab API, Git commit SHA를 사용하지 않습니다. Lore의 6
        │ POST /api/v1/pipelines
        ▼
   API coordinator ───── PostgreSQL
-                            ▲
-                            │ claim / heartbeat / 상태 / 로그
-                     Rust worker × N
+       ▲
+       │ HTTPS: claim / heartbeat / 상태 / 로그
+ Rust worker × N
                             │
                   lore clone --revision HASH
                             │
@@ -50,7 +50,7 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 | `/etc/lore-runner/environment` | `/etc/lorehub/environment` |
 | `RUST_LOG=lore_runner=info` | `RUST_LOG=lorehub=info` |
 
-기존 배포에서는 환경 파일의 위 키와 서비스 실행 경로를 변경하세요. 서버에는 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `LOREHUB_PUBLIC_URL`이 필요합니다. `DATABASE_URL`과 `LORE_BIN`, `/api/v1` 경로, `.lore-ci.toml`, job의 `LORE_*` 문맥 변수는 유지됩니다. 기존 job 스크립트를 위해 `LORE_RUNNER=true`도 계속 제공합니다. 이전 정적 token과 `LORE_RUNNER_*` 설정은 읽지 않습니다.
+기존 배포에서는 환경 파일의 위 키와 서비스 실행 경로를 변경하세요. 서버에는 `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `LOREHUB_PUBLIC_URL`이 필요하고 runner에서는 `DATABASE_URL`을 제거합니다. `LORE_BIN`, `/api/v1` 경로, `.lore-ci.toml`, job의 `LORE_*` 문맥 변수는 유지됩니다. 기존 job 스크립트를 위해 `LORE_RUNNER=true`도 계속 제공합니다. 이전 정적 token과 `LORE_RUNNER_*` 설정은 읽지 않습니다.
 
 `0002_google_auth.sql` migration이 `users`, `oauth_states`, `sessions` 테이블을 추가합니다. 기존 pipeline·job·log 테이블과 데이터는 변경하지 않습니다. 새 Compose 기본 DB·계정은 `lorehub`입니다. **기존 Compose DB가 있다면 원래 DB·계정·volume을 유지하고 기존 연결 문자열을 사용하세요.** 프로젝트 디렉터리 이름이 바뀌면 Compose의 기본 volume 이름도 달라지므로 새 기본 설정으로 기존 데이터가 자동 이전되지는 않습니다. OS 계정을 변경하는 경우 Lore 인증과 작업 디렉터리 권한도 새 서비스 계정에 맞춰 설정합니다.
 
@@ -74,7 +74,7 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 - 5초 heartbeat / 30초 lease, 만료된 워커의 작업 실패 처리
 - 바이너리에 포함된 DB migration, 설정 검증 CLI, SIGINT/SIGTERM 처리
 
-executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. PostgreSQL URL과 Google OAuth 자격 증명은 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
+executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. Runner에는 PostgreSQL 접속 정보가 없으며 Google OAuth 자격 증명도 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
 
 ## 실행
 
@@ -117,16 +117,16 @@ cargo run --locked -- serve
 cargo run --locked -- worker
 ```
 
-Coordinator 시작 시 migration이 자동 적용됩니다. Worker는 이미 적용된 스키마에만 연결하므로, Coordinator보다 먼저 실행해야 한다면 `cargo run --locked -- migrate`를 한 번 실행하세요. 워커 프로세스를 추가하면 서로 다른 파이프라인을 병렬 처리합니다. `worker --once`는 최대 한 건만 처리하고 종료하며, 큐가 비어 있어도 종료합니다. Runner는 시작할 때 Docker CLI 설치 여부를 자동 감지하며 Runner 목록의 Docker 열에 결과를 표시합니다.
+Coordinator 시작 시 migration이 자동 적용됩니다. Worker는 `LOREHUB_PUBLIC_URL`의 coordinator runner API에만 연결하며 PostgreSQL에는 접근하지 않습니다. Coordinator를 먼저 시작한 뒤 워커 프로세스를 추가하면 서로 다른 파이프라인을 병렬 처리합니다. `worker --once`는 최대 한 건만 처리하고 종료하며, 큐가 비어 있어도 종료합니다. Runner는 시작할 때 Docker CLI 설치 여부를 자동 감지하며 Runner 목록의 Docker 열에 결과를 표시합니다.
 
-Compose의 `runner` profile에는 Linux runner 1개가 포함되어 있습니다. LoreHub를 release 빌드하고 공식 Lore v0.9.0 Linux 바이너리를 체크섬 검증 후 포함하며 작업 공간과 Cargo 다운로드 캐시는 named volume에 유지됩니다. `deploy/secrets/`의 JWT 키·JWKS와 `LOREHUB_PUBLIC_URL`을 준비한 뒤, 호스트 PostgreSQL에 접속하도록 `.env`의 `RUNNER_DATABASE_URL`을 설정해 실행합니다.
+Compose의 `runner` profile에는 Linux runner 1개가 포함되어 있습니다. LoreHub를 release 빌드하고 공식 Lore v0.9.0 Linux 바이너리를 체크섬 검증 후 포함하며 작업 공간과 Cargo 다운로드 캐시는 named volume에 유지됩니다. `deploy/secrets/`의 JWT 키·JWKS와 runner가 접근할 수 있는 `LOREHUB_PUBLIC_URL`을 준비해 실행합니다.
 
 ```bash
 docker compose --profile runner up -d --build runner
 docker compose logs -f runner
 ```
 
-Docker 내부에서 호스트 PostgreSQL을 사용할 때 URL의 host는 `host.docker.internal`이어야 합니다. Runner 화면에는 기본 이름 `compose-linux-runner-01`로 등록되며 `LOREHUB_RUNNER_NAME`으로 변경할 수 있습니다.
+Docker runner에서 호스트 coordinator를 사용할 때 `LOREHUB_PUBLIC_URL`의 host는 `host.docker.internal`이어야 합니다. Runner 화면에는 기본 이름 `compose-linux-runner-01`로 등록되며 `LOREHUB_RUNNER_NAME`으로 변경할 수 있습니다.
 
 ## Lore repository server
 
@@ -362,7 +362,7 @@ sudo LOREHUB_RUNNER_INSTANCE=1 LOREHUB_BINARY=target/release/lorehub sh deploy/l
 sudo systemctl start lorehub-worker@1.service
 ```
 
-`/etc/lorehub/environment`의 PostgreSQL 주소, Lore CLI 경로, JWT 파일 경로를 실제 값으로 변경해야 합니다. 여러 Linux runner는 `@1`, `@2`처럼 instance 번호를 달리해 실행합니다. 실행 파일은 `/var/lib/lorehub-1/bin/lorehub`처럼 Runner 전용 state 디렉터리에 설치되어 `lorehub` 서비스 계정이 검증된 업데이트를 교체할 수 있습니다.
+`/etc/lorehub/environment`의 coordinator URL, Lore CLI 경로, JWT 파일 경로를 실제 값으로 변경해야 합니다. 여러 Linux runner는 `@1`, `@2`처럼 instance 번호를 달리해 실행합니다. 실행 파일은 `/var/lib/lorehub-1/bin/lorehub`처럼 Runner 전용 state 디렉터리에 설치되어 `lorehub` 서비스 계정이 검증된 업데이트를 교체할 수 있습니다.
 `LOREHUB_RUNNER_NAME`으로 UI에 표시할 이름을 정할 수 있습니다. runner ID는 작업 디렉터리의 `.runner-id`에 자동 저장되므로 재시작해도 같은 장비로 표시됩니다. 작업 디렉터리를 교체하는 환경에서는 `LOREHUB_RUNNER_ID`에 고정 UUID를 지정할 수 있습니다.
 
 ### Windows runner
@@ -424,7 +424,7 @@ CLI 기본 릴리스 디렉터리는 `deploy/runner-releases`이며 `LOREHUB_RUN
 
 `.lore-ci.toml`의 `script`는 Linux/macOS에서 POSIX shell, Windows에서 PowerShell 문법으로 해석됩니다. 이름이 있는 자동 파이프라인은 `runner_os`로 해당 OS의 Runner만 선택합니다. 기존 루트 `stages`/`jobs` 형식에는 OS 조건이 없으므로 먼저 claim한 Runner에서 실행됩니다.
 
-현재 coordinator와 worker는 같은 PostgreSQL에 직접 연결하는 단일 신뢰 영역입니다. 저장소 파일 탐색, 원격 runner 등록/token, HTTP job 할당 프로토콜, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
+Runner는 JWT로 인증된 coordinator HTTP API를 통해 등록, claim, heartbeat, 상태 및 로그를 처리하며 PostgreSQL에 직접 연결하지 않습니다. 저장소 파일 탐색, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
 
 ### 계정, 계정 그룹, sparse workspace view
 

@@ -24,7 +24,7 @@ use super::{
     triggers, web,
 };
 use crate::ci::{
-    config::SubmitPipeline,
+    config::{PipelineConfig, SubmitPipeline},
     db::{self, Job, Log, Pipeline, Runner, SelectedPipeline},
 };
 
@@ -107,6 +107,30 @@ pub fn router_with_releases(
         .route("/auth/google/login", get(auth::login))
         .route("/auth/google/callback", get(auth::callback))
         .with_state(auth);
+    let runner = Router::new()
+        .route("/api/v1/runner/register", post(runner_register))
+        .route("/api/v1/runner/touch", post(runner_touch))
+        .route("/api/v1/runner/stop", post(runner_stop))
+        .route("/api/v1/runner/claim", post(runner_claim))
+        .route(
+            "/api/v1/runner/pipelines/{id}/heartbeat",
+            post(runner_pipeline_heartbeat),
+        )
+        .route(
+            "/api/v1/runner/pipelines/{id}/finish",
+            post(runner_pipeline_finish),
+        )
+        .route(
+            "/api/v1/runner/pipelines/{id}/jobs",
+            post(runner_create_jobs),
+        )
+        .route(
+            "/api/v1/runner/pipelines/{id}/access-token",
+            post(runner_access_token),
+        )
+        .route("/api/v1/runner/jobs/{id}/status", post(runner_job_status))
+        .route("/api/v1/runner/logs", post(runner_log))
+        .layer(DefaultBodyLimit::max(300 * 1024));
     Router::new()
         .route("/", get(web::index))
         .route("/assets/app.css", get(web::styles))
@@ -126,6 +150,7 @@ pub fn router_with_releases(
         )
         .merge(public_auth)
         .merge(protected_auth)
+        .merge(runner)
         .merge(private)
         .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(state)
@@ -183,7 +208,7 @@ async fn runner_update_binary(
         })
 }
 
-fn require_runner_token(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+fn require_runner_token(state: &AppState, headers: &HeaderMap) -> Result<Uuid, ApiError> {
     let authorization = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -199,8 +224,280 @@ fn require_runner_token(state: &AppState, headers: &HeaderMap) -> Result<(), Api
         .strip_prefix("lorehub-worker:")
         .ok_or_else(|| ApiError(StatusCode::FORBIDDEN, "runner token required".into()))?;
     Uuid::parse_str(worker_id)
-        .map_err(|_| ApiError(StatusCode::FORBIDDEN, "invalid runner identity".into()))?;
-    Ok(())
+        .map_err(|_| ApiError(StatusCode::FORBIDDEN, "invalid runner identity".into()))
+}
+
+#[derive(Deserialize)]
+struct RunnerRegister {
+    name: String,
+    os: String,
+    arch: String,
+    version: String,
+    docker_available: bool,
+}
+
+async fn runner_register(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<RunnerRegister>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    if input.name.is_empty()
+        || input.name.len() > 128
+        || input.name.chars().any(char::is_control)
+        || !matches!(input.os.as_str(), "linux" | "macos" | "windows")
+        || !matches!(input.arch.as_str(), "x86_64" | "aarch64")
+        || input
+            .version
+            .parse::<crate::version::SemanticVersion>()
+            .is_err()
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid runner metadata".into(),
+        ));
+    }
+    db::register_runner(
+        &state.pool,
+        worker,
+        &input.name,
+        &input.os,
+        &input.arch,
+        &input.version,
+        input.docker_available,
+    )
+    .await?;
+    Ok(Json(serde_json::json!({})))
+}
+
+async fn runner_touch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    Ok(Json(
+        serde_json::json!({"active": db::touch_runner(&state.pool, worker).await?}),
+    ))
+}
+
+async fn runner_stop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    db::stop_runner(&state.pool, worker).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn runner_claim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    let Some(pipeline) = db::claim(&state.pool, worker).await? else {
+        return Ok(Json(serde_json::Value::Null));
+    };
+    let rules = pipeline.sparse_view_rules.clone();
+    let graph = pipeline.graph_definition.clone();
+    let mut value = serde_json::to_value(pipeline).map_err(internal_error)?;
+    let object = value
+        .as_object_mut()
+        .expect("pipeline serializes as an object");
+    object.insert(
+        "sparse_view_rules".into(),
+        serde_json::to_value(rules).map_err(internal_error)?,
+    );
+    object.insert(
+        "graph_definition".into(),
+        serde_json::to_value(graph).map_err(internal_error)?,
+    );
+    Ok(Json(value))
+}
+
+async fn runner_pipeline_heartbeat(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    Ok(Json(
+        serde_json::json!({"active": db::heartbeat(&state.pool, id, worker).await?}),
+    ))
+}
+
+#[derive(Deserialize)]
+struct RunnerFinish {
+    status: String,
+    error: Option<String>,
+}
+
+async fn runner_pipeline_finish(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(input): Json<RunnerFinish>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    if !matches!(input.status.as_str(), "succeeded" | "failed") {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid pipeline status".into(),
+        ));
+    }
+    if input
+        .error
+        .as_ref()
+        .is_some_and(|error| error.len() > 16 * 1024)
+    {
+        return Err(ApiError(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "pipeline error is too large".into(),
+        ));
+    }
+    db::finish(
+        &state.pool,
+        id,
+        worker,
+        &input.status,
+        input.error.as_deref(),
+    )
+    .await?;
+    Ok(Json(serde_json::json!({})))
+}
+
+async fn runner_create_jobs(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(mut config): Json<PipelineConfig>,
+) -> Result<Json<Vec<Job>>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    config
+        .validate()
+        .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
+    Ok(Json(
+        db::create_jobs(&state.pool, id, worker, &config)
+            .await
+            .map_err(internal_error)?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct RunnerJobStatus {
+    status: String,
+    code: Option<i32>,
+}
+
+async fn runner_job_status(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(input): Json<RunnerJobStatus>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    if !matches!(input.status.as_str(), "running" | "succeeded" | "failed") {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid job status".into(),
+        ));
+    }
+    db::job_status(&state.pool, id, worker, &input.status, input.code)
+        .await
+        .map_err(internal_error)?;
+    Ok(Json(serde_json::json!({})))
+}
+
+#[derive(Deserialize)]
+struct RunnerLog {
+    pipeline: Uuid,
+    job: Option<Uuid>,
+    stream: String,
+    content: String,
+}
+
+async fn runner_log(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<RunnerLog>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    if !matches!(input.stream.as_str(), "stdout" | "stderr" | "system") {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid log stream".into(),
+        ));
+    }
+    if input.content.len() > 64 * 1024 {
+        return Err(ApiError(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "log chunk is too large".into(),
+        ));
+    }
+    if !db::worker_log(
+        &state.pool,
+        worker,
+        input.pipeline,
+        input.job,
+        &input.stream,
+        &input.content,
+    )
+    .await?
+    {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "pipeline is no longer active or job does not belong to it".into(),
+        ));
+    }
+    Ok(Json(serde_json::json!({})))
+}
+
+async fn runner_access_token(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    let pipeline: Pipeline = sqlx::query_as("SELECT * FROM pipelines WHERE id=$1 AND worker_id=$2 AND status='running' AND NOT cancel_requested AND lease_until>now()")
+        .bind(id).bind(worker).fetch_optional(&state.pool).await?
+        .ok_or_else(|| ApiError(StatusCode::CONFLICT, "pipeline is no longer active".into()))?;
+    let submitter = pipeline
+        .submitted_by
+        .ok_or_else(|| ApiError(StatusCode::CONFLICT, "pipeline has no submitter".into()))?;
+    let repository_name = url::Url::parse(&pipeline.repository_url)
+        .ok()
+        .and_then(|url| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back().map(str::to_owned))
+        })
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::CONFLICT,
+                "pipeline repository URL is invalid".into(),
+            )
+        })?;
+    let resource_id =
+        super::repository_access::by_name(&state.pool, &submitter.to_string(), &repository_name)
+            .await?
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::FORBIDDEN,
+                    "pipeline submitter no longer has repository access".into(),
+                )
+            })?;
+    let token = token_issuer(&state)?
+        .issue_worker(&worker.to_string(), resource_id)
+        .map_err(internal_error)?;
+    Ok(Json(
+        serde_json::json!({"access_token": token.access_token}),
+    ))
+}
+
+fn internal_error(error: impl std::fmt::Display) -> ApiError {
+    tracing::error!(%error, "runner API operation failed");
+    ApiError(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "runner API operation failed".into(),
+    )
 }
 
 async fn require_login(

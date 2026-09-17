@@ -10,13 +10,14 @@ use http_body_util::BodyExt;
 use lorehub::{
     ci::{config::SubmitPipeline, db},
     runner::{
-        Worker,
+        CoordinatorClient, Worker,
         executor::{self, Execution},
     },
     server::{
         api,
         auth::{AuthConfig, AuthService},
         repositories::RepositoryService,
+        tokens::TokenIssuer,
     },
 };
 use sha2::{Digest, Sha256};
@@ -34,6 +35,37 @@ fn input() -> SubmitPipeline {
     }
 }
 
+async fn coordinator_client(pool: &PgPool, worker: Uuid) -> CoordinatorClient {
+    let issuer = TokenIssuer::from_files(
+        "tests/fixtures/test-private.pem",
+        "tests/fixtures/test-jwks.json",
+        "http://127.0.0.1:8080",
+        "zenogrid.co.kr",
+    )
+    .unwrap();
+    let auth = AuthService::new(
+        pool.clone(),
+        AuthConfig::new(
+            "test-client".into(),
+            "test-secret".into(),
+            "http://127.0.0.1:8080",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let repositories = RepositoryService::new(
+        "/usr/bin/false",
+        "lores://127.0.0.1:41337",
+        "lores://127.0.0.1:41337",
+    )
+    .unwrap();
+    let app = api::router(pool.clone(), auth, repositories, Some(issuer.clone()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    CoordinatorClient::new(&format!("http://{address}"), worker, issuer).unwrap()
+}
+
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
 async fn cancellation_reaches_the_running_worker(pool: PgPool) {
@@ -42,9 +74,10 @@ async fn cancellation_reaches_the_running_worker(pool: PgPool) {
         root.path(),
         "stages = ['test']\n[[jobs]]\nname = 'slow'\nstage = 'test'\nscript = ['echo started', 'sleep 30']",
     );
+    let worker_id = Uuid::new_v4();
     let worker = Worker {
-        pool: pool.clone(),
-        id: Uuid::new_v4(),
+        coordinator: coordinator_client(&pool, worker_id).await,
+        id: worker_id,
         work_dir: root.path().join("work"),
         lore_bin,
         token_issuer: None,
@@ -848,9 +881,10 @@ stage = "deploy"
 script = ["echo must-not-run"]
 "#,
     );
+    let worker_id = Uuid::new_v4();
     let worker = Worker {
-        pool: pool.clone(),
-        id: Uuid::new_v4(),
+        coordinator: coordinator_client(&pool, worker_id).await,
+        id: worker_id,
         work_dir: root.path().join("work"),
         lore_bin,
         token_issuer: None,
@@ -897,9 +931,10 @@ async fn worker_success_and_invalid_config(pool: PgPool) {
         root.path(),
         "stages = ['test']\n[[jobs]]\nname = 'pass'\nstage = 'test'\nscript = ['echo success']",
     );
+    let worker_id = Uuid::new_v4();
     let worker = Worker {
-        pool: pool.clone(),
-        id: Uuid::new_v4(),
+        coordinator: coordinator_client(&pool, worker_id).await,
+        id: worker_id,
         work_dir: root.path().join("work"),
         lore_bin,
         token_issuer: None,
@@ -919,9 +954,13 @@ async fn executor_timeout_cancel_and_log_limit(pool: PgPool) {
     let root = tempfile::tempdir().unwrap();
     let pipeline = db::submit(&pool, &input()).await.unwrap();
     let cancel = CancellationToken::new();
+    let worker_id = Uuid::new_v4();
+    let coordinator = coordinator_client(&pool, worker_id).await;
+    coordinator.register("executor-test", false).await.unwrap();
+    let claimed = coordinator.claim().await.unwrap().unwrap();
     let execution = Execution {
-        pool: &pool,
-        pipeline: pipeline.id,
+        coordinator: &coordinator,
+        pipeline: claimed.id,
         job: None,
         cancel: &cancel,
     };
@@ -1116,9 +1155,10 @@ script = ['exit 99']
     let mut script = std::fs::read_to_string(&lore_bin).unwrap();
     script.push_str("\nmkdir -p \"$8/Server\"\n");
     std::fs::write(&lore_bin, &script).unwrap();
+    let worker_id = Uuid::new_v4();
     let worker = Worker {
-        pool: pool.clone(),
-        id: Uuid::new_v4(),
+        coordinator: coordinator_client(&pool, worker_id).await,
+        id: worker_id,
         work_dir: root.path().join("work"),
         lore_bin: lore_bin.clone(),
         token_issuer: None,

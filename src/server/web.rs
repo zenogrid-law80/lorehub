@@ -158,6 +158,8 @@ mod tests {
         assert!(SCRIPT.contains("loadPipelineGraphs"));
         assert!(SCRIPT.contains("graph-repository-tree"));
         assert!(SCRIPT.contains("graph-branch-tree"));
+        assert!(SCRIPT.contains("graphExpandedRepositories: new Set()"));
+        assert!(SCRIPT.contains("state.graphExpandedCategories.has(categoryKey)"));
         assert!(INDEX.contains("/downloads/runners/linux-x86_64"));
         assert!(INDEX.contains("/downloads/runners/windows-x86_64"));
         assert!(INDEX.contains("/downloads/runners/macos-aarch64"));

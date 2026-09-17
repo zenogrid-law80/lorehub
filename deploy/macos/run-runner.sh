@@ -13,6 +13,7 @@ source "$project_dir/.env"
 set +a
 
 export LOREHUB_RUNNER_NAME="${LOREHUB_MACOS_RUNNER_NAME:-macos-runner-01}"
+export LOREHUB_COORDINATOR_URL="${LOREHUB_COORDINATOR_URL:-http://127.0.0.1:8080}"
 mkdir -p "$data_dir/work"
 if [[ ! -x "$runner_bin" ]]; then
   install -m 0755 "$project_dir/target/release/lorehub" "$runner_bin"

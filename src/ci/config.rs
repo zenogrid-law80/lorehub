@@ -242,7 +242,7 @@ impl PipelineConfig {
         Ok(config)
     }
 
-    fn validate(&mut self) -> Result<()> {
+    pub(crate) fn validate(&mut self) -> Result<()> {
         let config = self;
         ensure!(
             !config.stages.is_empty() && config.stages.len() <= 32,

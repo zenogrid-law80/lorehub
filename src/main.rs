@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use lorehub::{
     ci::{config::PipelineFile, db},
-    runner::Worker,
+    runner::{CoordinatorClient, Worker},
     server,
 };
 use tokio_util::sync::CancellationToken;
@@ -73,8 +73,6 @@ enum Action {
     },
     /// Run one trusted shell worker. Start more processes for pipeline concurrency.
     Worker {
-        #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
-        database_url: String,
         #[arg(long, env = "LOREHUB_WORK_DIR", default_value = ".work")]
         work_dir: PathBuf,
         #[arg(long, env = "LORE_BIN", default_value = "lore")]
@@ -85,6 +83,9 @@ enum Action {
             default_value = "https://lorehub.zenogrid.co.kr"
         )]
         public_url: String,
+        /// Coordinator API URL reachable from this runner. Defaults to the public URL.
+        #[arg(long, env = "LOREHUB_COORDINATOR_URL")]
+        coordinator_url: Option<String>,
         #[arg(
             long,
             env = "LORE_JWT_PRIVATE_KEY",
@@ -170,15 +171,14 @@ async fn main() -> Result<()> {
             .await?;
         }
         Action::Worker {
-            database_url,
             work_dir,
             lore_bin,
             public_url,
+            coordinator_url,
             lore_jwt_private_key,
             lore_jwt_jwks,
             once,
         } => {
-            let pool = db::connect_existing(&database_url).await?;
             let id = persistent_runner_id(&work_dir)?;
             let tokens = server::tokens::TokenIssuer::from_files(
                 lore_jwt_private_key,
@@ -186,8 +186,13 @@ async fn main() -> Result<()> {
                 &public_url,
                 server::auth::ALLOWED_DOMAIN,
             )?;
+            let coordinator = CoordinatorClient::new(
+                coordinator_url.as_deref().unwrap_or(&public_url),
+                id,
+                tokens.clone(),
+            )?;
             let outcome = Worker {
-                pool,
+                coordinator,
                 id,
                 work_dir,
                 lore_bin,

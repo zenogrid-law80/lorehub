@@ -7,7 +7,6 @@ use nix::{
     sys::signal::{Signal, killpg},
     unistd::Pid,
 };
-use sqlx::PgPool;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::Command,
@@ -16,12 +15,12 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::ci::db;
+use super::CoordinatorClient;
 
 const LOG_LIMIT: usize = 1024 * 1024;
 
 pub struct Execution<'a> {
-    pub pool: &'a PgPool,
+    pub coordinator: &'a CoordinatorClient,
     pub pipeline: Uuid,
     pub job: Option<Uuid>,
     pub cancel: &'a CancellationToken,
@@ -99,7 +98,7 @@ pub fn shell(lines: &[String], cwd: &Path) -> Command {
 /// Apply the same process and environment policy to shell and VCS commands.
 pub fn prepare(mut command: Command, cwd: &Path) -> Command {
     command.current_dir(cwd).env_clear();
-    // Do not pass DATABASE_URL or Google OAuth credentials to CI jobs.
+    // Pass only the small allowlist below; runner credentials stay out of CI jobs.
     #[cfg(unix)]
     let inherited = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"].as_slice();
     #[cfg(windows)]
@@ -191,11 +190,11 @@ impl Execution<'_> {
                             let count = chunk.len().min(LOG_LIMIT.saturating_sub(bytes));
                             if count > 0 {
                                 let content = String::from_utf8_lossy(&chunk[..count]);
-                                tokio::time::timeout(Duration::from_secs(5), db::log(self.pool, self.pipeline, self.job, stream, &content)).await??;
+                                tokio::time::timeout(Duration::from_secs(5), self.coordinator.log(self.pipeline, self.job, stream, &content)).await??;
                                 bytes += count;
                             }
                             if count < chunk.len() && !truncated {
-                                tokio::time::timeout(Duration::from_secs(5), db::log(self.pool, self.pipeline, self.job, "system", "[output truncated at 1 MiB]\n")).await??;
+                                tokio::time::timeout(Duration::from_secs(5), self.coordinator.log(self.pipeline, self.job, "system", "[output truncated at 1 MiB]\n")).await??;
                                 truncated = true;
                             }
                         }

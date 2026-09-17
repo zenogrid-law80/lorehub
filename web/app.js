@@ -165,9 +165,9 @@ const state = {
   repositories: [],
   runners: [],
   pipelineGraphs: [],
-  graphCollapsedRepositories: new Set(),
-  graphCollapsedBranches: new Set(),
-  graphCollapsedCategories: new Set(),
+  graphExpandedRepositories: new Set(),
+  graphExpandedBranches: new Set(),
+  graphExpandedCategories: new Set(),
   repositoryServerUrl: "",
   section: "overview",
   repositoryToDelete: null,
@@ -671,10 +671,10 @@ function renderPipelineGraphs() {
   for (const [repositoryUrl, branches] of repositories) {
     const repositoryTree = document.createElement("details");
     repositoryTree.className = "graph-repository-tree";
-    repositoryTree.open = Boolean(state.query) || !state.graphCollapsedRepositories.has(repositoryUrl);
+    repositoryTree.open = Boolean(state.query) || state.graphExpandedRepositories.has(repositoryUrl);
     repositoryTree.addEventListener("toggle", () => {
-      if (repositoryTree.open) state.graphCollapsedRepositories.delete(repositoryUrl);
-      else state.graphCollapsedRepositories.add(repositoryUrl);
+      if (repositoryTree.open) state.graphExpandedRepositories.add(repositoryUrl);
+      else state.graphExpandedRepositories.delete(repositoryUrl);
     });
 
     const repositorySummary = document.createElement("summary");
@@ -702,10 +702,10 @@ function renderPipelineGraphs() {
       const branchKey = `${repositoryUrl}\u0000${branch}`;
       const branchTree = document.createElement("details");
       branchTree.className = "graph-branch-tree";
-      branchTree.open = Boolean(state.query) || !state.graphCollapsedBranches.has(branchKey);
+      branchTree.open = Boolean(state.query) || state.graphExpandedBranches.has(branchKey);
       branchTree.addEventListener("toggle", () => {
-        if (branchTree.open) state.graphCollapsedBranches.delete(branchKey);
-        else state.graphCollapsedBranches.add(branchKey);
+        if (branchTree.open) state.graphExpandedBranches.add(branchKey);
+        else state.graphExpandedBranches.delete(branchKey);
       });
       const branchSummary = document.createElement("summary");
       branchSummary.className = "graph-branch-summary";
@@ -727,10 +727,10 @@ function renderPipelineGraphs() {
         const categoryKey = `${branchKey}\u0000${category}`;
         const categoryTree = document.createElement("details");
         categoryTree.className = "graph-category-tree";
-        categoryTree.open = Boolean(state.query) || !state.graphCollapsedCategories.has(categoryKey);
+        categoryTree.open = Boolean(state.query) || state.graphExpandedCategories.has(categoryKey);
         categoryTree.addEventListener("toggle", () => {
-          if (categoryTree.open) state.graphCollapsedCategories.delete(categoryKey);
-          else state.graphCollapsedCategories.add(categoryKey);
+          if (categoryTree.open) state.graphExpandedCategories.add(categoryKey);
+          else state.graphExpandedCategories.delete(categoryKey);
         });
         const categorySummary = document.createElement("summary");
         categorySummary.className = "graph-category-summary";
