@@ -48,9 +48,20 @@ Google Cloud OAuth client의 authorized redirect URI는 다음 값이어야 합�
 https://lorehub.zenogrid.co.kr/auth/google/callback
 ```
 
-## 갱신
+## 자동 갱신
 
-Gabia DNS를 수동으로 변경하는 방식이라 자동 갱신되지 않습니다. 만료 전에 최초 발급 명령을 다시 실행하고 새 TXT 값을 등록합니다. 발급이 끝난 뒤 Nginx가 새 인증서를 읽도록 다시 로드합니다.
+Gabia의 `_acme-challenge.lorehub.zenogrid.co.kr` CNAME이 Cloudflare의 `_acme-challenge.ytlaw80.com`으로 위임되어 있고, `.env`에 `CF_ZONE_ID`와 `CF_API_TOKEN`이 설정되어 있어야 합니다. 토큰은 `ytlaw80.com` 영역의 DNS 편집으로 범위를 제한합니다.
+
+최초 발급 후 다음 서비스를 실행하면 12시간마다 갱신을 확인합니다.
+
+```bash
+docker compose --profile tls up -d certbot-renew
+docker compose --profile tls logs -f certbot-renew
+```
+
+갱신 성공 시 hook이 reverse proxy를 graceful reload하고 lore-server를 재시작합니다.
+
+수동으로 갱신하려면 다음 명령을 사용합니다.
 
 ```bash
 docker compose --profile tls exec reverse-proxy nginx -s reload

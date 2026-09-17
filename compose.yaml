@@ -69,11 +69,33 @@ services:
       - no-new-privileges:true
 
   certbot:
-    image: certbot/certbot:v5.7.0
+    image: lorehub-certbot:local
     profiles: ["tls"]
+    build:
+      context: .
+      dockerfile: deploy/certbot.Dockerfile
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot_work:/var/lib/letsencrypt
+      - ./deploy/certbot-hooks:/opt/certbot-hooks:ro
+
+  certbot-renew:
+    image: lorehub-certbot:local
+    profiles: ["tls"]
+    build:
+      context: .
+      dockerfile: deploy/certbot.Dockerfile
+    restart: unless-stopped
+    environment:
+      CF_ZONE_ID: ${CF_ZONE_ID:?set CF_ZONE_ID}
+      CF_API_TOKEN: ${CF_API_TOKEN:?set CF_API_TOKEN}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while :; do certbot renew --non-interactive --manual-auth-hook /opt/certbot-hooks/cf-auth.sh --manual-cleanup-hook /opt/certbot-hooks/cf-cleanup.sh --deploy-hook /opt/certbot-hooks/deploy.sh; sleep 12h; done"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_work:/var/lib/letsencrypt
+      - ./deploy/certbot-hooks:/opt/certbot-hooks:ro
+      - /var/run/docker.sock:/var/run/docker.sock
 
   dynamodb-local:
     image: amazon/dynamodb-local:3.3.1
