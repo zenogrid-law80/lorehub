@@ -454,7 +454,7 @@ async function showSection(section) {
 function updateSectionSearch() {
   elements["pipeline-search"].disabled = false;
   if (isManagement()) {
-    const key = state.section === "workspace-views" ? "viewSearch" : "search";
+    const key = state.section === "workspace-views" ? "viewSearch" : state.section === "repository-access" ? "accessSearch" : "search";
     elements["pipeline-search"].placeholder = mt(key);
     elements["pipeline-search"].previousElementSibling.textContent = mt(key);
     return;

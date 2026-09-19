@@ -352,6 +352,15 @@ DATABASE_URL=postgres://lorehub:lorehub@127.0.0.1:5432/lorehub \
 
 `deploy/`의 systemd unit 예제를 사용할 수 있습니다. API coordinator 바이너리는 `/usr/local/bin/lorehub`에 설치하고, Runner 바이너리는 아래 설치 스크립트로 전용 state 디렉터리에 배치합니다. `lorehub` OS 계정과 `/etc/lorehub/environment` 환경 파일을 준비하고 워커 unit의 PATH를 설치된 빌드 도구 위치에 맞게 조정하세요. 환경 파일은 해당 서비스 관리자만 읽을 수 있게 설정합니다.
 
+Coordinator를 재시작할 때는 배포 환경에 맞는 서비스 관리자를 자동 감지하는 스크립트를 사용할 수 있습니다.
+
+```bash
+sudo sh deploy/restart-lorehub.sh       # API coordinator
+sudo sh deploy/restart-lorehub.sh all   # API + 실행 중인 systemd worker
+```
+
+Linux에서는 `lorehub-api.service`와 실행 중인 `lorehub-worker@*.service`를 재시작하고, macOS에서는 `co.kr.zenogrid.lorehub.coordinator` LaunchDaemon을 kickstart합니다. LaunchDaemon을 설치하지 않고 `target/release/lorehub serve`를 직접 실행한 macOS 개발 환경도 기존 프로세스를 찾아 `deploy/macos/run-coordinator.sh`로 재시작합니다. macOS Runner LaunchDaemon은 별도로 관리합니다.
+
 ### Linux runner
 
 Linux runner는 `/bin/sh -e`로 각 job을 실행하고 process group 전체를 종료하므로 timeout과 취소 시 자식 프로세스도 함께 정리됩니다.

@@ -26,6 +26,14 @@ pub(super) fn router() -> Router<AppState> {
         )
         .route("/api/v1/workspace-repositories", get(repositories))
         .route(
+            "/api/v1/repository-group-access",
+            get(repository_group_access),
+        )
+        .route(
+            "/api/v1/repository-group-access/{resource}",
+            post(update_repository_group_access),
+        )
+        .route(
             "/api/v1/sparse-views",
             get(sparse_views).post(create_sparse_view),
         )
@@ -294,6 +302,104 @@ async fn repositories(
     Extension(session): Extension<AuthSession>,
 ) -> Result<Json<Vec<Resource>>, ApiError> {
     Ok(Json(sqlx::query_as("SELECT resource_id,name FROM lore_resources WHERE owner_subject=$1 OR EXISTS(SELECT 1 FROM users WHERE id::text=$1 AND role='admin') ORDER BY lower(name)").bind(session.user.id.to_string()).fetch_all(&s.pool).await?))
+}
+
+#[derive(Serialize, FromRow)]
+struct RepositoryGroupAccess {
+    resource_id: String,
+    repository_name: String,
+    group_ids: Vec<Uuid>,
+}
+
+#[derive(Serialize, FromRow)]
+struct RepositoryGroupOption {
+    id: Uuid,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct RepositoryGroupAccessResponse {
+    repositories: Vec<RepositoryGroupAccess>,
+    groups: Vec<RepositoryGroupOption>,
+}
+
+async fn repository_group_access(
+    State(s): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+) -> Result<Json<RepositoryGroupAccessResponse>, ApiError> {
+    let repositories = sqlx::query_as(
+        "SELECT r.resource_id,r.name AS repository_name,ARRAY(SELECT access.group_id FROM repository_account_group_access access WHERE access.resource_id=r.resource_id ORDER BY access.group_id) AS group_ids FROM lore_resources r WHERE r.owner_subject=$1 OR $2 ORDER BY lower(r.name),r.resource_id"
+    )
+    .bind(session.user.id.to_string())
+    .bind(session.user.role == "admin")
+    .fetch_all(&s.pool)
+    .await?;
+    let groups = if repositories.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as("SELECT id,name FROM account_groups ORDER BY lower(name),id")
+            .fetch_all(&s.pool)
+            .await?
+    };
+    Ok(Json(RepositoryGroupAccessResponse {
+        repositories,
+        groups,
+    }))
+}
+
+#[derive(Deserialize)]
+struct RepositoryGroupAccessInput {
+    group_ids: Vec<Uuid>,
+}
+
+async fn update_repository_group_access(
+    State(s): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(resource_id): Path<String>,
+    Json(mut input): Json<RepositoryGroupAccessInput>,
+) -> Result<StatusCode, ApiError> {
+    input.group_ids.sort();
+    input.group_ids.dedup();
+    if input.group_ids.len() > 200 {
+        return Err(bad("A repository supports up to 200 account groups."));
+    }
+
+    let mut tx = s.pool.begin().await?;
+    let manageable: Option<String> = sqlx::query_scalar(
+        "SELECT resource_id FROM lore_resources WHERE resource_id=$1 AND (owner_subject=$2 OR $3) FOR UPDATE",
+    )
+    .bind(&resource_id)
+    .bind(session.user.id.to_string())
+    .bind(session.user.role == "admin")
+    .fetch_one(&mut *tx)
+    .await?;
+    if manageable.is_none() {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Repository owner or administrator required.".into(),
+        ));
+    }
+
+    let group_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM account_groups WHERE id=ANY($1)")
+            .bind(&input.group_ids)
+            .fetch_one(&mut *tx)
+            .await?;
+    if group_count != input.group_ids.len() as i64 {
+        return Err(bad("One or more account groups no longer exist."));
+    }
+
+    sqlx::query("DELETE FROM repository_account_group_access WHERE resource_id=$1")
+        .bind(&resource_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO repository_account_group_access(resource_id,group_id) SELECT $1,unnest($2::uuid[])")
+        .bind(&resource_id)
+        .bind(&input.group_ids)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 #[derive(Serialize, FromRow)]
 struct SparseWorkspaceView {

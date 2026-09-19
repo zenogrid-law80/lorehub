@@ -617,6 +617,64 @@ mod tests {
                 .is_none()
         );
 
+        // Repository grants follow live group membership even for already-issued tokens.
+        let group = Uuid::new_v4();
+        sqlx::query("INSERT INTO account_groups(id,name,owner_id) VALUES($1,'Project team',$2)")
+            .bind(group)
+            .bind(owner)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO account_group_members(group_id,user_id) VALUES($1,$2)")
+            .bind(group)
+            .bind(admin)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO repository_account_group_access(resource_id,group_id) VALUES('urc-project',$1)")
+            .bind(group)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            super::super::repository_access::resource_ids(&pool, &admin.to_string())
+                .await
+                .unwrap(),
+            ["urc-admin", "urc-project"]
+        );
+        assert_eq!(
+            service
+                .check_user_permission(check())
+                .await
+                .unwrap()
+                .into_inner()
+                .allowed_resource_permission
+                .len(),
+            2
+        );
+        assert!(
+            service
+                .delete_resource(request(
+                    ucs::auth::DeleteResourceRequest {
+                        resource_id: "urc-project".into()
+                    },
+                    &token
+                ))
+                .await
+                .is_err()
+        );
+        sqlx::query("DELETE FROM account_group_members WHERE group_id=$1 AND user_id=$2")
+            .bind(group)
+            .bind(admin)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            !super::super::repository_access::can_access(&pool, &admin.to_string(), "urc-project")
+                .await
+                .unwrap()
+        );
+
         sqlx::query("UPDATE users SET role='admin' WHERE id=$1")
             .bind(admin)
             .execute(&pool)

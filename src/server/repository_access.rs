@@ -1,7 +1,25 @@
 //! Repository authorization uses the current account role, including for existing CLI tokens.
 use sqlx::PgPool;
 
-const ACCESS: &str =
+const ACCESS: &str = "(
+    owner_subject = $1
+    OR EXISTS (SELECT 1 FROM users WHERE id::text = $1 AND role = 'admin')
+    OR EXISTS (
+        SELECT 1
+        FROM repository_account_group_access access
+        JOIN account_groups groups ON groups.id = access.group_id
+        WHERE access.resource_id = lore_resources.resource_id
+          AND (
+              groups.owner_id::text = $1
+              OR EXISTS (
+                  SELECT 1 FROM account_group_members members
+                  WHERE members.group_id = groups.id AND members.user_id::text = $1
+              )
+          )
+    )
+)";
+
+const MANAGE: &str =
     "(owner_subject = $1 OR EXISTS (SELECT 1 FROM users WHERE id::text = $1 AND role = 'admin'))";
 
 pub(crate) async fn resource_ids(pool: &PgPool, subject: &str) -> Result<Vec<String>, sqlx::Error> {
@@ -47,7 +65,7 @@ pub(crate) async fn delete(
     resource_id: &str,
 ) -> Result<bool, sqlx::Error> {
     Ok(sqlx::query(&format!(
-        "DELETE FROM lore_resources WHERE {ACCESS} AND resource_id = $2"
+        "DELETE FROM lore_resources WHERE {MANAGE} AND resource_id = $2"
     ))
     .bind(subject)
     .bind(resource_id)

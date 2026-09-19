@@ -524,6 +524,55 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     assert_eq!(group["member_ids"].as_array().unwrap().len(), 2);
     let id = group["id"].as_str().unwrap();
     let group_path = format!("/api/v1/account-groups/{id}");
+    let access_path = "/api/v1/repository-group-access/urc-owned";
+    assert_eq!(
+        request(
+            &app,
+            Some(member),
+            "POST",
+            access_path,
+            json!({"group_ids":[id]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(owner),
+            "POST",
+            access_path,
+            json!({"group_ids":[id, id]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let repository_access = request(
+        &app,
+        Some(owner),
+        "GET",
+        "/api/v1/repository-group-access",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(repository_access.0, StatusCode::OK);
+    assert_eq!(
+        repository_access.1["repositories"][0]["resource_id"],
+        "urc-owned"
+    );
+    assert_eq!(repository_access.1["repositories"][0]["group_ids"][0], id);
+    assert_eq!(repository_access.1["groups"][0]["id"], id);
+    let member_grants: Vec<String> = sqlx::query_scalar("SELECT access.resource_id FROM repository_account_group_access access JOIN account_group_members members USING(group_id) WHERE members.user_id=$1 ORDER BY access.resource_id")
+        .bind(member).fetch_all(&pool).await.unwrap();
+    assert_eq!(member_grants, ["urc-owned"]);
+    let outsider_granted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_account_group_access access JOIN account_group_members members USING(group_id) WHERE access.resource_id='urc-owned' AND members.user_id=$1)")
+        .bind(outsider).fetch_one(&pool).await.unwrap();
+    assert!(!outsider_granted);
     assert_eq!(
         request(
             &app,
@@ -870,6 +919,9 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         .0,
         StatusCode::OK
     );
+    let member_granted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_account_group_access access JOIN account_group_members members USING(group_id) WHERE access.resource_id='urc-owned' AND members.user_id=$1)")
+        .bind(member).fetch_one(&pool).await.unwrap();
+    assert!(!member_granted);
     assert_eq!(
         request(
             &app,
@@ -917,6 +969,13 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM account_group_view_selections")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM repository_account_group_access")
             .fetch_one(&pool)
             .await
             .unwrap(),

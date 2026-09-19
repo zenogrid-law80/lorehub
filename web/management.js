@@ -1,12 +1,13 @@
 "use strict";
 
-const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "workspace-views"];
-const management = { accounts: [], groups: [], repositories: [], views: [], assignments: [], groupId: "", resourceId: "", loaded: false, request: 0, dirty: false };
+const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "repository-access", "workspace-views"];
+const management = { accounts: [], groups: [], repositories: [], repositoryAccess: { repositories: [], groups: [] }, views: [], assignments: [], groupId: "", resourceId: "", loaded: false, request: 0, dirty: false };
 const managementCopy = {
-  accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], views: ["Sparse Workspace View 설정", "Sparse Workspace Views", "稀疏工作区视图设置"],
-  accountMenu: ["계정", "Accounts", "账号"], groupMenu: ["계정 그룹", "Account groups", "账号组"], viewMenu: ["Sparse View", "Sparse View", "稀疏视图"],
+  accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], repositoryAccess: ["Repository 접근 권한", "Repository access", "仓库访问权限"], views: ["Sparse Workspace View 설정", "Sparse Workspace Views", "稀疏工作区视图设置"],
+  accountMenu: ["계정", "Accounts", "账号"], groupMenu: ["계정 그룹", "Account groups", "账号组"], accessMenu: ["Repository 권한", "Repository access", "仓库权限"], viewMenu: ["Sparse View", "Sparse View", "稀疏视图"],
   accountIntro: ["조직 계정을 확인하고 관리자는 계정 등급을 변경할 수 있습니다.", "Browse organization accounts. Administrators can change account roles.", "查看组织账号。管理员可以更改账号等级。"],
   groupIntro: ["함께 작업할 계정을 그룹으로 묶고 구성원을 관리합니다. 관리자는 모든 그룹을 볼 수 있습니다.", "Organize accounts into groups and manage membership. Administrators can view every group.", "将账号整理为组并管理成员。管理员可以查看所有组。"],
+  accessIntro: ["Repository와 Account Group을 연결해 그룹 구성원에게 접근 권한을 부여합니다.", "Connect repositories to account groups to grant access to every group member.", "将仓库连接到账号组，为所有组成员授予访问权限。"],
   viewIntro: ["재사용 가능한 Sparse View를 만들고 그룹별로 선택합니다. 관리자는 모든 View를 볼 수 있습니다.", "Create reusable Sparse Views and select them for each group. Administrators can view every View.", "创建可复用的稀疏视图并为每个组进行选择。管理员可以查看所有视图。"],
   profile: ["내 프로필", "My profile", "我的资料"], name: ["표시 이름", "Display name", "显示名称"], email: ["이메일", "Email", "电子邮件"], login: ["최근 로그인", "Last sign-in", "最近登录"], joined: ["가입일", "Joined", "加入时间"],
   role: ["등급", "Role", "等级"], roleUser: ["일반 사용자", "Regular user", "普通用户"], roleAdmin: ["관리자", "Administrator", "管理员"], roleHint: ["관리자만 계정 등급을 변경할 수 있습니다. 마지막 관리자는 일반 사용자로 변경할 수 없습니다.", "Only administrators can change roles. The last administrator cannot be changed to a regular user.", "只有管理员可以更改等级。最后一名管理员不能更改为普通用户。"],
@@ -17,6 +18,10 @@ const managementCopy = {
   groupSelect: ["계정 그룹", "Account group", "账号组"], repoSelect: ["리포지토리", "Repository", "仓库"], chooseGroup: ["그룹을 선택하세요", "Choose a group", "选择组"], chooseRepo: ["리포지토리를 선택하세요", "Choose a repository", "选择仓库"],
   noGroup: ["먼저 계정 그룹을 생성하거나 그룹에 참여하세요.", "Create or join an account group first.", "请先创建或加入账号组。"],
   noRepo: ["설정 가능한 리포지토리가 없습니다. 리포지토리 소유자와 관리자가 설정을 추가할 수 있습니다.", "No repositories available. Repository owners and administrators can add presets.", "暂无可用仓库。仓库所有者和管理员可以添加预设。"],
+  accessHint: ["Repository 소유자와 관리자가 권한을 설정할 수 있습니다. 삭제 권한은 공유되지 않으며, 그룹에서 제거된 계정의 접근 권한은 즉시 회수됩니다.", "Repository owners and administrators manage access. Delete permission is never shared, and removing an account from a group revokes access immediately.", "仓库所有者和管理员可以管理访问权限。删除权限不会共享，账号移出组后访问权限会立即撤销。"],
+  grantedGroups: ["접근 가능한 그룹", "Groups with access", "拥有访问权限的组"],
+  saveAccess: ["권한 저장", "Save access", "保存权限"],
+  noManageableRepositories: ["권한을 설정할 수 있는 Repository가 없습니다.", "No repositories are available for access management.", "没有可管理访问权限的仓库。"],
   full: ["전체 workspace", "Full workspace", "完整工作区"], sparse: ["Sparse workspace", "Sparse workspace", "稀疏工作区"], mode: ["Workspace 범위", "Workspace scope", "工作区范围"],
   rules: ["View 규칙", "View rules", "视图规则"], ruleHint: ["한 줄에 규칙 하나. 일반 패턴은 제외, ! 패턴은 포함입니다. 뒤의 규칙이 우선하며 #은 주석입니다.", "One rule per line. Patterns exclude; ! patterns include. Later rules win; # starts a comment.", "每行一条规则。普通模式排除，! 模式包含。后面的规则优先；# 表示注释。"],
   presetHint: ["Sparse View는 리포지토리별 재사용 프리셋입니다. 그룹은 목록에서 하나를 선택하며, 선택만으로 리포지토리 접근 권한이 부여되지는 않습니다.", "Sparse Views are reusable repository presets. Groups select one from the list; selection does not grant repository access.", "稀疏视图是可复用的仓库预设。组从列表中选择一个；选择不会授予仓库访问权限。"],
@@ -27,7 +32,7 @@ const managementCopy = {
   deleteView: ["이 Sparse View를 삭제할까요? 이 View를 사용한 모든 그룹의 선택도 해제됩니다.", "Delete this Sparse View? It will also be unselected from every group using it.", "删除此稀疏视图？使用它的所有组也将取消选择。"],
   discard: ["저장하지 않은 변경사항을 버릴까요?", "Discard unsaved changes?", "放弃未保存的更改？"],
   loading: ["불러오는 중…", "Loading…", "正在加载…"], retry: ["다시 시도", "Retry", "重试"],
-  search: ["계정 또는 그룹 검색…", "Search accounts or groups…", "搜索账号或组…"], viewSearch: ["Sparse View 검색…", "Search Sparse Views…", "搜索稀疏视图…"], navigation: ["페이지 이동", "Go to page", "前往页面"],
+  search: ["계정 또는 그룹 검색…", "Search accounts or groups…", "搜索账号或组…"], accessSearch: ["Repository 또는 그룹 검색…", "Search repositories or groups…", "搜索仓库或组…"], viewSearch: ["Sparse View 검색…", "Search Sparse Views…", "搜索稀疏视图…"], navigation: ["페이지 이동", "Go to page", "前往页面"],
   invalidRules: ["10,000바이트 이하의 규칙을 입력하세요. Sparse 모드는 주석 외 규칙이 필요합니다.", "Enter at most 10,000 bytes of rules. Sparse mode requires a non-comment rule.", "规则不能超过 10,000 字节。稀疏模式需要非注释规则。"],
   viewList: ["Sparse View 목록", "Sparse View library", "稀疏视图列表"], newView: ["새 Sparse View", "New Sparse View", "新建稀疏视图"], editView: ["Sparse View 수정", "Edit Sparse View", "编辑稀疏视图"], viewName: ["View 이름", "View name", "视图名称"],
   emptyViews: ["표시할 Sparse View가 없습니다.", "No Sparse Views to display.", "没有可显示的稀疏视图。"], assignments: ["그룹별 Sparse View 선택", "Sparse View selections by group", "按组选择稀疏视图"], assignmentHint: ["그룹 소유자는 리포지토리별로 목록의 View 하나를 선택할 수 있습니다.", "Group owners can select one listed View for each repository.", "组所有者可以为每个仓库选择一个列表中的视图。"],
@@ -55,10 +60,10 @@ function isManagement() { return MANAGEMENT_SECTIONS.includes(state.section); }
 function initManagement() {
   const nav = document.querySelector(".primary-nav");
   const managementNav = nav.querySelector('[data-nav-group="management"]');
-  const menuKeys = ["accountMenu", "groupMenu", "viewMenu"];
+  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];
   MANAGEMENT_SECTIONS.forEach((section, index) => {
     const link = mn("a", "nav-item"); link.href = `#${section}`; link.dataset.section = section;
-    const icon = mn("span", "management-nav-icon", ["◎", "▦", "⌘"][index]); icon.setAttribute("aria-hidden", "true");
+    const icon = mn("span", "management-nav-icon", ["◎", "▦", "◇", "⌘"][index]); icon.setAttribute("aria-hidden", "true");
     link.append(icon, mn("span", "management-nav-label", mt(menuKeys[index]))); managementNav.append(link);
     const page = mn("section", "management-page"); page.id = `${section}-page`; page.hidden = true;
     document.querySelector(".page-content").append(page);
@@ -74,7 +79,7 @@ function initManagement() {
   window.addEventListener("beforeunload", (event) => { if (management.dirty) { event.preventDefault(); event.returnValue = ""; } });
 }
 function managementLocale() {
-  const menuKeys = ["accountMenu", "groupMenu", "viewMenu"];
+  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];
   MANAGEMENT_SECTIONS.forEach((section, index) => {
     const label = mt(menuKeys[index]);
     document.querySelector(`[data-section="${section}"] .management-nav-label`).textContent = label;
@@ -108,9 +113,11 @@ async function loadManagement() {
     if (serial !== management.request) return;
     Object.assign(management, { accounts, groups, repositories, loaded: true });
     if (!groups.some(g => g.id === management.groupId)) management.groupId = groups[0]?.id || "";
+    const repositoryAccess = section === "repository-access" ? await api("/api/v1/repository-group-access") : management.repositoryAccess;
     const views = section === "workspace-views" ? await api("/api/v1/sparse-views") : management.views;
     const assignments = section === "workspace-views" && management.groupId ? await api(`/api/v1/account-groups/${management.groupId}/views`) : [];
     if (serial !== management.request) return;
+    if (section === "repository-access") management.repositoryAccess = repositoryAccess;
     if (section === "workspace-views") Object.assign(management, { views, assignments });
     if (state.section === section && !management.dirty) renderManagement();
   } catch (error) {
@@ -123,6 +130,7 @@ function renderManagement() {
   if (!management.loaded) return;
   if (state.section === "accounts") renderAccounts();
   else if (state.section === "account-groups") renderGroups();
+  else if (state.section === "repository-access") renderRepositoryAccess();
   else if (state.section === "workspace-views") renderViews();
 }
 async function managementMutation(button, path, method, data, after) {
@@ -237,6 +245,42 @@ function confirmManagement(message, name, action) {
   form.addEventListener("submit", event => event.preventDefault()); dialog.showModal();
 }
 function discardManagement() { if (management.dirty && !window.confirm(mt("discard"))) return false; management.dirty = false; return true; }
+function renderRepositoryAccess() {
+  const page = managementShell("repository-access", "repositoryAccess", "accessIntro");
+  page.append(mn("p", "management-notice", mt("accessHint")));
+  const query = state.query.toLowerCase();
+  const accessGroups = management.repositoryAccess.groups;
+  const rows = management.repositoryAccess.repositories.filter(repository => !query || `${repository.repository_name} ${accessGroups.filter(group => repository.group_ids.includes(group.id)).map(group => group.name).join(" ")}`.toLowerCase().includes(query));
+  const list = mn("div", "management-group-grid");
+  for (const repository of rows) {
+    const card = mn("article", "pipeline-panel management-group-card");
+    const header = mn("header", "management-card-heading");
+    header.append(mn("h2", "", repository.repository_name), mn("span", "os-badge", `${repository.group_ids.length}`));
+    const groups = mn("fieldset", "management-member-picker");
+    groups.append(mn("legend", "", mt("grantedGroups")));
+    for (const group of accessGroups) {
+      const label = mn("label", "management-member-option");
+      const checkbox = mn("input"); checkbox.type = "checkbox"; checkbox.value = group.id; checkbox.checked = repository.group_ids.includes(group.id);
+      label.append(checkbox, mn("span", "", group.name)); groups.append(label);
+    }
+    if (!accessGroups.length) groups.append(mn("p", "management-note", mt("noGroup")));
+    const save = mb(mt("saveAccess"), () => {
+      const group_ids = [...groups.querySelectorAll("input:checked")].map(input => input.value);
+      void managementMutation(save, `/api/v1/repository-group-access/${encodeURIComponent(repository.resource_id)}`, "POST", { group_ids }, loadManagement);
+    }, "primary");
+    const initial = JSON.stringify([...repository.group_ids].sort());
+    const sync = () => {
+      save.disabled = JSON.stringify([...groups.querySelectorAll("input:checked")].map(input => input.value).sort()) === initial;
+      card.dataset.dirty = String(!save.disabled);
+      management.dirty = Boolean(page.querySelector('[data-dirty="true"]'));
+    };
+    groups.addEventListener("change", sync); save.disabled = true;
+    const actions = mn("div", "management-actions"); actions.append(save);
+    card.append(header, groups, actions); list.append(card);
+  }
+  if (!rows.length) list.append(mn("p", "management-note", mt("noManageableRepositories")));
+  page.append(list);
+}
 function renderViews() {
   const page = managementShell("workspace-views", "views", "viewIntro");
   if (management.repositories.length) page.querySelector(".page-heading").append(mb(mt("newView"), () => openViewEditor(), "primary"));
