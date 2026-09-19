@@ -265,8 +265,10 @@ impl Worker {
             runner_os == pipeline.runner_os.as_deref(),
             "queued runner OS differs from revision configuration"
         );
+        let sparse_view_matches = sparse_view == pipeline.sparse_view_name.as_deref()
+            || (pipeline.sparse_view_name.is_none() && pipeline.sparse_view_rules.is_none());
         ensure!(
-            sparse_view == pipeline.sparse_view_name.as_deref(),
+            sparse_view_matches,
             "queued sparse view differs from revision configuration"
         );
         ensure!(

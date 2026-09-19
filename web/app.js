@@ -44,7 +44,7 @@ Object.assign(I18N.en, {
   "search.repositories.placeholder": "Search repositories…", "search.repositories.label": "Search repositories",
   "search.runners.placeholder": "Search Runners…", "search.runners.label": "Search Runners",
   "Runner OS": "Runner OS", "Any OS": "Any OS", "dynamic.profile": "{name} profile",
-  "Sparse View": "Sparse View", "View rules": "View rules", "Category": "Category", "dynamic.uncategorized": "Uncategorized", "dynamic.countCategories": "{count} categories", "dynamic.viewSnapshot": "build-time snapshot",
+  "Sparse View": "Sparse View", "View rules": "View rules", "dynamic.noSparseView": "No View", "Category": "Category", "dynamic.uncategorized": "Uncategorized", "dynamic.countCategories": "{count} categories", "dynamic.viewSnapshot": "build-time snapshot",
   "dynamic.openPipeline": "Open {repository} pipeline details", "dynamic.invalidLoreUrl": "Enter a lores:// URL.",
   "dynamic.creating": "Creating…", "unit.second": "{count}s", "unit.minuteSecond": "{minutes}m {seconds}s",
   "dynamic.jobs.one": "{count} job", "dynamic.jobs.other": "{count} jobs",
@@ -81,7 +81,7 @@ Object.assign(I18N.ko, {
   "search.repositories.placeholder": "저장소 검색…", "search.repositories.label": "저장소 검색",
   "search.runners.placeholder": "Runner 검색…", "search.runners.label": "Runner 검색",
   "Runner OS": "Runner 운영체제", "Any OS": "모든 운영체제", "dynamic.profile": "{name} 프로필",
-  "Sparse View": "Sparse View", "View rules": "View 규칙", "Category": "카테고리", "dynamic.uncategorized": "미분류", "dynamic.countCategories": "카테고리 {count}개", "dynamic.viewSnapshot": "빌드 시점 스냅샷",
+  "Sparse View": "Sparse View", "View rules": "View 규칙", "dynamic.noSparseView": "View 없음", "Category": "카테고리", "dynamic.uncategorized": "미분류", "dynamic.countCategories": "카테고리 {count}개", "dynamic.viewSnapshot": "빌드 시점 스냅샷",
   "dynamic.openPipeline": "{repository} 파이프라인 상세 열기", "dynamic.invalidLoreUrl": "lores:// 주소를 입력하세요.",
   "dynamic.creating": "생성 중…", "unit.second": "{count}초", "unit.minuteSecond": "{minutes}분 {seconds}초",
   "Remove Runner": "Runner 등록 해제",
@@ -106,7 +106,7 @@ Object.assign(I18N["zh-CN"], {
   "search.repositories.placeholder": "搜索仓库…", "search.repositories.label": "搜索仓库",
   "search.runners.placeholder": "搜索 Runner…", "search.runners.label": "搜索 Runner",
   "Runner OS": "Runner 操作系统", "Any OS": "任意操作系统", "dynamic.profile": "{name} 的头像",
-  "Sparse View": "稀疏视图", "View rules": "视图规则", "Category": "类别", "dynamic.uncategorized": "未分类", "dynamic.countCategories": "{count} 个类别", "dynamic.viewSnapshot": "构建时快照",
+  "Sparse View": "稀疏视图", "View rules": "视图规则", "dynamic.noSparseView": "无视图", "Category": "类别", "dynamic.uncategorized": "未分类", "dynamic.countCategories": "{count} 个类别", "dynamic.viewSnapshot": "构建时快照",
   "dynamic.openPipeline": "打开 {repository} 流水线详情", "dynamic.invalidLoreUrl": "请输入 lores:// 地址。",
   "dynamic.creating": "正在创建…", "unit.second": "{count}秒", "unit.minuteSecond": "{minutes}分 {seconds}秒",
   "LoreHub runner와 Lore CLI, 설치 도구가 포함된 플랫폼별 패키지입니다.": "各平台安装包包含 LoreHub Runner、Lore CLI 和安装工具。",
@@ -1274,7 +1274,7 @@ function pipelineCell(pipeline) {
   name.append(textNode(`#${pipeline.id.slice(0, 8)}`, "pipeline-id"), document.createTextNode(repositoryName(pipeline.repository_url)));
   if (pipeline.pipeline_name) name.append(document.createTextNode(` / ${pipeline.pipeline_name} · ${pipeline.runner_os}`));
   let source = pipeline.branch ? `${t("Branch")} · ${pipeline.branch}` : t("dynamic.manualRun");
-  if (pipeline.sparse_view_name) source += ` · ${t("Sparse View")} · ${pipeline.sparse_view_name}`;
+  source += ` · ${pipeline.sparse_view_name ? `${t("Sparse View")} · ${pipeline.sparse_view_name}` : t("dynamic.noSparseView")}`;
   td.append(name, textNode(source, "pipeline-repo"));
   return td;
 }
@@ -1510,10 +1510,8 @@ function populateExecutionGraph(graph, pipeline, jobs, snapshot) {
   graph.append(graphNode("folder", t("dynamic.changedFolder"), patterns, pipeline.status, changedCount ? tc("dynamic.matchingPaths", changedCount) : t("dynamic.pathRule")));
   graph.append(graphConnector());
   const sparseView = pipeline.sparse_view_name || snapshot?.sparse_view;
-  if (sparseView) {
-    graph.append(graphNode("view", t("Sparse View"), [sparseView], pipeline.status, t("dynamic.viewSnapshot")));
-    graph.append(graphConnector());
-  }
+  graph.append(graphNode("view", t("Sparse View"), [sparseView || t("dynamic.noSparseView")], pipeline.status, t("dynamic.viewSnapshot")));
+  graph.append(graphConnector());
   graph.append(graphNode("pipeline", t("Pipeline"), [pipeline.pipeline_name], pipeline.status, pipeline.working_directory ? t("dynamic.runsIn", { directory: pipeline.working_directory }) : t("dynamic.repositoryRoot")));
   graph.append(graphConnector());
   const assigned = state.runners.find((runner) => runner.id === pipeline.worker_id);
@@ -1605,7 +1603,7 @@ function renderDetailSummary(pipeline, sparseViewRules) {
   if (pipeline.branch) values.splice(2, 0, [t("Branch"), pipeline.branch]);
   if (pipeline.category) values.push([t("Category"), pipelineCategory(pipeline)]);
   if (pipeline.pipeline_name) values.push([t("Pipeline"), pipeline.pipeline_name], [t("Runner OS"), osLabel(pipeline.runner_os)]);
-  if (pipeline.sparse_view_name) values.push([t("Sparse View"), pipeline.sparse_view_name]);
+  values.push([t("Sparse View"), pipeline.sparse_view_name || t("dynamic.noSparseView")]);
   for (const [label, value] of values) {
     const item = document.createElement("div"); item.className = "summary-item";
     const title = document.createElement("span"); title.textContent = label;

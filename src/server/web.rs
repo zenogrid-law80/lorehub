@@ -14,7 +14,7 @@ const LINUX_RUNNER: &[u8] =
 const LINUX_RUNNER: &[u8] = &[];
 #[cfg(feature = "embedded-runner-installers")]
 const WINDOWS_RUNNER: &[u8] =
-    include_bytes!("../../deploy/downloads/lorehub-runner-windows-x86_64-v0.2.13.msi");
+    include_bytes!("../../deploy/downloads/lorehub-runner-windows-x86_64-v0.2.17.msi");
 #[cfg(not(feature = "embedded-runner-installers"))]
 const WINDOWS_RUNNER: &[u8] = &[];
 #[cfg(feature = "embedded-runner-installers")]
@@ -57,7 +57,7 @@ pub async fn windows_runner() -> Response {
     download(
         WINDOWS_RUNNER,
         "application/x-msi",
-        "lorehub-runner-windows-x86_64-v0.2.13.msi",
+        "lorehub-runner-windows-x86_64-v0.2.17.msi",
     )
 }
 
@@ -190,7 +190,7 @@ mod tests {
         );
         assert_eq!(
             response.headers()[header::CONTENT_DISPOSITION],
-            "attachment; filename=\"lorehub-runner-windows-x86_64-v0.2.13.msi\""
+            "attachment; filename=\"lorehub-runner-windows-x86_64-v0.2.17.msi\""
         );
 
         let response = macos_runner().await;

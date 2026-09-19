@@ -538,6 +538,14 @@ pub(crate) async fn sparse_view_snapshot(
     .bind(requested_name)
     .fetch_all(&mut **tx)
     .await?;
+    if views.is_empty() {
+        tracing::warn!(
+            resource = resource_id,
+            view = requested_name,
+            "pipeline sparse view was not found; continuing without a view"
+        );
+        return Ok((None, None));
+    }
     ensure!(
         views.len() == 1,
         "sparse view {requested_name} must resolve to exactly one view for this repository"
