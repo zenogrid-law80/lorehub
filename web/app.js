@@ -383,7 +383,7 @@ function bindEvents() {
   elements["runner-table-body"].addEventListener("click", runnerAction);
   document.querySelectorAll(".nav-item[data-section]").forEach((link) => link.addEventListener("click", (event) => {
     event.preventDefault();
-    const section = ["pipelines", "graphs", "repositories", "runners", ...MANAGEMENT_SECTIONS].includes(link.dataset.section) ? link.dataset.section : "overview";
+    const section = availableSections().includes(link.dataset.section) ? link.dataset.section : "overview";
     window.location.hash = section;
     if (window.location.hash.slice(1) === state.section) void showSection(section);
   }));
@@ -420,10 +420,15 @@ async function initialize() {
 
 function sectionFromHash() {
   const section = window.location.hash.slice(1);
-  return ["pipelines", "graphs", "repositories", "runners", ...MANAGEMENT_SECTIONS].includes(section) ? section : "overview";
+  return availableSections().includes(section) ? section : "overview";
+}
+
+function availableSections() {
+  return ["pipelines", "graphs", "repositories", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
 }
 
 async function showSection(section) {
+  if (!availableSections().includes(section)) section = "overview";
   if (state.section !== section && isManagement() && !discardManagement()) {
     history.replaceState(null, "", `#${state.section}`);
     document.getElementById("mobile-page-select").value = state.section;
@@ -484,6 +489,7 @@ function showLogin() {
 }
 
 function renderUser(user) {
+  setManagementVisibility(user.role === "admin");
   const name = user.name || user.email.split("@")[0];
   elements["user-name"].textContent = name;
   elements["user-email"].textContent = user.email;

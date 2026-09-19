@@ -60,6 +60,7 @@ function isManagement() { return MANAGEMENT_SECTIONS.includes(state.section); }
 function initManagement() {
   const nav = document.querySelector(".primary-nav");
   const managementNav = nav.querySelector('[data-nav-group="management"]');
+  managementNav.hidden = true;
   const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];
   MANAGEMENT_SECTIONS.forEach((section, index) => {
     const link = mn("a", "nav-item"); link.href = `#${section}`; link.dataset.section = section;
@@ -77,6 +78,12 @@ function initManagement() {
   mobile.addEventListener("change", () => { window.location.hash = mobile.value; });
   document.querySelector(".page-content").prepend(mobile);
   window.addEventListener("beforeunload", (event) => { if (management.dirty) { event.preventDefault(); event.returnValue = ""; } });
+}
+function setManagementVisibility(visible) {
+  const managementNav = document.querySelector('[data-nav-group="management"]');
+  managementNav.hidden = !visible;
+  const managementOptions = document.querySelectorAll("#mobile-page-select option[value='accounts'], #mobile-page-select option[value='account-groups'], #mobile-page-select option[value='repository-access'], #mobile-page-select option[value='workspace-views']");
+  managementOptions.forEach(option => { option.hidden = !visible; });
 }
 function managementLocale() {
   const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];

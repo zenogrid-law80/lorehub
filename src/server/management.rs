@@ -6,7 +6,9 @@ use super::{
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
@@ -46,6 +48,21 @@ pub(super) fn router() -> Router<AppState> {
             "/api/v1/account-groups/{id}/views/{resource}",
             post(select_view).delete(unselect_view),
         )
+        .route_layer(middleware::from_fn(require_admin))
+}
+
+async fn require_admin(
+    Extension(session): Extension<AuthSession>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, ApiError> {
+    if session.user.role != "admin" {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Administrator access required.".into(),
+        ));
+    }
+    Ok(next.run(request).await)
 }
 
 fn bad(message: &str) -> ApiError {
