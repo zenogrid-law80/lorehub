@@ -18,7 +18,7 @@ const I18N = {
     "status.configured": "Configured", "status.queued": "Queued", "status.running": "Running", "status.succeeded": "Passed", "status.failed": "Failed", "status.canceled": "Canceled", "status.skipped": "Skipped", "status.online": "Online", "status.offline": "Offline"
   },
   ko: {
-    "Language": "언어", "LORE NATIVE DEV PLATFORM": "LORE 네이티브 개발 플랫폼", "ZENOGRID WORKSPACE": "ZENOGRID 워크스페이스", "Overview": "개요", "Pipelines": "파이프라인", "Graphs": "그래프", "Repositories": "저장소", "Runners": "Runner", "Workspace": "워크스페이스", "Internal": "내부", "Coordinator online": "Coordinator 온라인", "Search pipelines…": "파이프라인 검색…", "Total pipelines": "전체 파이프라인", "Succeeded": "성공", "Active": "활성", "Queued + running": "대기 + 실행 중", "Needs attention": "확인 필요", "Failed pipelines": "실패한 파이프라인", "Recent pipelines": "최근 파이프라인", "All": "전체", "Finished": "완료", "Status": "상태", "Pipeline": "파이프라인", "Revision": "Revision", "Created": "생성 시각", "Duration": "소요 시간", "Actions": "작업", "New pipeline": "새 파이프라인", "CI routing": "CI 라우팅", "Pipeline graphs": "파이프라인 그래프", "Routes": "경로", "Folder rules": "폴더 규칙", "Runner targets": "Runner 대상", "Folder routing map": "폴더 라우팅 맵", "Lore server": "Lore 서버", "New repository": "새 저장소", "Current Lore server": "현재 Lore 서버", "CLI access token": "CLI 액세스 토큰", "Online": "온라인", "Repository list": "저장소 목록", "CI infrastructure": "CI 인프라", "Runner 다운로드": "Runner 다운로드", "Total runners": "전체 Runner", "Offline": "오프라인", "Registered runners": "등록된 Runner", "Runner": "Runner", "Operating system": "운영체제", "Architecture": "아키텍처", "Version": "버전", "Last seen": "마지막 연결", "Current job": "현재 작업", "RUN CI": "CI 실행", "Repository URL": "저장소 URL", "Cancel": "취소", "Run pipeline": "파이프라인 실행", "LORE SERVER": "LORE 서버", "Repository name": "저장소 이름", "Description": "설명", "optional": "선택", "Repository purpose": "저장소 용도", "Create repository": "저장소 생성", "DANGER ZONE": "위험 구역", "Delete repository": "저장소 삭제", "CLI AUTHENTICATION": "CLI 인증", "Lore access token": "Lore 액세스 토큰", "Access token": "액세스 토큰", "Copy token": "토큰 복사", "Close": "닫기", "Execution graph": "실행 그래프", "folder routing": "폴더 라우팅", "Jobs": "작업", "Job log": "작업 로그", "live": "실시간", "Cancel pipeline": "파이프라인 취소",
+    "Language": "언어", "LORE NATIVE DEV PLATFORM": "LORE 네이티브 개발 플랫폼", "ZENOGRID WORKSPACE": "ZENOGRID 워크스페이스", "Overview": "개요", "Pipelines": "파이프라인", "Graphs": "그래프", "Repositories": "저장소", "Runners": "Runner", "Workspace": "워크스페이스", "Internal": "내부", "Coordinator online": "Coordinator 온라인", "Search pipelines…": "파이프라인 검색…", "Total pipelines": "전체 파이프라인", "Succeeded": "성공", "Active": "활성", "Queued + running": "대기 + 실행 중", "Needs attention": "확인 필요", "Failed pipelines": "실패한 파이프라인", "Recent pipelines": "최근 파이프라인", "All": "전체", "Finished": "완료", "Status": "상태", "Pipeline": "파이프라인", "Revision": "Revision", "Created": "생성 시각", "Duration": "소요 시간", "Actions": "작업", "New pipeline": "새 파이프라인", "CI routing": "CI 라우팅", "Pipeline graphs": "파이프라인 그래프", "Routes": "경로", "Folder rules": "폴더 규칙", "Runner targets": "Runner 대상", "Folder routing map": "폴더 라우팅 맵", "Lore server": "Lore 서버", "New repository": "새 저장소", "Current Lore server": "현재 Lore 서버", "CLI access token": "CLI 액세스 토큰", "Online": "온라인", "Repository list": "저장소 목록", "CI infrastructure": "CI 인프라", "Runner 다운로드": "Runner 다운로드", "Total runners": "전체 Runner", "Offline": "오프라인", "Registered runners": "등록된 Runner", "Runner": "Runner", "Operating system": "운영체제", "Architecture": "아키텍처", "Version": "버전", "Last seen": "마지막 연결", "Current job": "현재 작업", "RUN CI": "CI 실행", "Repository URL": "저장소 URL", "Cancel": "취소", "Run pipeline": "파이프라인 실행", "LORE SERVER": "LORE 서버", "Repository name": "저장소 이름", "Storage Backend": "Storage Backend", "DynamoDB + S3": "DynamoDB + S3", "Local File": "Local File", "Description": "설명", "optional": "선택", "Repository purpose": "저장소 용도", "Create repository": "저장소 생성", "DANGER ZONE": "위험 구역", "Delete repository": "저장소 삭제", "CLI AUTHENTICATION": "CLI 인증", "Lore access token": "Lore 액세스 토큰", "Access token": "액세스 토큰", "Copy token": "토큰 복사", "Close": "닫기", "Execution graph": "실행 그래프", "folder routing": "폴더 라우팅", "Jobs": "작업", "Job log": "작업 로그", "live": "실시간", "Cancel pipeline": "파이프라인 취소",
     "dynamic.errorUser": "로그인 정보를 불러오지 못했습니다.", "dynamic.sessionExpired": "세션이 만료되었습니다.", "dynamic.requestFailed": "요청에 실패했습니다 ({status}).", "dynamic.updated": "방금 업데이트 · {time}", "dynamic.refreshPipelines": "파이프라인을 새로고침했습니다.", "dynamic.refreshRepositories": "저장소를 새로고침했습니다.", "dynamic.refreshRunners": "Runner 상태를 새로고침했습니다.", "dynamic.refreshGraphs": "파이프라인 그래프를 새로고침했습니다.", "dynamic.beforeRun": "{branch} · 실행 전", "dynamic.viewRun": "실행 보기", "dynamic.noRuns": "실행 이력 없음", "dynamic.idle": "대기", "dynamic.copyUrl": "URL 복사", "dynamic.runPipeline": "파이프라인 실행", "dynamic.delete": "삭제", "dynamic.urlCopied": "저장소 URL을 복사했습니다.", "dynamic.copyFailed": "클립보드에 복사하지 못했습니다.", "dynamic.repositoryCreated": "저장소를 생성했습니다.", "dynamic.repositoryDeleted": "저장소를 삭제했습니다.", "dynamic.nameMismatch": "저장소 이름이 일치해야 합니다.", "dynamic.tokenCopied": "Lore 액세스 토큰을 복사했습니다.", "dynamic.pipelineQueued": "새 파이프라인을 큐에 추가했습니다.", "dynamic.starting": "시작 중…", "dynamic.loading": "불러오는 중…", "dynamic.loadingLogs": "로그를 불러오는 중…", "dynamic.workerPreparing": "Worker가 작업 구성을 준비하고 있습니다.", "dynamic.noLogs": "아직 출력된 로그가 없습니다.", "dynamic.cancelRequested": "파이프라인 취소를 요청했습니다.",
     "dynamic.successRate": "성공률 {rate}", "dynamic.successRateEmpty": "성공률 —", "dynamic.countPipelines": "파이프라인 {count}개", "dynamic.countFilteredPipelines": "파이프라인 {shown} / {total}개", "dynamic.countRoutes": "경로 {count}개", "dynamic.countFilteredRoutes": "경로 {shown} / {total}개", "dynamic.countRepositories": "저장소 {count}개", "dynamic.countFilteredRepositories": "저장소 {shown} / {total}개", "dynamic.countRunners": "Runner {count}개", "dynamic.countFilteredRunners": "Runner {shown} / {total}개", "dynamic.pipelineTitle": "파이프라인 #{id}", "dynamic.jobs": "작업 {count}개", "dynamic.matchingPaths": "일치 경로 {count}개", "dynamic.pathRule": "경로 규칙", "dynamic.changedFolder": "변경 폴더", "dynamic.runsIn": "{directory}에서 실행", "dynamic.repositoryRoot": "저장소 루트", "dynamic.assigned": "{os} · 배정됨", "dynamic.target": "{os} 대상", "dynamic.waiting": "{os} 대기 중", "dynamic.stage": "단계 · {status}", "dynamic.graphAria": "{patterns} 변경이 {pipeline} 파이프라인과 {os} Runner를 거쳐 {stages} 단계를 실행합니다.", "dynamic.greetingMorning": "좋은 아침입니다, {name}님.", "dynamic.greetingAfternoon": "안녕하세요, {name}님.", "dynamic.greetingEvening": "좋은 저녁입니다, {name}님.", "dynamic.detail": "상세 보기",
     "status.configured": "설정됨", "status.queued": "대기 중", "status.running": "실행 중", "status.succeeded": "성공", "status.failed": "실패", "status.canceled": "취소됨", "status.skipped": "건너뜀", "status.online": "온라인", "status.offline": "오프라인"
@@ -169,6 +169,7 @@ const state = {
   graphExpandedBranches: new Set(),
   graphExpandedCategories: new Set(),
   repositoryServerUrl: "",
+  repositoryStorageBackends: ["dynamodb_s3"],
   section: "overview",
   repositoryToDelete: null,
   repositoryBranchesName: null,
@@ -543,14 +544,17 @@ async function loadRepositories(notify) {
     const payload = await api("/api/v1/repositories");
     state.repositories = payload.repositories;
     state.repositoryServerUrl = payload.server_url;
+    state.repositoryStorageBackends = payload.storage_backends ?? ["dynamodb_s3"];
     elements["repository-server-url"].textContent = payload.server_url;
-    renderRepositories();
     state.updatedAt.repositories = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshRepositories"), "success");
   } catch (error) {
     toast(error.message, "error");
   } finally {
+    // Replace the initial loading indicator even when the repository request fails.
+    // Keep any previously loaded repositories visible while showing the error toast.
+    renderRepositories();
     elements["refresh-button"].disabled = false;
   }
 }
@@ -978,9 +982,18 @@ function renderRepositories() {
     heading.className = "repository-card-heading";
     const name = document.createElement("strong"); name.textContent = repository.name;
     const id = document.createElement("span"); id.textContent = `ID ${repository.id.slice(0, 12)}`;
-    heading.append(name, id);
+    heading.append(name);
+    const meta = document.createElement("div");
+    meta.className = "repository-card-meta";
+    const storageBackend = repository.storage_backend === "local_file" ? "local_file" : "dynamodb_s3";
+    const storageBadge = document.createElement("span");
+    storageBadge.className = `repository-storage-badge repository-storage-badge--${storageBackend}`;
+    storageBadge.textContent = t(storageBackend === "local_file" ? "Local File" : "DynamoDB + S3");
+    storageBadge.title = `${t("Storage Backend")}: ${storageBadge.textContent}`;
+    storageBadge.setAttribute("aria-label", `${t("Storage Backend")}: ${storageBadge.textContent}`);
+    meta.append(id, storageBadge);
     const url = document.createElement("code"); url.textContent = repository.url;
-    content.append(heading, url);
+    content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
     actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
@@ -1076,6 +1089,14 @@ async function saveRepositoryPipelineBranches(event) {
 
 function openNewRepository() {
   elements["repository-form"].reset();
+  for (const input of document.querySelectorAll('input[name="storage_backend"]')) {
+    const available = state.repositoryStorageBackends.includes(input.value);
+    input.disabled = !available;
+    input.closest(".storage-backend-option").setAttribute("aria-disabled", String(!available));
+  }
+  const selected = document.querySelector('input[name="storage_backend"]:checked:not(:disabled)')
+    ?? document.querySelector('input[name="storage_backend"]:not(:disabled)');
+  if (selected) selected.checked = true;
   elements["new-repository-dialog"].showModal();
   window.setTimeout(() => elements["repository-name"].focus(), 0);
 }
@@ -1088,10 +1109,11 @@ async function createRepository(event) {
   button.querySelector(".button-spinner").hidden = false;
   try {
     const description = elements["repository-description"].value.trim();
+    const storageBackend = document.querySelector('input[name="storage_backend"]:checked')?.value ?? "dynamodb_s3";
     await api("/api/v1/repositories", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({ name: elements["repository-name"].value.trim(), description: description || null }),
+      body: JSON.stringify({ name: elements["repository-name"].value.trim(), description: description || null, storage_backend: storageBackend }),
     });
     elements["new-repository-dialog"].close();
     toast(t("dynamic.repositoryCreated"), "success");
@@ -1285,6 +1307,7 @@ async function openNewPipeline(repositoryUrl = "") {
       const payload = await api("/api/v1/repositories");
       state.repositories = payload.repositories;
       state.repositoryServerUrl = payload.server_url;
+      state.repositoryStorageBackends = payload.storage_backends ?? ["dynamodb_s3"];
     }
     elements["repository-url"].replaceChildren();
     if (!state.repositories.length) {

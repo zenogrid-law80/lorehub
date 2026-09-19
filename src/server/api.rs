@@ -19,7 +19,10 @@ use super::{
     auth::{self, AuthService, AuthSession, User},
     management,
     releases::RunnerReleases,
-    repositories::{Branch, CommandError as RepositoryCommandError, Repository, RepositoryService},
+    repositories::{
+        Branch, CommandError as RepositoryCommandError, Repository, RepositoryService,
+        StorageBackend,
+    },
     tokens::{IssuedToken, TokenIssuer},
     triggers, web,
 };
@@ -627,6 +630,7 @@ fn repository_creation_token(state: &AppState, session: &AuthSession) -> Result<
 #[derive(Serialize)]
 struct RepositoryList {
     server_url: String,
+    storage_backends: Vec<StorageBackend>,
     repositories: Vec<Repository>,
 }
 
@@ -638,6 +642,7 @@ async fn list_repositories(
     let repositories = state.repositories.list(&access_token).await?;
     Ok(Json(RepositoryList {
         server_url: state.repositories.public_server_url().to_owned(),
+        storage_backends: state.repositories.available_storage_backends(),
         repositories,
     }))
 }
@@ -646,6 +651,8 @@ async fn list_repositories(
 struct CreateRepository {
     name: String,
     description: Option<String>,
+    #[serde(default)]
+    storage_backend: StorageBackend,
 }
 
 async fn create_repository(
@@ -656,7 +663,18 @@ async fn create_repository(
     let access_token = repository_creation_token(&state, &session)?;
     let repository = state
         .repositories
-        .create(&input.name, input.description.as_deref(), &access_token)
+        .create(
+            &input.name,
+            input.description.as_deref(),
+            input.storage_backend,
+            &access_token,
+        )
+        .await?;
+    sqlx::query("UPDATE lore_resources SET storage_backend=$1 WHERE resource_id=$2 OR name=$3")
+        .bind(input.storage_backend.as_str())
+        .bind(&repository.id)
+        .bind(&repository.name)
+        .execute(&state.pool)
         .await?;
     Ok((StatusCode::CREATED, Json(repository)))
 }
@@ -667,7 +685,14 @@ async fn delete_repository(
     Path(name): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let access_token = user_access_token(&state, &session).await?;
-    state.repositories.delete(&name, &access_token).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    state
+        .repositories
+        .delete_on(&name, backend, &access_token)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -678,8 +703,15 @@ async fn list_repository_branches(
 ) -> Result<Json<Vec<Branch>>, ApiError> {
     require_repository_access(&state.pool, &name, &session).await?;
     let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
     Ok(Json(
-        state.repositories.branches(&name, &access_token).await?,
+        state
+            .repositories
+            .branches_on(&name, backend, &access_token)
+            .await?,
     ))
 }
 
@@ -719,9 +751,13 @@ async fn list_repository_pipelines(
         return Ok(Json(routes));
     }
     let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
     let config = state
         .repositories
-        .pipeline_file(&name, &query.revision, &access_token)
+        .pipeline_file_on(&name, &query.revision, backend, &access_token)
         .await?
         .ok_or_else(|| {
             ApiError(
@@ -784,7 +820,14 @@ async fn repository_pipeline_branches(
 ) -> Result<Json<RepositoryPipelineBranches>, ApiError> {
     let resource_id = require_repository_access(&state.pool, &name, &session).await?;
     let access_token = user_access_token(&state, &session).await?;
-    let branches = state.repositories.branches(&name, &access_token).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let branches = state
+        .repositories
+        .branches_on(&name, backend, &access_token)
+        .await?;
     let stored: Option<Vec<String>> = sqlx::query_scalar(
         "SELECT branches FROM ci_repository_pipeline_branches WHERE resource_id=$1",
     )
@@ -828,7 +871,14 @@ async fn update_repository_pipeline_branches(
         ));
     }
     let access_token = user_access_token(&state, &session).await?;
-    let remote_branches = state.repositories.branches(&name, &access_token).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let remote_branches = state
+        .repositories
+        .branches_on(&name, backend, &access_token)
+        .await?;
     input.branches = canonical_branch_names(input.branches, &remote_branches);
     if input.branches.iter().any(|selected| {
         !remote_branches
@@ -905,13 +955,18 @@ async fn submit(
         .ok()
         .and_then(|url| url.path_segments()?.next_back().map(str::to_owned))
         .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "invalid repository URL".into()))?;
-    let expected_repository_url = state.repositories.public_repository_url(&repository_name);
-    if input.repository_url != expected_repository_url {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            "repository_url must match the configured Lore server".into(),
-        ));
-    }
+    let storage_backend = state
+        .repositories
+        .storage_backend_for_public_url(&repository_name, &input.repository_url)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "repository_url must match a configured Lore server".into(),
+            )
+        })?;
+    let expected_repository_url = state
+        .repositories
+        .public_repository_url_for(storage_backend, &repository_name)?;
     let resource_id = require_repository_access(&state.pool, &repository_name, &session).await?;
     let needs_access_token = input.branch.is_some() || input.pipeline_name.is_some();
     let access_token = if needs_access_token {
@@ -922,8 +977,9 @@ async fn submit(
     if let Some(branch) = input.branch.as_deref() {
         let branches = state
             .repositories
-            .branches(
+            .branches_on(
                 &repository_name,
+                storage_backend,
                 access_token.as_deref().unwrap_or_default(),
             )
             .await?;
@@ -942,9 +998,10 @@ async fn submit(
     if let Some(pipeline_name) = input.pipeline_name.as_deref() {
         let config = state
             .repositories
-            .pipeline_file(
+            .pipeline_file_on(
                 &repository_name,
                 &input.revision,
+                storage_backend,
                 access_token.as_deref().unwrap_or_default(),
             )
             .await?

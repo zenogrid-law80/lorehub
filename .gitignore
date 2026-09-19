@@ -7,3 +7,5 @@
 /deploy/runner-releases/lorehub-runner-*
 /.runner-macos/
 /.coordinator-macos/
+/.codegraph
+.DS_Store

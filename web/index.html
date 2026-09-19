@@ -417,6 +417,13 @@
         </div>
         <p class="modal-intro">현재 서버에 새로운 Lore repository를 생성합니다.</p>
         <label class="field"><span>Repository name</span><input id="repository-name" name="name" type="text" required minlength="1" maxlength="100" pattern="[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?" spellcheck="false" autocomplete="off" placeholder="project-name"><small>영문자·숫자로 시작하고 끝나며 점, 대시, 밑줄 사용 가능</small></label>
+        <fieldset class="field storage-backend-field">
+          <legend>Storage Backend</legend>
+          <div class="storage-backend-options" role="radiogroup" aria-label="Storage Backend">
+            <label class="storage-backend-option"><input type="radio" name="storage_backend" value="dynamodb_s3" checked><span class="storage-backend-radio" aria-hidden="true"></span><span>DynamoDB + S3</span></label>
+            <label class="storage-backend-option"><input type="radio" name="storage_backend" value="local_file"><span class="storage-backend-radio" aria-hidden="true"></span><span>Local File</span></label>
+          </div>
+        </fieldset>
         <label class="field"><span>Description <em>optional</em></span><input id="repository-description" name="description" type="text" maxlength="500" placeholder="Repository purpose"></label>
         <div class="modal-actions"><button class="button button--ghost repository-modal-cancel" type="button">Cancel</button><button id="create-repository-button" class="button button--primary" type="submit"><span>Create repository</span><span class="button-spinner" hidden></span></button></div>
       </form>

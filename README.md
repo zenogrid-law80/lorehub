@@ -130,14 +130,15 @@ Docker runner에서 호스트 coordinator를 사용할 때 `LOREHUB_PUBLIC_URL`�
 
 ## Lore repository server
 
-Compose의 `repository` profile은 공식 Lore 소스의 `lore-server/Dockerfile`로 `loreserver` 이미지를 빌드합니다. 기본 소스 경로는 LoreHub 옆의 `../lore`이며 `LORE_SOURCE_DIR`로 변경할 수 있습니다. 데이터는 `lore_data` volume에 보존되고 QUIC은 LoreHub의 Let’s Encrypt 인증서를 사용합니다.
+Compose의 `repository` profile은 공식 Lore 소스의 `lore-server/Dockerfile`로 `loreserver` 이미지를 빌드합니다. 기본 소스 경로는 LoreHub 옆의 `../lore`이며 `LORE_SOURCE_DIR`로 변경할 수 있습니다. `lore-server`는 DynamoDB + S3 backend를, `lore-server-local`은 `lore_data` volume의 Local File backend를 사용하며 두 서버 모두 LoreHub의 Let’s Encrypt 인증서를 사용합니다.
 
 ```bash
-docker compose --profile repository up -d --build lore-server
+docker compose --profile repository up -d --build lore-server lore-server-local
 curl -i http://127.0.0.1:41339/health_check
+curl -i http://127.0.0.1:41340/health_check
 ```
 
-repository 주소는 `lores://127.0.0.1:41337/<repository>`입니다. Coordinator의 관리 API는 `LORE_SERVER_URL`에 지정한 서버를 `LORE_BIN` CLI로 관리합니다. 운영 화면에 공개 주소를 표시하려면 `LORE_SERVER_URL=lores://lorehub.zenogrid.co.kr:41337`처럼 설정합니다. `41337/TCP`와 `41337/UDP`는 기본적으로 loopback에만 공개됩니다. 신뢰할 수 있는 사내망 클라이언트가 직접 접속해야 할 때만 `.env`의 `LORE_SERVER_BIND_IP`를 서버의 사설 IP로 지정하고 컨테이너를 다시 생성합니다.
+repository 주소는 DynamoDB + S3가 `lores://127.0.0.1:41337/<repository>`, Local File이 `lores://127.0.0.1:41338/<repository>`입니다. Coordinator에는 각각 `LORE_SERVER_URL`/`LORE_SERVER_PUBLIC_URL`과 `LORE_LOCAL_SERVER_URL`/`LORE_LOCAL_SERVER_PUBLIC_URL`로 설정합니다. 예를 들어 운영 공개 주소는 `lores://lorehub.zenogrid.co.kr:41337`과 `lores://lorehub.zenogrid.co.kr:41338`입니다. Local File 선택을 활성화하려면 `LORE_LOCAL_SERVER_URL`을 반드시 설정해야 합니다. `41337`과 `41338`의 TCP/UDP는 기본적으로 loopback에만 공개됩니다. 신뢰할 수 있는 사내망 클라이언트가 직접 접속해야 할 때만 `.env`의 `LORE_SERVER_BIND_IP`를 서버의 사설 IP로 지정하고 컨테이너를 다시 생성합니다.
 
 Apple Silicon에서는 공식 배포 지침에 따라 `linux/amd64` 이미지를 사용합니다. 네이티브 Linux ARM 서버에서 Graviton3 호환 빌드를 사용하는 경우에만 `LORE_SERVER_PLATFORM`을 `linux/arm64`로 변경하세요.
 
@@ -353,10 +354,17 @@ DATABASE_URL=postgres://lorehub:lorehub@127.0.0.1:5432/lorehub \
 `deploy/`의 systemd unit 예제를 사용할 수 있습니다. API coordinator 바이너리는 `/usr/local/bin/lorehub`에 설치하고, Runner 바이너리는 아래 설치 스크립트로 전용 state 디렉터리에 배치합니다. `lorehub` OS 계정과 `/etc/lorehub/environment` 환경 파일을 준비하고 워커 unit의 PATH를 설치된 빌드 도구 위치에 맞게 조정하세요. 환경 파일은 해당 서비스 관리자만 읽을 수 있게 설정합니다.
 
 Coordinator를 재시작할 때는 배포 환경에 맞는 서비스 관리자를 자동 감지하는 스크립트를 사용할 수 있습니다.
+스크립트는 재시작 전에 `cargo build --locked --release`를 실행하며, Linux systemd 환경에서는 새 coordinator 바이너리를 `/usr/local/bin/lorehub`에 설치합니다.
 
 ```bash
 sudo sh deploy/restart-lorehub.sh       # API coordinator
 sudo sh deploy/restart-lorehub.sh all   # API + 실행 중인 systemd worker
+```
+
+PostgreSQL, 두 Lore storage backend, TLS proxy, Compose Runner와 coordinator를 모두 빌드하고 시작하려면 전체 재시작 스크립트를 사용합니다. 인증서 최초 발급용 일회성 `certbot` 서비스는 포함하지 않고 자동 갱신 서비스만 시작합니다.
+
+```bash
+sh deploy/restart-all.sh
 ```
 
 Linux에서는 `lorehub-api.service`와 실행 중인 `lorehub-worker@*.service`를 재시작하고, macOS에서는 `co.kr.zenogrid.lorehub.coordinator` LaunchDaemon을 kickstart합니다. LaunchDaemon을 설치하지 않고 `target/release/lorehub serve`를 직접 실행한 macOS 개발 환경도 기존 프로세스를 찾아 `deploy/macos/run-coordinator.sh`로 재시작합니다. macOS Runner LaunchDaemon은 별도로 관리합니다.

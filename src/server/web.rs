@@ -134,6 +134,9 @@ mod tests {
         assert!(INDEX.contains("id=\"pipeline-branch-filter\""));
         assert!(INDEX.contains("id=\"pipeline-name-filter\""));
         assert!(INDEX.contains("id=\"pipeline-name\""));
+        assert!(INDEX.contains("Storage Backend"));
+        assert!(INDEX.contains("value=\"dynamodb_s3\""));
+        assert!(INDEX.contains("value=\"local_file\""));
         assert!(SCRIPT.contains("updatePipelineFilterOptions"));
         assert!(INDEX.contains("Execution graphs"));
         let workspace_group = INDEX.find("data-nav-group=\"workspace\"").unwrap();

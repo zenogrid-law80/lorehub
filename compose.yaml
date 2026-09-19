@@ -25,9 +25,10 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      DATABASE_URL: postgres://lorehub:lorehub@postgres:5432/lorehub
       LOREHUB_RUNNER_NAME: ${LOREHUB_RUNNER_NAME:-compose-linux-runner-01}
       LOREHUB_PUBLIC_URL: ${LOREHUB_PUBLIC_URL:-https://lorehub.zenogrid.co.kr}
-      LOREHUB_COORDINATOR_URL: ${LOREHUB_COORDINATOR_URL:-http://host.docker.internal:8080}
+      LOREHUB_COORDINATOR_URL: ${LOREHUB_COORDINATOR_URL:-https://lorehub.zenogrid.co.kr}
       LORE_BIN: /usr/local/bin/lore
       LOREHUB_WORK_DIR: /var/lib/lorehub/work
       # Container runners are updated by rebuilding the image.
@@ -38,6 +39,9 @@ services:
       ECR_ACCESS_KEY_ID: ${ECR_ACCESS_KEY_ID:-}
       ECR_ACCESS_KEY: ${ECR_ACCESS_KEY:-}
       ECR_REGION: ${ECR_REGION:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -167,6 +171,26 @@ services:
       - "127.0.0.1:41339:41339/tcp"
     volumes:
       - ./deploy/lore-server.toml:/etc/lore/config/local.toml:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    security_opt:
+      - no-new-privileges:true
+
+  lore-server-local:
+    image: lore-server:local
+    platform: ${LORE_SERVER_PLATFORM:-linux/amd64}
+    profiles: ["repository"]
+    build:
+      context: ${LORE_SOURCE_DIR:-../lore}
+      dockerfile: lore-server/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 35s
+    ports:
+      - "${LORE_SERVER_BIND_IP:-127.0.0.1}:41338:41337/tcp"
+      - "${LORE_SERVER_BIND_IP:-127.0.0.1}:41338:41337/udp"
+      - "127.0.0.1:41340:41339/tcp"
+    volumes:
+      - ./deploy/lore-server-local.toml:/etc/lore/config/local.toml:ro
+      - lore_data:/var/lib/lore
       - letsencrypt:/etc/letsencrypt:ro
     security_opt:
       - no-new-privileges:true

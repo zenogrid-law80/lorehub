@@ -11,5 +11,9 @@ set -a
 source "$project_dir/.env"
 set +a
 
+if [[ -n "${LOREHUB_DATABASE_URL_OVERRIDE:-}" ]]; then
+  export DATABASE_URL="$LOREHUB_DATABASE_URL_OVERRIDE"
+fi
+
 mkdir -p "$data_dir"
 exec "$project_dir/target/release/lorehub" serve

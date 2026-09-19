@@ -23,6 +23,8 @@ pub struct ServeConfig {
     pub lore_bin: String,
     pub lore_server_url: String,
     pub lore_server_public_url: Option<String>,
+    pub lore_local_server_url: Option<String>,
+    pub lore_local_server_public_url: Option<String>,
     pub lore_jwt_private_key: std::path::PathBuf,
     pub lore_jwt_jwks: std::path::PathBuf,
     pub runner_releases_dir: std::path::PathBuf,
@@ -54,18 +56,24 @@ pub async fn serve(
         .as_deref()
         .unwrap_or(&config.lore_server_url)
         .to_owned();
-    let repositories = repositories::RepositoryService::new(
+    let mut repositories = repositories::RepositoryService::new(
         config.lore_bin.clone(),
         &config.lore_server_url,
         &public_server_url,
     )?;
+    if let Some(local_server_url) = config.lore_local_server_url.as_deref() {
+        let local_public_url = config
+            .lore_local_server_public_url
+            .as_deref()
+            .unwrap_or(local_server_url);
+        repositories = repositories.with_local_backend(local_server_url, local_public_url)?;
+    }
     let runner_releases = releases::RunnerReleases::load(&config.runner_releases_dir)?;
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     let triggers = tokio::spawn(triggers::run(
         pool.clone(),
         config.lore_bin,
-        config.lore_server_url,
-        public_server_url,
+        repositories.clone(),
         tokens.clone(),
         shutdown.clone(),
     ));

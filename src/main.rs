@@ -48,6 +48,10 @@ enum Action {
         lore_server_url: String,
         #[arg(long, env = "LORE_SERVER_PUBLIC_URL")]
         lore_server_public_url: Option<String>,
+        #[arg(long, env = "LORE_LOCAL_SERVER_URL")]
+        lore_local_server_url: Option<String>,
+        #[arg(long, env = "LORE_LOCAL_SERVER_PUBLIC_URL")]
+        lore_local_server_public_url: Option<String>,
         #[arg(
             long,
             env = "LORE_JWT_PRIVATE_KEY",
@@ -145,6 +149,8 @@ async fn main() -> Result<()> {
             lore_bin,
             lore_server_url,
             lore_server_public_url,
+            lore_local_server_url,
+            lore_local_server_public_url,
             lore_jwt_private_key,
             lore_jwt_jwks,
             runner_releases_dir,
@@ -160,6 +166,8 @@ async fn main() -> Result<()> {
                     lore_bin,
                     lore_server_url,
                     lore_server_public_url,
+                    lore_local_server_url,
+                    lore_local_server_public_url,
                     lore_jwt_private_key,
                     lore_jwt_jwks,
                     runner_releases_dir,

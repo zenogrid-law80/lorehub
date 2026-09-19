@@ -16,7 +16,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use super::{repositories::validate_name, tokens::TokenIssuer};
+use super::{
+    repositories::{RepositoryService, StorageBackend, validate_name},
+    tokens::TokenIssuer,
+};
 use crate::ci::config::{NamedPipeline, PipelineFile, valid_relative_path};
 
 #[derive(Clone, Debug, sqlx::FromRow)]
@@ -25,14 +28,16 @@ struct WatchedRepository {
     name: String,
     owner_subject: String,
     enabled_branches: Vec<String>,
+    storage_backend: String,
 }
 
 fn repository_key(repository: &WatchedRepository) -> String {
     format!(
-        "{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}",
         repository.resource_id,
         repository.name,
         repository.owner_subject,
+        repository.storage_backend,
         repository.enabled_branches.join("\u{1f}")
     )
 }
@@ -41,8 +46,7 @@ fn repository_key(repository: &WatchedRepository) -> String {
 pub async fn run(
     pool: PgPool,
     binary: String,
-    server_url: String,
-    public_server_url: String,
+    repository_service: RepositoryService,
     tokens: TokenIssuer,
     shutdown: CancellationToken,
 ) {
@@ -55,7 +59,7 @@ pub async fn run(
             _ = interval.tick() => {}
         }
         let repositories = match sqlx::query_as::<_, WatchedRepository>(
-            "SELECT resource.resource_id, resource.name, resource.owner_subject, COALESCE(settings.branches, ARRAY['main']::TEXT[]) AS enabled_branches FROM lore_resources resource LEFT JOIN ci_repository_pipeline_branches settings USING(resource_id) WHERE resource.owner_subject IS NOT NULL"
+            "SELECT resource.resource_id, resource.name, resource.owner_subject, resource.storage_backend, COALESCE(settings.branches, ARRAY['main']::TEXT[]) AS enabled_branches FROM lore_resources resource LEFT JOIN ci_repository_pipeline_branches settings USING(resource_id) WHERE resource.owner_subject IS NOT NULL"
         ).fetch_all(&pool).await {
             Ok(repositories) => repositories,
             Err(error) => { tracing::warn!(%error, "cannot list push trigger repositories"); continue; }
@@ -80,12 +84,30 @@ pub async fn run(
             }
             let pool = pool.clone();
             let binary = binary.clone();
-            let url = format!("{}/{}", server_url.trim_end_matches('/'), repository.name);
-            let public_url = format!(
-                "{}/{}",
-                public_server_url.trim_end_matches('/'),
-                repository.name
-            );
+            let backend = match StorageBackend::parse(&repository.storage_backend) {
+                Ok(backend) => backend,
+                Err(error) => {
+                    tracing::warn!(repository = %repository.name, message = %error.message, "invalid repository storage backend");
+                    continue;
+                }
+            };
+            let url = match repository_service.command_repository_url_for(backend, &repository.name)
+            {
+                Ok(url) => url,
+                Err(error) => {
+                    tracing::warn!(repository = %repository.name, message = %error.message, "repository storage backend unavailable");
+                    continue;
+                }
+            };
+            let public_url = match repository_service
+                .public_repository_url_for(backend, &repository.name)
+            {
+                Ok(url) => url,
+                Err(error) => {
+                    tracing::warn!(repository = %repository.name, message = %error.message, "repository storage backend unavailable");
+                    continue;
+                }
+            };
             let tokens = tokens.clone();
             let stop = shutdown.clone();
             tasks.insert(key, tokio::spawn(async move {
@@ -675,6 +697,7 @@ mod tests {
             name: "example".into(),
             owner_subject: owner.to_string(),
             enabled_branches: vec!["main-id".into()],
+            storage_backend: "dynamodb_s3".into(),
         };
         sqlx::query("INSERT INTO ci_repository_pipeline_branches(resource_id,branches) VALUES ('test-resource',ARRAY['main-id'])")
             .execute(&pool).await.unwrap();

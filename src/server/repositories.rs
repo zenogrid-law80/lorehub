@@ -1,7 +1,7 @@
 use std::{ffi::OsString, process::Stdio, time::Duration};
 
 use anyhow::{Context, Result, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::io::AsyncReadExt;
@@ -15,8 +15,42 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct RepositoryService {
     binary: OsString,
+    dynamodb_s3: RepositoryEndpoint,
+    local_file: Option<RepositoryEndpoint>,
+}
+
+#[derive(Clone)]
+struct RepositoryEndpoint {
     server_url: String,
     public_server_url: String,
+}
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StorageBackend {
+    #[default]
+    #[serde(rename = "dynamodb_s3")]
+    DynamoDbS3,
+    #[serde(rename = "local_file")]
+    LocalFile,
+}
+
+impl StorageBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DynamoDbS3 => "dynamodb_s3",
+            Self::LocalFile => "local_file",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "dynamodb_s3" => Ok(Self::DynamoDbS3),
+            "local_file" => Ok(Self::LocalFile),
+            _ => Err(CommandError {
+                message: format!("unknown repository storage backend '{value}'"),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -24,6 +58,7 @@ pub struct Repository {
     pub id: String,
     pub name: String,
     pub url: String,
+    pub storage_backend: StorageBackend,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -72,36 +107,123 @@ impl RepositoryService {
         ensure!(public.scheme() == "lores", "public Lore URL must use lores");
         Ok(Self {
             binary: binary.into(),
-            server_url,
-            public_server_url,
+            dynamodb_s3: RepositoryEndpoint {
+                server_url,
+                public_server_url,
+            },
+            local_file: None,
         })
     }
 
+    pub fn with_local_backend(mut self, server_url: &str, public_server_url: &str) -> Result<Self> {
+        let local = Self::new(self.binary.clone(), server_url, public_server_url)?;
+        self.local_file = Some(local.dynamodb_s3);
+        Ok(self)
+    }
+
     pub fn public_server_url(&self) -> &str {
-        &self.public_server_url
+        &self.dynamodb_s3.public_server_url
+    }
+
+    pub fn available_storage_backends(&self) -> Vec<StorageBackend> {
+        self.endpoints().map(|(backend, _)| backend).collect()
     }
 
     pub fn public_repository_url(&self, name: &str) -> String {
-        format!("{}/{}", self.public_server_url, name)
+        self.public_repository_url_for(StorageBackend::DynamoDbS3, name)
+            .expect("primary repository backend is always configured")
+    }
+
+    pub fn public_repository_url_for(
+        &self,
+        backend: StorageBackend,
+        name: &str,
+    ) -> Result<String, CommandError> {
+        Ok(format!(
+            "{}/{}",
+            self.endpoint(backend)?.public_server_url,
+            name
+        ))
+    }
+
+    pub fn command_repository_url_for(
+        &self,
+        backend: StorageBackend,
+        name: &str,
+    ) -> Result<String, CommandError> {
+        Ok(format!("{}/{}", self.endpoint(backend)?.server_url, name))
+    }
+
+    pub fn storage_backend_for_public_url(
+        &self,
+        name: &str,
+        repository_url: &str,
+    ) -> Option<StorageBackend> {
+        self.endpoints().find_map(|(backend, endpoint)| {
+            (repository_url == format!("{}/{}", endpoint.public_server_url, name))
+                .then_some(backend)
+        })
     }
 
     pub async fn list(&self, access_token: &str) -> Result<Vec<Repository>, CommandError> {
-        let output = self
-            .run(
-                ["repository", "list", self.server_url.as_str()],
-                None,
-                access_token,
-            )
-            .await?;
-        let mut repositories = parse_repositories(&output, &self.public_server_url)?;
+        let mut repositories = Vec::new();
+        for (backend, endpoint) in self.endpoints() {
+            let output = self
+                .run(
+                    ["repository", "list", endpoint.server_url.as_str()],
+                    None,
+                    access_token,
+                )
+                .await?;
+            repositories.extend(parse_repositories(
+                &output,
+                &endpoint.public_server_url,
+                backend,
+            )?);
+        }
         repositories.sort_by_key(|repository| repository.name.to_lowercase());
+        for duplicate in repositories.windows(2) {
+            if duplicate[0].name.eq_ignore_ascii_case(&duplicate[1].name) {
+                return Err(CommandError {
+                    message: format!(
+                        "repository name '{}' exists in more than one storage backend",
+                        duplicate[0].name
+                    ),
+                });
+            }
+        }
         Ok(repositories)
+    }
+
+    pub async fn storage_backend(
+        &self,
+        name: &str,
+        access_token: &str,
+    ) -> Result<StorageBackend, CommandError> {
+        self.list(access_token)
+            .await?
+            .into_iter()
+            .find(|repository| repository.name == name)
+            .map(|repository| repository.storage_backend)
+            .ok_or_else(|| CommandError {
+                message: format!("repository '{name}' was not found"),
+            })
+    }
+
+    pub async fn public_repository_url_for_name(
+        &self,
+        name: &str,
+        access_token: &str,
+    ) -> Result<String, CommandError> {
+        let backend = self.storage_backend(name, access_token).await?;
+        self.public_repository_url_for(backend, name)
     }
 
     pub async fn create(
         &self,
         name: &str,
         description: Option<&str>,
+        storage_backend: StorageBackend,
         access_token: &str,
     ) -> Result<Repository, CommandError> {
         validate_name(name).map_err(|error| CommandError {
@@ -112,24 +234,44 @@ impl RepositoryService {
                 message: error.to_string(),
             })?;
         }
-        let url = self.public_repository_url(name);
-        let command_url = self.command_repository_url(name);
+        if self
+            .list(access_token)
+            .await?
+            .iter()
+            .any(|repository| repository.name.eq_ignore_ascii_case(name))
+        {
+            return Err(CommandError {
+                message: format!("repository '{name}' already exists"),
+            });
+        }
+        let url = self.public_repository_url_for(storage_backend, name)?;
+        let command_url = self.command_repository_url_for(storage_backend, name)?;
         let workspace = TempDir::new().map_err(internal_error)?;
         let mut args = vec!["repository", "create", command_url.as_str()];
         if let Some(description) = description.filter(|value| !value.trim().is_empty()) {
             args.extend(["--description", description.trim()]);
         }
         let output = self.run(args, Some(&workspace), access_token).await?;
-        parse_created_repository(&output, &url).ok_or_else(|| CommandError {
+        parse_created_repository(&output, &url, storage_backend).ok_or_else(|| CommandError {
             message: "Lore did not return the created repository".into(),
         })
     }
 
     pub async fn delete(&self, name: &str, access_token: &str) -> Result<(), CommandError> {
+        self.delete_on(name, StorageBackend::DynamoDbS3, access_token)
+            .await
+    }
+
+    pub async fn delete_on(
+        &self,
+        name: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<(), CommandError> {
         validate_name(name).map_err(|error| CommandError {
             message: error.to_string(),
         })?;
-        let url = self.command_repository_url(name);
+        let url = self.command_repository_url_for(storage_backend, name)?;
         self.run(["repository", "delete", url.as_str()], None, access_token)
             .await?;
         Ok(())
@@ -140,11 +282,21 @@ impl RepositoryService {
         name: &str,
         access_token: &str,
     ) -> Result<Vec<Branch>, CommandError> {
+        self.branches_on(name, StorageBackend::DynamoDbS3, access_token)
+            .await
+    }
+
+    pub async fn branches_on(
+        &self,
+        name: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<Vec<Branch>, CommandError> {
         validate_name(name).map_err(|error| CommandError {
             message: error.to_string(),
         })?;
         let workspace = TempDir::new().map_err(internal_error)?;
-        let url = self.command_repository_url(name);
+        let url = self.command_repository_url_for(storage_backend, name)?;
         self.run(
             [
                 "repository",
@@ -180,6 +332,17 @@ impl RepositoryService {
         revision: &str,
         access_token: &str,
     ) -> Result<Option<PipelineFile>, CommandError> {
+        self.pipeline_file_on(name, revision, StorageBackend::DynamoDbS3, access_token)
+            .await
+    }
+
+    pub async fn pipeline_file_on(
+        &self,
+        name: &str,
+        revision: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<Option<PipelineFile>, CommandError> {
         validate_name(name).map_err(|error| CommandError {
             message: error.to_string(),
         })?;
@@ -189,7 +352,7 @@ impl RepositoryService {
             });
         }
         let workspace = TempDir::new().map_err(internal_error)?;
-        let url = self.command_repository_url(name);
+        let url = self.command_repository_url_for(storage_backend, name)?;
         self.run(
             ["clone", "--", url.as_str(), "repository"],
             Some(&workspace),
@@ -266,8 +429,21 @@ impl RepositoryService {
             })
     }
 
-    fn command_repository_url(&self, name: &str) -> String {
-        format!("{}/{}", self.server_url, name)
+    fn endpoint(&self, backend: StorageBackend) -> Result<&RepositoryEndpoint, CommandError> {
+        match backend {
+            StorageBackend::DynamoDbS3 => Ok(&self.dynamodb_s3),
+            StorageBackend::LocalFile => self.local_file.as_ref().ok_or_else(|| CommandError {
+                message: "Local File storage backend is not configured".into(),
+            }),
+        }
+    }
+
+    fn endpoints(&self) -> impl Iterator<Item = (StorageBackend, &RepositoryEndpoint)> {
+        std::iter::once((StorageBackend::DynamoDbS3, &self.dynamodb_s3)).chain(
+            self.local_file
+                .iter()
+                .map(|endpoint| (StorageBackend::LocalFile, endpoint)),
+        )
     }
 
     async fn run<I, S>(
@@ -362,7 +538,11 @@ fn validate_description(description: &str) -> Result<()> {
     Ok(())
 }
 
-fn parse_repositories(output: &str, server_url: &str) -> Result<Vec<Repository>, CommandError> {
+fn parse_repositories(
+    output: &str,
+    server_url: &str,
+    storage_backend: StorageBackend,
+) -> Result<Vec<Repository>, CommandError> {
     let mut result = Vec::new();
     for event in json_events(output)? {
         if event.get("tagName").and_then(Value::as_str) != Some("repositoryListEntry") {
@@ -375,12 +555,17 @@ fn parse_repositories(output: &str, server_url: &str) -> Result<Vec<Repository>,
             id,
             url: format!("{server_url}/{name}"),
             name,
+            storage_backend,
         });
     }
     Ok(result)
 }
 
-fn parse_created_repository(output: &str, url: &str) -> Option<Repository> {
+fn parse_created_repository(
+    output: &str,
+    url: &str,
+    storage_backend: StorageBackend,
+) -> Option<Repository> {
     json_events(output).ok()?.into_iter().find_map(|event| {
         if event.get("tagName")?.as_str()? != "repositoryCreate" {
             return None;
@@ -390,6 +575,7 @@ fn parse_created_repository(output: &str, url: &str) -> Option<Repository> {
             id: value_string(&data["id"])?,
             name: data["name"].as_str()?.to_owned(),
             url: url.to_owned(),
+            storage_backend,
         })
     })
 }
@@ -478,6 +664,50 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn creates_repository_on_selected_storage_backend() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("lore");
+        std::fs::write(
+            &binary,
+            r#"#!/bin/sh
+set -eu
+case "$4:$5" in
+  repository:list)
+    printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
+    ;;
+  repository:create)
+    [ "$6" = lores://local.internal:41337/project ]
+    printf '%s\n' '{"tagName":"repositoryCreate","data":{"id":"local-id","name":"project"}}'
+    printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
+    ;;
+  *) exit 99 ;;
+esac
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let service = RepositoryService::new(
+            binary,
+            "lores://aws.internal:41337",
+            "lores://server.test:41337",
+        )
+        .unwrap()
+        .with_local_backend("lores://local.internal:41337", "lores://server.test:41338")
+        .unwrap();
+
+        let repository = service
+            .create("project", None, StorageBackend::LocalFile, "")
+            .await
+            .unwrap();
+
+        assert_eq!(repository.storage_backend, StorageBackend::LocalFile);
+        assert_eq!(repository.url, "lores://server.test:41338/project");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn reads_pipeline_file_at_the_requested_revision() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -562,6 +792,28 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
         assert!(
             RepositoryService::new("lore", "lores://server/repository", "lores://server").is_err()
         );
+        let service = RepositoryService::new(
+            "lore",
+            "lores://aws.internal:41337",
+            "lores://server.test:41337",
+        )
+        .unwrap()
+        .with_local_backend("lores://local.internal:41337", "lores://server.test:41338")
+        .unwrap();
+        assert_eq!(
+            service
+                .public_repository_url_for(StorageBackend::LocalFile, "engine")
+                .unwrap(),
+            "lores://server.test:41338/engine"
+        );
+        assert_eq!(
+            service.storage_backend_for_public_url("engine", "lores://server.test:41338/engine"),
+            Some(StorageBackend::LocalFile)
+        );
+        assert_eq!(
+            serde_json::to_string(&service.available_storage_backends()).unwrap(),
+            r#"["dynamodb_s3","local_file"]"#
+        );
     }
 
     #[test]
@@ -571,11 +823,13 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
             "{\"tagName\":\"complete\",\"data\":{\"status\":0}}\n"
         );
         assert_eq!(
-            parse_repositories(output, "lores://server:41337").unwrap(),
+            parse_repositories(output, "lores://server:41337", StorageBackend::DynamoDbS3,)
+                .unwrap(),
             vec![Repository {
                 id: "abc123".into(),
                 name: "engine".into(),
-                url: "lores://server:41337/engine".into()
+                url: "lores://server:41337/engine".into(),
+                storage_backend: StorageBackend::DynamoDbS3,
             }]
         );
     }
