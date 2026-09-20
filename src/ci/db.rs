@@ -12,6 +12,7 @@ pub struct Pipeline {
     pub revision: String,
     pub revision_number: i64,
     pub pipeline_name: Option<String>,
+    pub pipeline_needs: Vec<String>,
     pub category: Option<String>,
     pub runner_os: Option<String>,
     pub branch: Option<String>,
@@ -38,6 +39,7 @@ pub struct Pipeline {
 
 pub struct SelectedPipeline {
     pub pipeline_name: String,
+    pub pipeline_needs: Vec<String>,
     pub category: String,
     pub runner_os: String,
     pub trigger_patterns: Vec<String>,
@@ -143,7 +145,7 @@ pub async fn submit_selected_for_user(
     selected: &SelectedPipeline,
 ) -> sqlx::Result<Pipeline> {
     sqlx::query_as(
-        "INSERT INTO pipelines (id, repository_url, revision, branch, submitted_by, pipeline_name, category, runner_os, trigger_patterns, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *",
+        "INSERT INTO pipelines (id, repository_url, revision, branch, submitted_by, pipeline_name, pipeline_needs, category, runner_os, trigger_patterns, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *",
     )
     .bind(Uuid::new_v4())
     .bind(&input.repository_url)
@@ -151,6 +153,7 @@ pub async fn submit_selected_for_user(
     .bind(&input.branch)
     .bind(user_id)
     .bind(&selected.pipeline_name)
+    .bind(&selected.pipeline_needs)
     .bind(&selected.category)
     .bind(&selected.runner_os)
     .bind(&selected.trigger_patterns)
@@ -243,8 +246,18 @@ pub async fn remove_runner(pool: &PgPool, id: Uuid) -> sqlx::Result<RemoveRunner
 }
 
 pub async fn claim(pool: &PgPool, worker: Uuid) -> sqlx::Result<Option<Pipeline>> {
-    sqlx::query_as("UPDATE pipelines SET status = 'running', worker_id = $1, started_at = now(), lease_until = now() + interval '30 seconds' WHERE id = (SELECT id FROM pipelines WHERE status = 'queued' AND NOT cancel_requested AND (runner_os IS NULL OR runner_os = (SELECT os FROM runners WHERE id = $1 AND stopped_at IS NULL)) ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")
-        .bind(worker).fetch_optional(pool).await
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "UPDATE pipelines dependent SET status = 'failed', error = (SELECT 'pipeline dependency ' || dependency.name || ' ' || latest.status || ': ' || COALESCE(NULLIF(latest.error, ''), latest.status) FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status, upstream.error FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled') LIMIT 1), finished_at = now() WHERE dependent.status = 'queued' AND EXISTS (SELECT 1 FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled'))",
+    )
+    .execute(&mut *tx)
+    .await?;
+    let pipeline = sqlx::query_as("UPDATE pipelines SET status = 'running', worker_id = $1, started_at = now(), lease_until = now() + interval '30 seconds' WHERE id = (SELECT candidate.id FROM pipelines candidate WHERE candidate.status = 'queued' AND NOT candidate.cancel_requested AND (candidate.runner_os IS NULL OR candidate.runner_os = (SELECT os FROM runners WHERE id = $1 AND stopped_at IS NULL)) AND NOT EXISTS (SELECT 1 FROM unnest(candidate.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = candidate.repository_url AND upstream.branch IS NOT DISTINCT FROM candidate.branch AND upstream.revision = candidate.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded') ORDER BY candidate.created_at, candidate.id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")
+        .bind(worker)
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(pipeline)
 }
 
 pub async fn heartbeat(pool: &PgPool, id: Uuid, worker: Uuid) -> sqlx::Result<bool> {

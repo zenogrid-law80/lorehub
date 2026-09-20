@@ -62,7 +62,7 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 - 반응형 CI 대시보드, 상태·repository·branch·pipeline 필터와 검색, repository·branch 트리별 workspace 공용 pipeline graph, pipeline/job 상세와 실시간 로그
 - 운영체제 설정을 따르는 시스템 테마와 라이트·다크 테마 선택
 - runner 전체·online·offline 대수, 운영체제·아키텍처·버전·현재 작업 관리 화면
-- 현재 Lore 서버의 repository 목록·검색·생성·URL 복사·삭제 관리 화면과 branch 기반 수동 파이프라인 실행
+- 현재 Lore 서버의 repository 목록·검색·생성·URL 복사·삭제 관리, branch별 `.lore-ci.toml` 조회와 Visual/TOML 그래프 편집 화면, branch 기반 수동 파이프라인 실행
 - repository별 자동 CI 감지 branch 선택; 기본 `main`, 미선택 시 자동 CI 일시 중지
 - 과거 Lore branch ID를 현재 branch 이름으로 정규화해 실행 이력에 표시
 - PostgreSQL 사용자·로그인 state·8시간 세션, HttpOnly/SameSite 쿠키와 CSRF 보호
@@ -202,6 +202,7 @@ timeout_seconds = 600
 [[jobs]]
 name = "release"
 stage = "build"
+needs = ["unit-tests"]
 script = ["cargo build --locked --release"]
 timeout_seconds = 1800
 ```
@@ -210,7 +211,7 @@ timeout_seconds = 1800
 cargo run --locked -- validate examples/.lore-ci.toml
 ```
 
-stage는 선언 순서, 같은 stage의 job은 파일에 적힌 순서로 실행됩니다. 각 job은 별도의 `/bin/sh -e -c` 프로세스입니다. 한 job의 `script` 항목들은 같은 shell에서 실행되어 `cd`와 `export`가 유지됩니다. job 간에는 checkout 디렉터리를 공유하므로 빌드 결과 파일은 다음 job에서도 사용할 수 있습니다. 실패하면 뒤의 job은 `skipped`로 남습니다. POSIX `sh -e`의 일반적인 조건문·파이프라인 규칙이 적용되며 `pipefail`은 사용하지 않습니다.
+stage는 선언 순서로 실행됩니다. `needs`에는 먼저 완료되어야 하는 job 이름을 지정하며, 같은 stage의 job도 의존 순서에 맞춰 실행됩니다. 의존성은 이전 또는 같은 stage만 가리킬 수 있고 알 수 없는 job, 자기 자신, 중복 및 순환 참조는 거부됩니다. `needs`가 없는 같은 stage의 job은 파일에 적힌 순서를 유지합니다. 각 job은 별도의 `/bin/sh -e -c` 프로세스입니다. 한 job의 `script` 항목들은 같은 shell에서 실행되어 `cd`와 `export`가 유지됩니다. job 간에는 checkout 디렉터리를 공유하므로 빌드 결과 파일은 다음 job에서도 사용할 수 있습니다. 실패하면 뒤의 job은 `skipped`로 남습니다. POSIX `sh -e`의 일반적인 조건문·파이프라인 규칙이 적용되며 `pipefail`은 사용하지 않습니다.
 
 job에는 `CI=true`, `LOREHUB=true`, `LORE_RUNNER=true`, `LORE_PIPELINE_ID`, `LORE_JOB_ID`, `LORE_JOB_NAME`, `LORE_REVISION`, `LORE_REPOSITORY_URL`, `LORE_BIN`, `LORE_PROJECT_DIR`과 자동 실행의 `LORE_BRANCH`가 전달됩니다. 인증된 Runner는 각 job 시작 시 저장소 범위의 `LORE_IDENTITY_TOKEN`과 `LORE_ACCESS_TOKEN`을 새로 발급하므로, 결과물을 commit/push하는 job은 `LORE_BIN` 실행 파일에 이 값을 전역 옵션으로 전달할 수 있습니다. 시스템 환경 중 `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`만 상속합니다.
 
@@ -259,6 +260,18 @@ script = ["docker build --tag \"my-server:${LORE_REVISION}\" ."]
 
 `runner_os`는 `windows`, `macos`, `linux` 중 하나입니다. `changes`는 저장소 루트 기준의 정확한 경로 또는 `디렉터리/**`를 받으며 대소문자를 구분합니다. 선행 `/`, `..`, 다른 glob 문법은 허용하지 않습니다. 삭제와 이동 전후 경로도 판단에 포함됩니다. 두 조건을 만족하면 두 파이프라인이 별도 큐에 들어가 각 OS에서 실행되며, 해당 OS의 Runner가 없으면 `queued`로 남습니다. 한 파이프라인 내부 stage/job 순서는 기존과 같습니다. `working_directory`는 checkout 내부 디렉터리여야 하며 외부를 가리키는 심볼릭 링크는 거부합니다.
 
+파이프라인 간 실행 순서는 `needs`로 지정합니다. 아래는 관련 필드만 표시한 예입니다. `server-windows-build`와 `server`는 같은 저장소·branch·revision의 `data-table-generate` 실행이 큐에 있거나 실행 중이면 기다리고, 성공한 후에만 Runner가 claim할 수 있습니다. 해당 선행 실행이 없으면 기존처럼 바로 실행하며, 선행 실행이 실패하거나 취소되면 후속 파이프라인도 실패 처리됩니다. 알 수 없는 파이프라인, 자기 자신, 중복 및 순환 의존성은 설정 검증에서 거부됩니다.
+
+```toml
+[[pipelines]]
+name = "server-windows-build"
+needs = ["data-table-generate"]
+
+[[pipelines]]
+name = "server"
+needs = ["data-table-generate"]
+```
+
 Coordinator의 `serve`는 소유자가 등록된 Lore 저장소를 15초마다 확인하고 `lore notification subscribe`로 알림을 받습니다. 알림 수신 시 원격 branch head를 조회하며, 30초마다 추가 확인하고 4분마다 토큰·연결을 갱신합니다. 최초 실행은 기존 branch head를 기준점으로만 기록합니다. 이후 생성된 branch의 첫 push는 설정에 지정된 경로가 해당 revision에 존재하는지 확인해 실행합니다. 변경 비교, 요청 revision의 설정 읽기, 큐 생성이 성공한 경우에만 DB cursor를 갱신합니다. 실패하면 cursor를 유지해 다음 확인에서 재시도합니다. 연결 중단 중 여러 push가 쌓이면 마지막 처리 revision과 현재 head 사이의 최종 변경을 처리하며, 중간 push 각각을 재생하지 않습니다.
 
 같은 저장소·branch·revision·파이프라인은 한 번만 생성됩니다. 설정 파일만 바꿔도 실행하려면 각 `changes`에 `.lore-ci.toml`을 명시하세요. 이름이 있는 파이프라인은 현재 자동 push 경로로 실행하며, 기존 수동 생성 API는 루트 `stages`/`jobs` 형식용입니다. UI 목록과 실행 그래프는 hash 대신 저장소 revision마다 고정된 숫자 표시 번호를 보여줍니다. 원본 64자리 hash는 실행 검증에 계속 사용됩니다. 실행 상세의 그래프는 일치한 폴더 규칙 → 파이프라인과 실행 경로 → 대상 또는 배정된 Runner → stage 순서와 현재 상태를 보여줍니다. 큐에 대기하는 동안에도 trigger가 저장한 설정 snapshot으로 예정 stage를 표시합니다.
@@ -294,6 +307,9 @@ cargo run --locked -- validate examples/monorepo.lore-ci.toml
 | GET | `/downloads/runners/windows-x86_64` | Windows x86_64 runner 설치 패키지 다운로드 |
 | GET | `/api/v1/repositories` | 현재 Lore 서버 주소와 repository 목록 |
 | GET | `/api/v1/repositories/{name}/branches` | 활성 remote branch와 최신 revision 목록 |
+| GET | `/api/v1/repositories/{name}/ci-config?branch={branch}` | branch 최신 revision의 `.lore-ci.toml` 원문 조회 |
+| POST | `/api/v1/repositories/{name}/ci-config` | TOML 검증 후 `.lore-ci.toml` commit·push; CSRF와 기준 revision 필요 |
+| POST | `/api/v1/repositories/{name}/ci-config/parse` | Visual 편집 전 TOML 검증·구조화; CSRF 필요 |
 | GET | `/api/v1/repositories/{name}/pipeline-branches` | 자동 CI 대상 branch 설정 조회 |
 | POST | `/api/v1/repositories/{name}/pipeline-branches` | 자동 CI 대상 branch 설정 저장; CSRF 필요 |
 | POST | `/api/v1/repositories` | repository 생성: 201; CSRF 필요 |

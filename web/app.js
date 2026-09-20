@@ -3,6 +3,18 @@
 const SUPPORTED_LOCALES = ["en", "ko", "zh-CN"];
 const SUPPORTED_THEMES = ["system", "light", "dark"];
 const THEME_MEDIA_QUERY = window.matchMedia("(prefers-color-scheme: dark)");
+const DEFAULT_CI_CONFIG = `stages = ["build"]
+
+[[jobs]]
+name = "build"
+stage = "build"
+script = ["echo \\"Configure your CI job\\""]
+`;
+const DEFAULT_CI_MODEL = {
+  stages: ["build"],
+  jobs: [{ name: "build", stage: "build", needs: [], script: ["echo \"Configure your CI job\""], timeout_seconds: 3600 }],
+  pipelines: [],
+};
 const I18N = {
   en: {
     "워크스페이스를 불러오는 중…": "Loading workspace…", "LoreHub 홈": "LoreHub home", "코드에서 배포까지,": "From code to deployment,", "하나의 흐름으로.": "in one workflow.",
@@ -71,7 +83,9 @@ Object.assign(I18N.en, {
   "dynamic.manualRun": "Manual run",
   "워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.": "Review pipeline run history and current status for the workspace.",
   "실행할 Lore 저장소와 branch를 선택하세요.": "Choose the Lore repository and branch to run.", "Repository": "Repository", "Branch": "Branch", "Pipeline": "Pipeline", "현재 Lore 서버에 등록된 저장소": "Repositories registered on the current Lore server", "main branch가 기본으로 선택됩니다.": "The main branch is selected by default.", "선택한 branch의 최신 revision": "Latest revision of the selected branch", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "Pipeline defined in .lore-ci.toml at the selected revision", "dynamic.loadingBranches": "Loading branches…", "dynamic.loadingPipelines": "Loading pipelines…", "dynamic.defaultPipeline": "Default pipeline", "dynamic.noRepositories": "No repositories available", "dynamic.noBranches": "No active branches available", "dynamic.noPipelines": "No pipelines available",
-  "Pipeline branches": "Pipeline branches", "저장소에서": "in the repository", "자동 실행을 감지할 branch를 선택하세요.": "Choose the branches monitored for automatic runs.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "Selecting no branches pauses automatic CI for this repository. Existing run history is kept.", "Save branches": "Save branches", "dynamic.pipelineBranches": "Auto CI branches", "dynamic.branchPolicySaved": "Automatic CI branches saved.", "dynamic.noRemoteBranches": "No active remote branches are available."
+  "Pipeline branches": "Pipeline branches", "저장소에서": "in the repository", "자동 실행을 감지할 branch를 선택하세요.": "Choose the branches monitored for automatic runs.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "Selecting no branches pauses automatic CI for this repository. Existing run history is kept.", "Save branches": "Save branches", "dynamic.pipelineBranches": "Auto CI branches", "dynamic.branchPolicySaved": "Automatic CI branches saved.", "dynamic.noRemoteBranches": "No active remote branches are available.",
+  "CI CONFIGURATION": "CI CONFIGURATION", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "View and edit the repository's CI configuration by branch.", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "Only valid TOML can be saved. Saving creates a new Lore revision.", "CI configuration": "CI configuration", "Edit": "Edit", "Save changes": "Save changes", "dynamic.loadingConfig": "Loading .lore-ci.toml…", "dynamic.noCiConfig": ".lore-ci.toml does not exist on this branch. Select Edit to create it.", "dynamic.configSaved": ".lore-ci.toml saved to a new revision.", "dynamic.saving": "Saving…",
+  "Visual": "Visual", "Pipeline list": "Pipeline list", "Stages run from left to right": "Stages run from left to right", "Manual pipeline": "Manual pipeline", "Manual": "Manual", "No CI configuration": "No CI configuration", "Select Edit to create a pipeline graph.": "Select Edit to create a pipeline graph.", "Nothing selected": "Nothing selected", "Select a pipeline, stage, or job.": "Select a pipeline, stage, or job.", "Pipeline settings": "Pipeline settings", "Stage settings": "Stage settings", "Job settings": "Job settings", "Name": "Name", "Stage": "Stage", "Timeout (seconds)": "Timeout (seconds)", "Script": "Script", "one command per line": "one command per line", "Working directory": "Working directory", "Change paths": "Change paths", "one path per line": "one path per line", "Add pipeline": "Add pipeline", "Add stage": "Add stage", "Add job": "Add job", "Delete pipeline": "Delete pipeline", "Delete stage": "Delete stage", "Delete job": "Delete job", "Convert to auto pipeline": "Convert to auto pipeline", "This is a manual pipeline using root stages and jobs.": "This is a manual pipeline using root stages and jobs.", "dynamic.jobSteps": "{count} commands · {seconds}s"
 });
 Object.assign(I18N.ko, {
   "document.title": "LoreHub · CI 워크스페이스",
@@ -96,7 +110,9 @@ Object.assign(I18N.ko, {
   "파이프라인 상세 필터": "파이프라인 상세 필터", "All repositories": "전체 리포지토리", "All branches": "전체 Branch", "All pipelines": "전체 파이프라인", "Reset filters": "필터 초기화",
   "dynamic.manualRun": "수동 실행",
   "실행할 Lore 저장소와 branch를 선택하세요.": "실행할 Lore 저장소와 branch를 선택하세요.", "Repository": "저장소", "Branch": "Branch", "Pipeline": "파이프라인", "현재 Lore 서버에 등록된 저장소": "현재 Lore 서버에 등록된 저장소", "main branch가 기본으로 선택됩니다.": "main branch가 기본으로 선택됩니다.", "선택한 branch의 최신 revision": "선택한 branch의 최신 revision", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "선택한 revision의 .lore-ci.toml에 정의된 파이프라인", "dynamic.loadingBranches": "Branch 불러오는 중…", "dynamic.loadingPipelines": "파이프라인 불러오는 중…", "dynamic.defaultPipeline": "기본 파이프라인", "dynamic.noRepositories": "사용 가능한 저장소가 없습니다", "dynamic.noBranches": "사용 가능한 branch가 없습니다", "dynamic.noPipelines": "사용 가능한 파이프라인이 없습니다",
-  "Pipeline branches": "파이프라인 Branch", "저장소에서": "저장소에서", "자동 실행을 감지할 branch를 선택하세요.": "자동 실행을 감지할 branch를 선택하세요.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.", "Save branches": "Branch 저장", "dynamic.pipelineBranches": "자동 CI Branch", "dynamic.branchPolicySaved": "자동 CI branch 설정을 저장했습니다.", "dynamic.noRemoteBranches": "사용 가능한 remote branch가 없습니다."
+  "Pipeline branches": "파이프라인 Branch", "저장소에서": "저장소에서", "자동 실행을 감지할 branch를 선택하세요.": "자동 실행을 감지할 branch를 선택하세요.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.", "Save branches": "Branch 저장", "dynamic.pipelineBranches": "자동 CI Branch", "dynamic.branchPolicySaved": "자동 CI branch 설정을 저장했습니다.", "dynamic.noRemoteBranches": "사용 가능한 remote branch가 없습니다.",
+  "CI CONFIGURATION": "CI 설정", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "저장소의 branch별 CI 설정을 확인하고 편집합니다.", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.", "CI configuration": "CI 설정", "Edit": "편집", "Save changes": "변경 사항 저장", "dynamic.loadingConfig": ".lore-ci.toml 불러오는 중…", "dynamic.noCiConfig": "이 branch에 .lore-ci.toml이 없습니다. 편집을 선택해 새로 만드세요.", "dynamic.configSaved": ".lore-ci.toml을 새 revision으로 저장했습니다.", "dynamic.saving": "저장 중…",
+  "Visual": "시각화", "Pipeline list": "파이프라인 목록", "Stages run from left to right": "단계는 왼쪽에서 오른쪽으로 실행됩니다", "Manual pipeline": "수동 파이프라인", "Manual": "수동", "No CI configuration": "CI 설정 없음", "Select Edit to create a pipeline graph.": "편집을 선택해 파이프라인 그래프를 만드세요.", "Nothing selected": "선택 항목 없음", "Select a pipeline, stage, or job.": "파이프라인, 단계 또는 작업을 선택하세요.", "Pipeline settings": "파이프라인 설정", "Stage settings": "단계 설정", "Job settings": "작업 설정", "Name": "이름", "Stage": "단계", "Timeout (seconds)": "제한 시간(초)", "Script": "스크립트", "one command per line": "한 줄에 명령 하나", "Working directory": "작업 디렉터리", "Change paths": "변경 경로", "one path per line": "한 줄에 경로 하나", "Add pipeline": "파이프라인 추가", "Add stage": "단계 추가", "Add job": "작업 추가", "Delete pipeline": "파이프라인 삭제", "Delete stage": "단계 삭제", "Delete job": "작업 삭제", "Convert to auto pipeline": "자동 파이프라인으로 전환", "This is a manual pipeline using root stages and jobs.": "루트 stages와 jobs를 사용하는 수동 파이프라인입니다.", "dynamic.jobSteps": "명령 {count}개 · {seconds}초"
 });
 Object.assign(I18N["zh-CN"], {
   "document.title": "LoreHub · CI 工作区",
@@ -127,8 +143,19 @@ Object.assign(I18N["zh-CN"], {
   "dynamic.manualRun": "手动运行",
   "워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.": "查看工作区的流水线运行历史和当前状态。",
   "실행할 Lore 저장소와 branch를 선택하세요.": "选择要运行的 Lore 仓库和分支。", "Repository": "仓库", "Branch": "分支", "Pipeline": "流水线", "현재 Lore 서버에 등록된 저장소": "当前 Lore 服务器上注册的仓库", "main branch가 기본으로 선택됩니다.": "默认选择 main 分支。", "선택한 branch의 최신 revision": "所选分支的最新修订", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "所选修订中 .lore-ci.toml 定义的流水线", "dynamic.loadingBranches": "正在加载分支…", "dynamic.loadingPipelines": "正在加载流水线…", "dynamic.defaultPipeline": "默认流水线", "dynamic.noRepositories": "没有可用的仓库", "dynamic.noBranches": "没有可用的活动分支", "dynamic.noPipelines": "没有可用的流水线",
-  "Pipeline branches": "流水线分支", "저장소에서": "仓库中", "자동 실행을 감지할 branch를 선택하세요.": "选择要监控自动运行的分支。", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "如果不选择分支，此仓库的自动 CI 将暂停。现有运行历史会保留。", "Save branches": "保存分支", "dynamic.pipelineBranches": "自动 CI 分支", "dynamic.branchPolicySaved": "自动 CI 分支设置已保存。", "dynamic.noRemoteBranches": "没有可用的远程分支。"
+  "Pipeline branches": "流水线分支", "저장소에서": "仓库中", "자동 실행을 감지할 branch를 선택하세요.": "选择要监控自动运行的分支。", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "如果不选择分支，此仓库的自动 CI 将暂停。现有运行历史会保留。", "Save branches": "保存分支", "dynamic.pipelineBranches": "自动 CI 分支", "dynamic.branchPolicySaved": "自动 CI 分支设置已保存。", "dynamic.noRemoteBranches": "没有可用的远程分支。",
+  "CI CONFIGURATION": "CI 配置", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "按分支查看和编辑仓库的 CI 配置。", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "只能保存有效的 TOML；保存后会创建新的 Lore 修订。", "CI configuration": "CI 配置", "Edit": "编辑", "Save changes": "保存更改", "dynamic.loadingConfig": "正在加载 .lore-ci.toml…", "dynamic.noCiConfig": "此分支没有 .lore-ci.toml。选择编辑以创建。", "dynamic.configSaved": ".lore-ci.toml 已保存到新的修订。", "dynamic.saving": "正在保存…",
+  "Visual": "可视化", "Pipeline list": "流水线列表", "Stages run from left to right": "阶段从左到右运行", "Manual pipeline": "手动流水线", "Manual": "手动", "No CI configuration": "无 CI 配置", "Select Edit to create a pipeline graph.": "选择编辑以创建流水线图。", "Nothing selected": "未选择项目", "Select a pipeline, stage, or job.": "请选择流水线、阶段或任务。", "Pipeline settings": "流水线设置", "Stage settings": "阶段设置", "Job settings": "任务设置", "Name": "名称", "Stage": "阶段", "Timeout (seconds)": "超时（秒）", "Script": "脚本", "one command per line": "每行一个命令", "Working directory": "工作目录", "Change paths": "变更路径", "one path per line": "每行一个路径", "Add pipeline": "添加流水线", "Add stage": "添加阶段", "Add job": "添加任务", "Delete pipeline": "删除流水线", "Delete stage": "删除阶段", "Delete job": "删除任务", "Convert to auto pipeline": "转换为自动流水线", "This is a manual pipeline using root stages and jobs.": "这是使用根级 stages 和 jobs 的手动流水线。", "dynamic.jobSteps": "{count} 条命令 · {seconds}秒"
 });
+Object.assign(I18N.en, { "Dependencies": "Dependencies", "Select jobs that must complete first.": "Select jobs that must complete first.", "No eligible dependency jobs": "No eligible dependency jobs", "dynamic.jobNeeds": "Needs {jobs}" });
+Object.assign(I18N.ko, { "Dependencies": "의존 작업", "Select jobs that must complete first.": "먼저 완료되어야 하는 작업을 선택하세요.", "No eligible dependency jobs": "선택 가능한 의존 작업 없음", "dynamic.jobNeeds": "선행 작업 · {jobs}" });
+Object.assign(I18N["zh-CN"], { "Dependencies": "依赖任务", "Select jobs that must complete first.": "选择必须先完成的任务。", "No eligible dependency jobs": "没有可选的依赖任务", "dynamic.jobNeeds": "依赖 {jobs}" });
+Object.assign(I18N.en, { "Pipeline dependencies": "Pipeline dependencies", "Select pipelines that must succeed first.": "Select pipelines that must succeed first.", "No eligible dependency pipelines": "No eligible dependency pipelines", "dynamic.pipelineNeeds": "Depends on {pipelines}", "Waiting for pipeline dependencies": "Waiting for pipeline dependencies" });
+Object.assign(I18N.ko, { "Pipeline dependencies": "파이프라인 의존성", "Select pipelines that must succeed first.": "먼저 성공해야 하는 파이프라인을 선택하세요.", "No eligible dependency pipelines": "선택 가능한 선행 파이프라인 없음", "dynamic.pipelineNeeds": "선행 파이프라인 · {pipelines}", "Waiting for pipeline dependencies": "선행 파이프라인 대기 중" });
+Object.assign(I18N["zh-CN"], { "Pipeline dependencies": "流水线依赖", "Select pipelines that must succeed first.": "选择必须先成功的流水线。", "No eligible dependency pipelines": "没有可选的依赖流水线", "dynamic.pipelineNeeds": "依赖流水线 {pipelines}", "Waiting for pipeline dependencies": "正在等待依赖流水线" });
+Object.assign(I18N.en, { "Failure reason": "Failure reason" });
+Object.assign(I18N.ko, { "Failure reason": "실패 사유" });
+Object.assign(I18N["zh-CN"], { "Failure reason": "失败原因" });
 
 function initialLocale() {
   const saved = window.localStorage.getItem("lorehub_locale");
@@ -173,6 +200,18 @@ const state = {
   section: "overview",
   repositoryToDelete: null,
   repositoryBranchesName: null,
+  repositoryConfigName: null,
+  repositoryConfigRevision: null,
+  repositoryConfigContent: null,
+  repositoryConfigModel: null,
+  repositoryConfigDraft: null,
+  repositoryConfigMode: "visual",
+  repositoryConfigSelection: null,
+  repositoryConfigEditing: false,
+  repositoryConfigSaving: false,
+  repositoryConfigStatus: "idle",
+  repositoryConfigError: "",
+  repositoryConfigRequest: 0,
   runnerToRemove: null,
   filter: "all",
   pipelineRepositoryFilter: "",
@@ -208,6 +247,14 @@ document.addEventListener("DOMContentLoaded", () => {
     "delete-repository-name", "delete-repository-confirmation", "confirm-delete-repository-button",
     "repository-branches-dialog", "repository-branches-form", "repository-branches-name",
     "repository-branches-list", "save-repository-branches-button",
+    "repository-config-dialog", "repository-config-form", "repository-config-name",
+    "repository-config-branch", "repository-config-revision", "repository-config-viewer",
+    "repository-config-editor-field", "repository-config-editor", "repository-config-cancel-edit",
+    "repository-config-edit", "repository-config-save",
+    "repository-config-mode", "repository-config-visual-tab", "repository-config-toml-tab",
+    "repository-config-visual", "repository-config-pipeline-count", "repository-config-pipeline-list",
+    "repository-config-add-pipeline", "repository-config-graph-title", "repository-config-stage-graph",
+    "repository-config-inspector-title", "repository-config-inspector",
     "create-lore-token-button", "lore-token-dialog", "lore-access-token", "copy-lore-token-button",
     "runners-page", "runner-table-body", "runner-empty-state", "runner-count", "nav-runner-count",
     "runner-stat-total", "runner-stat-online", "runner-stat-offline", "runner-last-updated",
@@ -306,6 +353,7 @@ function applyLocale(rerender) {
   renderRunners();
   renderPipelineGraphs();
   renderUpdatedLabels();
+  if (elements["repository-config-dialog"].open) renderRepositoryConfig();
   if (state.selectedId && elements["pipeline-detail-dialog"].open) void loadPipelineDetail(state.selectedId);
 }
 
@@ -319,11 +367,26 @@ function bindEvents() {
   document.querySelectorAll(".repository-modal-close, .repository-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-dialog"].close()));
   document.querySelectorAll(".delete-modal-close, .delete-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["delete-repository-dialog"].close()));
   document.querySelectorAll(".repository-branches-modal-close, .repository-branches-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["repository-branches-dialog"].close()));
+  document.querySelectorAll(".repository-config-modal-close").forEach((button) => button.addEventListener("click", closeRepositoryConfig));
+  elements["repository-config-dialog"].addEventListener("close", resetRepositoryConfig);
   document.querySelectorAll(".runner-remove-modal-close, .runner-remove-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["remove-runner-dialog"].close()));
   elements["pipeline-form"].addEventListener("submit", submitPipeline);
   elements["repository-form"].addEventListener("submit", createRepository);
   elements["delete-repository-form"].addEventListener("submit", deleteRepository);
   elements["repository-branches-form"].addEventListener("submit", saveRepositoryPipelineBranches);
+  elements["repository-config-form"].addEventListener("submit", saveRepositoryConfig);
+  elements["repository-config-branch"].addEventListener("change", () => void loadRepositoryConfig());
+  elements["repository-config-edit"].addEventListener("click", () => setRepositoryConfigEditing(true));
+  elements["repository-config-cancel-edit"].addEventListener("click", () => setRepositoryConfigEditing(false));
+  elements["repository-config-visual-tab"].addEventListener("click", () => void setRepositoryConfigMode("visual"));
+  elements["repository-config-toml-tab"].addEventListener("click", () => void setRepositoryConfigMode("toml"));
+  elements["repository-config-add-pipeline"].addEventListener("click", addVisualPipeline);
+  window.addEventListener("resize", () => {
+    if (!elements["repository-config-dialog"].open || state.repositoryConfigMode !== "visual") return;
+    const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
+    const selected = selectedCiPipeline(model);
+    if (selected) window.requestAnimationFrame(() => renderConfigDependencyEdges(selected.pipeline));
+  });
   elements["remove-runner-form"].addEventListener("submit", removeRunner);
   elements["create-lore-token-button"].addEventListener("click", issueLoreToken);
   elements["copy-lore-token-button"].addEventListener("click", copyLoreToken);
@@ -1001,7 +1064,7 @@ function renderRepositories() {
     const url = document.createElement("code"); url.textContent = repository.url;
     content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
-    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
+    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
     elements["repository-list"].append(card);
   }
@@ -1032,6 +1095,8 @@ async function repositoryAction(event) {
   if (button.dataset.action === "copy") {
     try { await navigator.clipboard.writeText(repository.url); toast(t("dynamic.urlCopied"), "success"); }
     catch (_) { toast(t("dynamic.copyFailed"), "error"); }
+  } else if (button.dataset.action === "config") {
+    void openRepositoryConfig(repository);
   } else if (button.dataset.action === "pipeline") {
     openNewPipeline(repository.url);
   } else if (button.dataset.action === "branches") {
@@ -1091,6 +1156,665 @@ async function saveRepositoryPipelineBranches(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+async function openRepositoryConfig(repository) {
+  state.repositoryConfigName = repository.name;
+  state.repositoryConfigRevision = null;
+  state.repositoryConfigContent = null;
+  state.repositoryConfigModel = null;
+  state.repositoryConfigDraft = null;
+  state.repositoryConfigMode = "visual";
+  state.repositoryConfigSelection = null;
+  state.repositoryConfigEditing = false;
+  state.repositoryConfigSaving = false;
+  state.repositoryConfigStatus = "loading";
+  state.repositoryConfigError = "";
+  const request = ++state.repositoryConfigRequest;
+  elements["repository-config-name"].textContent = repository.name;
+  elements["repository-config-branch"].replaceChildren();
+  elements["repository-config-dialog"].showModal();
+  renderRepositoryConfig();
+  try {
+    const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
+    if (request !== state.repositoryConfigRequest || state.repositoryConfigName !== repository.name) return;
+    for (const branch of branches) elements["repository-config-branch"].add(new Option(branch.name, branch.name));
+    if (!branches.length) {
+      state.repositoryConfigStatus = "no-branches";
+      renderRepositoryConfig();
+      return;
+    }
+    elements["repository-config-branch"].value = branches.some(branch => branch.name === "main") ? "main" : branches[0].name;
+    await loadRepositoryConfig();
+  } catch (error) {
+    if (request !== state.repositoryConfigRequest) return;
+    state.repositoryConfigStatus = "error";
+    state.repositoryConfigError = error.message;
+    renderRepositoryConfig();
+    toast(error.message, "error");
+  }
+}
+
+async function loadRepositoryConfig() {
+  const name = state.repositoryConfigName;
+  const branch = elements["repository-config-branch"].value;
+  if (!name || !branch) return;
+  const request = ++state.repositoryConfigRequest;
+  state.repositoryConfigRevision = null;
+  state.repositoryConfigContent = null;
+  state.repositoryConfigModel = null;
+  state.repositoryConfigDraft = null;
+  state.repositoryConfigSelection = null;
+  state.repositoryConfigEditing = false;
+  state.repositoryConfigStatus = "loading";
+  state.repositoryConfigError = "";
+  renderRepositoryConfig();
+  try {
+    const config = await api(`/api/v1/repositories/${encodeURIComponent(name)}/ci-config?branch=${encodeURIComponent(branch)}`);
+    if (request !== state.repositoryConfigRequest || state.repositoryConfigName !== name || elements["repository-config-branch"].value !== branch) return;
+    state.repositoryConfigRevision = config.revision;
+    state.repositoryConfigContent = config.content;
+    state.repositoryConfigModel = config.configuration;
+    state.repositoryConfigMode = config.configuration || config.content === null ? "visual" : "toml";
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
+    state.repositoryConfigStatus = "ready";
+    renderRepositoryConfig();
+  } catch (error) {
+    if (request !== state.repositoryConfigRequest) return;
+    state.repositoryConfigStatus = "error";
+    state.repositoryConfigError = error.message;
+    renderRepositoryConfig();
+    toast(error.message, "error");
+  }
+}
+
+function renderRepositoryConfig() {
+  const editing = state.repositoryConfigEditing;
+  const ready = state.repositoryConfigStatus === "ready";
+  const visual = ready && state.repositoryConfigMode === "visual";
+  const visualAvailable = ready && (state.repositoryConfigModel !== null || state.repositoryConfigContent === null || editing);
+  const viewer = elements["repository-config-viewer"];
+  let contents = "";
+  if (state.repositoryConfigStatus === "loading") contents = t("dynamic.loadingConfig");
+  else if (state.repositoryConfigStatus === "no-branches") contents = t("dynamic.noRemoteBranches");
+  else if (state.repositoryConfigStatus === "error") contents = state.repositoryConfigError;
+  else if (state.repositoryConfigContent === null) contents = t("dynamic.noCiConfig");
+  else contents = state.repositoryConfigContent;
+  viewer.textContent = contents;
+  viewer.classList.toggle("is-empty", !ready || state.repositoryConfigContent === null);
+  viewer.hidden = visual || editing;
+  elements["repository-config-editor-field"].hidden = visual || !editing;
+  elements["repository-config-mode"].hidden = !ready;
+  elements["repository-config-visual"].hidden = !visual;
+  elements["repository-config-visual-tab"].classList.toggle("is-active", visual);
+  elements["repository-config-visual-tab"].setAttribute("aria-selected", String(visual));
+  elements["repository-config-visual-tab"].disabled = !visualAvailable;
+  elements["repository-config-toml-tab"].classList.toggle("is-active", ready && !visual);
+  elements["repository-config-toml-tab"].setAttribute("aria-selected", String(ready && !visual));
+  elements["repository-config-branch"].disabled = editing || state.repositoryConfigStatus === "loading" || state.repositoryConfigStatus === "no-branches";
+  elements["repository-config-revision"].textContent = state.repositoryConfigRevision ?? "—";
+  elements["repository-config-revision"].title = state.repositoryConfigRevision ?? "";
+  elements["repository-config-edit"].hidden = editing;
+  elements["repository-config-edit"].disabled = !ready;
+  elements["repository-config-edit"].textContent = t("Edit");
+  elements["repository-config-cancel-edit"].hidden = !editing;
+  elements["repository-config-save"].hidden = !editing;
+  elements["repository-config-save"].disabled = state.repositoryConfigSaving;
+  elements["repository-config-save"].querySelector("span:first-child").textContent = state.repositoryConfigSaving ? t("dynamic.saving") : t("Save changes");
+  elements["repository-config-save"].querySelector(".button-spinner").hidden = !state.repositoryConfigSaving;
+  if (visual) renderRepositoryConfigVisual();
+}
+
+function setRepositoryConfigEditing(editing) {
+  if (editing && state.repositoryConfigStatus !== "ready") return;
+  state.repositoryConfigEditing = editing;
+  if (editing) {
+    state.repositoryConfigDraft = cloneCiModel(state.repositoryConfigModel ?? DEFAULT_CI_MODEL);
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
+    elements["repository-config-editor"].value = state.repositoryConfigContent ?? DEFAULT_CI_CONFIG;
+  } else {
+    state.repositoryConfigDraft = null;
+    if (!state.repositoryConfigModel && state.repositoryConfigContent !== null) state.repositoryConfigMode = "toml";
+  }
+  renderRepositoryConfig();
+  if (editing && state.repositoryConfigMode === "toml") window.setTimeout(() => elements["repository-config-editor"].focus(), 0);
+}
+
+async function setRepositoryConfigMode(mode) {
+  if (mode === state.repositoryConfigMode || state.repositoryConfigStatus !== "ready") return;
+  if (mode === "toml") {
+    if (state.repositoryConfigEditing && state.repositoryConfigDraft) {
+      elements["repository-config-editor"].value = serializeCiModel(state.repositoryConfigDraft);
+    }
+    state.repositoryConfigMode = "toml";
+    renderRepositoryConfig();
+    if (state.repositoryConfigEditing) elements["repository-config-editor"].focus();
+    return;
+  }
+  if (!state.repositoryConfigEditing) {
+    if (!state.repositoryConfigModel && state.repositoryConfigContent !== null) return;
+    state.repositoryConfigMode = "visual";
+    renderRepositoryConfig();
+    return;
+  }
+  try {
+    const configuration = await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryConfigName)}/ci-config/parse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({ content: elements["repository-config-editor"].value }),
+    });
+    state.repositoryConfigDraft = configuration;
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
+    state.repositoryConfigMode = "visual";
+    renderRepositoryConfig();
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function saveRepositoryConfig(event) {
+  event.preventDefault();
+  if (!state.repositoryConfigName || !state.repositoryConfigRevision || !state.repositoryConfigEditing) return;
+  const name = state.repositoryConfigName;
+  const branch = elements["repository-config-branch"].value;
+  const content = state.repositoryConfigMode === "visual"
+    ? serializeCiModel(state.repositoryConfigDraft)
+    : elements["repository-config-editor"].value;
+  state.repositoryConfigSaving = true;
+  renderRepositoryConfig();
+  try {
+    const config = await api(`/api/v1/repositories/${encodeURIComponent(name)}/ci-config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({ branch, expected_revision: state.repositoryConfigRevision, content }),
+    });
+    if (state.repositoryConfigName !== name || elements["repository-config-branch"].value !== branch) return;
+    state.repositoryConfigRevision = config.revision;
+    state.repositoryConfigContent = config.content;
+    state.repositoryConfigModel = config.configuration;
+    state.repositoryConfigDraft = null;
+    state.repositoryConfigEditing = false;
+    state.repositoryConfigStatus = "ready";
+    toast(t("dynamic.configSaved"), "success");
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    state.repositoryConfigSaving = false;
+    renderRepositoryConfig();
+  }
+}
+
+function closeRepositoryConfig() {
+  elements["repository-config-dialog"].close();
+}
+
+function resetRepositoryConfig() {
+  state.repositoryConfigRequest += 1;
+  state.repositoryConfigName = null;
+  state.repositoryConfigRevision = null;
+  state.repositoryConfigContent = null;
+  state.repositoryConfigModel = null;
+  state.repositoryConfigDraft = null;
+  state.repositoryConfigMode = "visual";
+  state.repositoryConfigSelection = null;
+  state.repositoryConfigEditing = false;
+  state.repositoryConfigSaving = false;
+  state.repositoryConfigStatus = "idle";
+  state.repositoryConfigError = "";
+}
+
+function cloneCiModel(model) {
+  return JSON.parse(JSON.stringify(model));
+}
+
+function ciPipelineEntries(model) {
+  if (model?.pipelines?.length) return model.pipelines.map((pipeline, pipelineIndex) => ({ pipeline, pipelineIndex, legacy: false }));
+  if (!model) return [];
+  return [{ pipeline: { name: t("Manual pipeline"), stages: model.stages ?? [], jobs: model.jobs ?? [] }, pipelineIndex: 0, legacy: true }];
+}
+
+function selectedCiPipeline(model) {
+  const entries = ciPipelineEntries(model);
+  if (!entries.length) return null;
+  return entries.find(entry => entry.pipelineIndex === state.repositoryConfigSelection?.pipelineIndex) ?? entries[0];
+}
+
+function renderRepositoryConfigVisual() {
+  const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
+  const entries = ciPipelineEntries(model);
+  const list = elements["repository-config-pipeline-list"];
+  const graph = elements["repository-config-stage-graph"];
+  const inspector = elements["repository-config-inspector"];
+  list.replaceChildren();
+  graph.replaceChildren();
+  inspector.replaceChildren();
+  elements["repository-config-pipeline-count"].textContent = String(entries.length);
+  elements["repository-config-add-pipeline"].hidden = !state.repositoryConfigEditing;
+  if (!entries.length) {
+    graph.append(configEmptyState(t("No CI configuration"), t("Select Edit to create a pipeline graph.")));
+    inspector.append(configEmptyState(t("Nothing selected"), t("Select a pipeline, stage, or job.")));
+    elements["repository-config-graph-title"].textContent = t("Pipeline");
+    elements["repository-config-inspector-title"].textContent = t("Pipeline settings");
+    return;
+  }
+
+  const selected = selectedCiPipeline(model);
+  if (!state.repositoryConfigSelection || selected.pipelineIndex !== state.repositoryConfigSelection.pipelineIndex) {
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: selected.pipelineIndex };
+  }
+  for (const entry of entries) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "config-pipeline-item";
+    button.classList.toggle("is-active", entry.pipelineIndex === selected.pipelineIndex);
+    const name = document.createElement("strong"); name.textContent = entry.pipeline.name;
+    const meta = document.createElement("span"); meta.textContent = entry.legacy ? t("Manual") : `${entry.pipeline.runner_os} · ${entry.pipeline.category}`;
+    button.append(name, meta);
+    if (entry.pipeline.needs?.length) {
+      const needs = document.createElement("span"); needs.className = "config-pipeline-needs"; needs.textContent = t("dynamic.pipelineNeeds", { pipelines: entry.pipeline.needs.join(", ") }); button.append(needs);
+    }
+    button.addEventListener("click", () => {
+      state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: entry.pipelineIndex };
+      renderRepositoryConfigVisual();
+    });
+    list.append(button);
+  }
+
+  elements["repository-config-add-pipeline"].textContent = selected.legacy ? t("Convert to auto pipeline") : t("Add pipeline");
+  elements["repository-config-graph-title"].textContent = selected.pipeline.name;
+  selected.pipeline.stages.forEach((stage, stageIndex) => {
+    const column = document.createElement("section");
+    column.className = "config-stage-column";
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "config-stage-header";
+    header.classList.toggle("is-active", state.repositoryConfigSelection?.type === "stage" && state.repositoryConfigSelection.stageIndex === stageIndex);
+    const order = document.createElement("span"); order.textContent = String(stageIndex + 1).padStart(2, "0");
+    const title = document.createElement("strong"); title.textContent = stage;
+    header.append(order, title);
+    header.addEventListener("click", () => {
+      state.repositoryConfigSelection = { type: "stage", pipelineIndex: selected.pipelineIndex, stageIndex };
+      renderRepositoryConfigVisual();
+    });
+    column.append(header);
+    const jobs = selected.pipeline.jobs.map((job, jobIndex) => ({ job, jobIndex })).filter(entry => entry.job.stage === stage);
+    const jobList = document.createElement("div"); jobList.className = "config-job-list";
+    for (const entry of jobs) {
+      const job = document.createElement("button");
+      job.type = "button";
+      job.className = "config-job-card";
+      job.dataset.jobName = entry.job.name;
+      job.classList.toggle("is-active", state.repositoryConfigSelection?.type === "job" && state.repositoryConfigSelection.jobIndex === entry.jobIndex);
+      const icon = document.createElement("span"); icon.className = "config-job-icon"; icon.textContent = "◆";
+      const copy = document.createElement("span");
+      const jobName = document.createElement("strong"); jobName.textContent = entry.job.name;
+      const jobMeta = document.createElement("small"); jobMeta.textContent = t("dynamic.jobSteps", { count: entry.job.script.length, seconds: entry.job.timeout_seconds });
+      copy.append(jobName, jobMeta);
+      if (entry.job.needs?.length) {
+        const needs = document.createElement("small"); needs.className = "config-job-needs"; needs.textContent = t("dynamic.jobNeeds", { jobs: entry.job.needs.join(", ") }); copy.append(needs);
+      }
+      job.append(icon, copy);
+      job.addEventListener("click", () => {
+        state.repositoryConfigSelection = { type: "job", pipelineIndex: selected.pipelineIndex, jobIndex: entry.jobIndex };
+        renderRepositoryConfigVisual();
+      });
+      jobList.append(job);
+    }
+    if (state.repositoryConfigEditing) {
+      const addJob = document.createElement("button"); addJob.type = "button"; addJob.className = "config-inline-add"; addJob.textContent = `＋ ${t("Add job")}`;
+      addJob.addEventListener("click", () => addVisualJob(selected, stage));
+      jobList.append(addJob);
+    }
+    column.append(jobList);
+    graph.append(column);
+  });
+  if (state.repositoryConfigEditing) {
+    const addStage = document.createElement("button"); addStage.type = "button"; addStage.className = "config-stage-add"; addStage.textContent = `＋ ${t("Add stage")}`;
+    addStage.addEventListener("click", () => addVisualStage(selected));
+    graph.append(addStage);
+  }
+  renderConfigInspector(selected, model);
+  window.requestAnimationFrame(() => renderConfigDependencyEdges(selected.pipeline));
+}
+
+function renderConfigInspector(selected, model) {
+  const inspector = elements["repository-config-inspector"];
+  const selection = state.repositoryConfigSelection ?? { type: "pipeline" };
+  if (selection.type === "job") {
+    const job = selected.pipeline.jobs[selection.jobIndex];
+    if (!job) { state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: selected.pipelineIndex }; renderRepositoryConfigVisual(); return; }
+    elements["repository-config-inspector-title"].textContent = t("Job settings");
+    inspector.append(
+      configInspectorInput(t("Name"), job.name, value => {
+        const previous = job.name;
+        job.name = value;
+        for (const candidate of selected.pipeline.jobs) {
+          candidate.needs = (candidate.needs ?? []).map(dependency => dependency === previous ? value : dependency);
+        }
+      }),
+      configInspectorSelect(t("Stage"), selected.pipeline.stages, job.stage, value => {
+        job.stage = value;
+        for (const candidate of selected.pipeline.jobs) {
+          const candidateStage = selected.pipeline.stages.indexOf(candidate.stage);
+          candidate.needs = (candidate.needs ?? []).filter(dependency => {
+            const dependencyJob = selected.pipeline.jobs.find(item => item.name === dependency);
+            return dependencyJob && selected.pipeline.stages.indexOf(dependencyJob.stage) <= candidateStage;
+          });
+        }
+      }),
+      configInspectorDependencies(selected.pipeline, selection.jobIndex),
+      configInspectorInput(t("Timeout (seconds)"), job.timeout_seconds, value => { job.timeout_seconds = Number(value); }, "number", { min: 1, max: 86400 }),
+      configInspectorTextarea(t("Script"), job.script.join("\n"), value => { job.script = value.split("\n"); }, t("one command per line")),
+    );
+    if (state.repositoryConfigEditing) inspector.append(configDangerButton(t("Delete job"), () => deleteVisualJob(selected, selection.jobIndex)));
+    return;
+  }
+  if (selection.type === "stage") {
+    const stage = selected.pipeline.stages[selection.stageIndex];
+    if (stage === undefined) { state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: selected.pipelineIndex }; renderRepositoryConfigVisual(); return; }
+    elements["repository-config-inspector-title"].textContent = t("Stage settings");
+    inspector.append(configInspectorInput(t("Name"), stage, value => {
+      const previous = selected.pipeline.stages[selection.stageIndex];
+      selected.pipeline.stages[selection.stageIndex] = value;
+      for (const job of selected.pipeline.jobs) if (job.stage === previous) job.stage = value;
+    }));
+    if (state.repositoryConfigEditing) {
+      const remove = configDangerButton(t("Delete stage"), () => deleteVisualStage(selected, selection.stageIndex));
+      remove.disabled = selected.pipeline.stages.length <= 1;
+      inspector.append(remove);
+    }
+    return;
+  }
+
+  elements["repository-config-inspector-title"].textContent = t("Pipeline settings");
+  if (selected.legacy) {
+    const note = document.createElement("p"); note.className = "config-inspector-note"; note.textContent = t("This is a manual pipeline using root stages and jobs.");
+    inspector.append(note);
+    if (state.repositoryConfigEditing) {
+      const convert = document.createElement("button"); convert.type = "button"; convert.className = "button button--secondary"; convert.textContent = t("Convert to auto pipeline"); convert.addEventListener("click", addVisualPipeline); inspector.append(convert);
+    }
+    return;
+  }
+  const pipeline = selected.pipeline;
+  inspector.append(
+    configInspectorInput(t("Name"), pipeline.name, value => {
+      const previous = pipeline.name;
+      pipeline.name = value;
+      for (const candidate of model.pipelines) {
+        candidate.needs = (candidate.needs ?? []).map(dependency => dependency === previous ? value : dependency);
+      }
+    }),
+    configInspectorInput(t("Category"), pipeline.category, value => { pipeline.category = value; }),
+    configInspectorPipelineDependencies(model, selected.pipelineIndex),
+    configInspectorSelect(t("Runner OS"), ["linux", "macos", "windows"], pipeline.runner_os, value => { pipeline.runner_os = value; }),
+    configInspectorInput(t("Working directory"), pipeline.working_directory, value => { pipeline.working_directory = value; }),
+    configInspectorTextarea(t("Change paths"), pipeline.changes.join("\n"), value => { pipeline.changes = value.split("\n").map(item => item.trim()).filter(Boolean); }, t("one path per line")),
+    configInspectorInput(t("Sparse View"), pipeline.sparse_view ?? "", value => { pipeline.sparse_view = value.trim() || null; }),
+  );
+  if (state.repositoryConfigEditing) inspector.append(configDangerButton(t("Delete pipeline"), () => deleteVisualPipeline(selected.pipelineIndex)));
+}
+
+function configInspectorInput(labelText, value, update, type = "text", attributes = {}) {
+  const label = document.createElement("label"); label.className = "config-inspector-field";
+  const caption = document.createElement("span"); caption.textContent = labelText;
+  const input = document.createElement("input"); input.type = type; input.value = value; input.disabled = !state.repositoryConfigEditing;
+  for (const [key, attributeValue] of Object.entries(attributes)) input[key] = attributeValue;
+  input.addEventListener("input", () => update(input.value));
+  input.addEventListener("change", renderRepositoryConfigVisual);
+  label.append(caption, input); return label;
+}
+
+function configInspectorSelect(labelText, options, value, update) {
+  const label = document.createElement("label"); label.className = "config-inspector-field";
+  const caption = document.createElement("span"); caption.textContent = labelText;
+  const select = document.createElement("select"); select.disabled = !state.repositoryConfigEditing;
+  for (const option of options) select.add(new Option(option, option));
+  select.value = value;
+  select.addEventListener("change", () => { update(select.value); renderRepositoryConfigVisual(); });
+  label.append(caption, select); return label;
+}
+
+function configInspectorTextarea(labelText, value, update, hintText) {
+  const label = document.createElement("label"); label.className = "config-inspector-field";
+  const caption = document.createElement("span"); caption.textContent = labelText;
+  const textarea = document.createElement("textarea"); textarea.rows = 6; textarea.value = value; textarea.disabled = !state.repositoryConfigEditing; textarea.spellcheck = false;
+  textarea.addEventListener("input", () => update(textarea.value));
+  const hint = document.createElement("small"); hint.textContent = hintText;
+  label.append(caption, textarea, hint); return label;
+}
+
+function configInspectorDependencies(pipeline, jobIndex) {
+  const job = pipeline.jobs[jobIndex];
+  job.needs ??= [];
+  const field = document.createElement("fieldset"); field.className = "config-dependency-field";
+  const legend = document.createElement("legend"); legend.textContent = t("Dependencies"); field.append(legend);
+  const hint = document.createElement("small"); hint.textContent = t("Select jobs that must complete first."); field.append(hint);
+  const jobStage = pipeline.stages.indexOf(job.stage);
+  const candidates = pipeline.jobs.filter(candidate => candidate !== job
+    && pipeline.stages.indexOf(candidate.stage) <= jobStage
+    && !wouldCreateCiDependencyCycle(pipeline, job.name, candidate.name));
+  if (!candidates.length) {
+    const empty = document.createElement("span"); empty.className = "config-dependency-empty"; empty.textContent = t("No eligible dependency jobs"); field.append(empty); return field;
+  }
+  const options = document.createElement("div"); options.className = "config-dependency-options";
+  for (const candidate of candidates) {
+    const option = document.createElement("label");
+    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = job.needs.includes(candidate.name); checkbox.disabled = !state.repositoryConfigEditing;
+    checkbox.addEventListener("change", () => {
+      job.needs = checkbox.checked
+        ? [...new Set([...job.needs, candidate.name])]
+        : job.needs.filter(dependency => dependency !== candidate.name);
+      renderRepositoryConfigVisual();
+    });
+    const name = document.createElement("strong"); name.textContent = candidate.name;
+    const stage = document.createElement("small"); stage.textContent = candidate.stage;
+    option.append(checkbox, name, stage); options.append(option);
+  }
+  field.append(options); return field;
+}
+
+function configInspectorPipelineDependencies(model, pipelineIndex) {
+  const pipeline = model.pipelines[pipelineIndex];
+  pipeline.needs ??= [];
+  const field = document.createElement("fieldset"); field.className = "config-dependency-field";
+  const legend = document.createElement("legend"); legend.textContent = t("Pipeline dependencies"); field.append(legend);
+  const hint = document.createElement("small"); hint.textContent = t("Select pipelines that must succeed first."); field.append(hint);
+  const candidates = model.pipelines.filter(candidate => candidate !== pipeline
+    && !wouldCreateCiPipelineDependencyCycle(model, pipeline.name, candidate.name));
+  if (!candidates.length) {
+    const empty = document.createElement("span"); empty.className = "config-dependency-empty"; empty.textContent = t("No eligible dependency pipelines"); field.append(empty); return field;
+  }
+  const options = document.createElement("div"); options.className = "config-dependency-options";
+  for (const candidate of candidates) {
+    const option = document.createElement("label");
+    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = pipeline.needs.includes(candidate.name); checkbox.disabled = !state.repositoryConfigEditing;
+    checkbox.addEventListener("change", () => {
+      pipeline.needs = checkbox.checked
+        ? [...new Set([...pipeline.needs, candidate.name])]
+        : pipeline.needs.filter(dependency => dependency !== candidate.name);
+      renderRepositoryConfigVisual();
+    });
+    const name = document.createElement("strong"); name.textContent = candidate.name;
+    const target = document.createElement("small"); target.textContent = candidate.runner_os;
+    option.append(checkbox, name, target); options.append(option);
+  }
+  field.append(options); return field;
+}
+
+function wouldCreateCiPipelineDependencyCycle(model, pipelineName, dependencyName) {
+  const pending = [dependencyName];
+  const visited = new Set();
+  while (pending.length) {
+    const name = pending.pop();
+    if (name === pipelineName) return true;
+    if (visited.has(name)) continue;
+    visited.add(name);
+    const pipeline = model.pipelines.find(candidate => candidate.name === name);
+    if (pipeline) pending.push(...(pipeline.needs ?? []));
+  }
+  return false;
+}
+
+function wouldCreateCiDependencyCycle(pipeline, jobName, dependencyName) {
+  const pending = [dependencyName];
+  const visited = new Set();
+  while (pending.length) {
+    const name = pending.pop();
+    if (name === jobName) return true;
+    if (visited.has(name)) continue;
+    visited.add(name);
+    const job = pipeline.jobs.find(candidate => candidate.name === name);
+    if (job) pending.push(...(job.needs ?? []));
+  }
+  return false;
+}
+
+function renderConfigDependencyEdges(pipeline) {
+  if (state.repositoryConfigMode !== "visual") return;
+  const graph = elements["repository-config-stage-graph"];
+  graph.querySelector(".config-dependency-layer")?.remove();
+  const cards = new Map([...graph.querySelectorAll(".config-job-card")].map(card => [card.dataset.jobName, card]));
+  const edges = pipeline.jobs.flatMap(job => (job.needs ?? []).map(dependency => ({ dependency, job: job.name })));
+  if (!edges.length || !graph.isConnected) return;
+  const width = Math.max(graph.scrollWidth, graph.clientWidth);
+  const height = Math.max(graph.scrollHeight, graph.clientHeight);
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg"); svg.classList.add("config-dependency-layer"); svg.setAttribute("width", width); svg.setAttribute("height", height); svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("aria-hidden", "true");
+  const defs = document.createElementNS(namespace, "defs");
+  const marker = document.createElementNS(namespace, "marker"); marker.id = "config-dependency-arrow"; marker.setAttribute("viewBox", "0 0 10 10"); marker.setAttribute("refX", "9"); marker.setAttribute("refY", "5"); marker.setAttribute("markerWidth", "5"); marker.setAttribute("markerHeight", "5"); marker.setAttribute("orient", "auto-start-reverse");
+  const arrow = document.createElementNS(namespace, "path"); arrow.setAttribute("d", "M 0 0 L 10 5 L 0 10 z"); marker.append(arrow); defs.append(marker); svg.append(defs);
+  const graphRect = graph.getBoundingClientRect();
+  const selected = state.repositoryConfigSelection?.type === "job" ? pipeline.jobs[state.repositoryConfigSelection.jobIndex]?.name : null;
+  for (const edge of edges) {
+    const source = cards.get(edge.dependency); const target = cards.get(edge.job);
+    if (!source || !target) continue;
+    const sourceRect = source.getBoundingClientRect(); const targetRect = target.getBoundingClientRect();
+    const sameStage = source.closest(".config-stage-column") === target.closest(".config-stage-column");
+    const x1 = sourceRect.right - graphRect.left + graph.scrollLeft;
+    const y1 = sourceRect.top + sourceRect.height / 2 - graphRect.top + graph.scrollTop;
+    const x2 = sameStage ? targetRect.right - graphRect.left + graph.scrollLeft : targetRect.left - graphRect.left + graph.scrollLeft;
+    const y2 = targetRect.top + targetRect.height / 2 - graphRect.top + graph.scrollTop;
+    const path = document.createElementNS(namespace, "path");
+    if (sameStage) {
+      const control = Math.max(x1, x2) + 22;
+      path.setAttribute("d", `M ${x1} ${y1} C ${control} ${y1}, ${control} ${y2}, ${x2} ${y2}`);
+    } else {
+      const middle = (x1 + x2) / 2;
+      path.setAttribute("d", `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`);
+    }
+    path.setAttribute("marker-end", "url(#config-dependency-arrow)");
+    path.classList.toggle("is-active", selected === edge.job || selected === edge.dependency);
+    svg.append(path);
+  }
+  graph.prepend(svg);
+}
+
+function configDangerButton(label, action) {
+  const button = document.createElement("button"); button.type = "button"; button.className = "button button--danger config-inspector-danger"; button.textContent = label; button.addEventListener("click", action); return button;
+}
+
+function configEmptyState(titleText, description) {
+  const empty = document.createElement("div"); empty.className = "config-visual-empty";
+  const title = document.createElement("strong"); title.textContent = titleText;
+  const copy = document.createElement("span"); copy.textContent = description;
+  empty.append(title, copy); return empty;
+}
+
+function addVisualPipeline() {
+  if (!state.repositoryConfigEditing || !state.repositoryConfigDraft) return;
+  const model = state.repositoryConfigDraft;
+  if (!model.pipelines.length) {
+    model.pipelines = [{
+      name: "pipeline", category: "uncategorized", needs: [], runner_os: "linux", sparse_view: null,
+      changes: ["src/**"], working_directory: ".", stages: model.stages, jobs: model.jobs,
+    }];
+    model.stages = []; model.jobs = [];
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
+  } else {
+    const name = uniqueCiName(model.pipelines.map(pipeline => pipeline.name), "pipeline");
+    model.pipelines.push({
+      name, category: "uncategorized", needs: [], runner_os: "linux", sparse_view: null,
+      changes: ["src/**"], working_directory: ".", stages: ["build"],
+      jobs: [{ name: "build", stage: "build", needs: [], script: ["echo build"], timeout_seconds: 3600 }],
+    });
+    state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: model.pipelines.length - 1 };
+  }
+  renderRepositoryConfigVisual();
+}
+
+function deleteVisualPipeline(index) {
+  const model = state.repositoryConfigDraft;
+  const [deleted] = model.pipelines.splice(index, 1);
+  for (const pipeline of model.pipelines) pipeline.needs = (pipeline.needs ?? []).filter(dependency => dependency !== deleted.name);
+  if (!model.pipelines.length) {
+    model.stages = cloneCiModel(DEFAULT_CI_MODEL.stages);
+    model.jobs = cloneCiModel(DEFAULT_CI_MODEL.jobs);
+  }
+  state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
+  renderRepositoryConfigVisual();
+}
+
+function addVisualStage(selected) {
+  const name = uniqueCiName(selected.pipeline.stages, "stage");
+  selected.pipeline.stages.push(name);
+  state.repositoryConfigSelection = { type: "stage", pipelineIndex: selected.pipelineIndex, stageIndex: selected.pipeline.stages.length - 1 };
+  renderRepositoryConfigVisual();
+}
+
+function deleteVisualStage(selected, stageIndex) {
+  const [stage] = selected.pipeline.stages.splice(stageIndex, 1);
+  const deleted = new Set(selected.pipeline.jobs.filter(job => job.stage === stage).map(job => job.name));
+  for (let index = selected.pipeline.jobs.length - 1; index >= 0; index -= 1) {
+    if (selected.pipeline.jobs[index].stage === stage) selected.pipeline.jobs.splice(index, 1);
+  }
+  for (const job of selected.pipeline.jobs) job.needs = (job.needs ?? []).filter(dependency => !deleted.has(dependency));
+  state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: selected.pipelineIndex };
+  renderRepositoryConfigVisual();
+}
+
+function addVisualJob(selected, stage) {
+  const name = uniqueCiName(selected.pipeline.jobs.map(job => job.name), "job");
+  selected.pipeline.jobs.push({ name, stage, needs: [], script: ["echo build"], timeout_seconds: 3600 });
+  state.repositoryConfigSelection = { type: "job", pipelineIndex: selected.pipelineIndex, jobIndex: selected.pipeline.jobs.length - 1 };
+  renderRepositoryConfigVisual();
+}
+
+function deleteVisualJob(selected, jobIndex) {
+  const [deleted] = selected.pipeline.jobs.splice(jobIndex, 1);
+  for (const job of selected.pipeline.jobs) job.needs = (job.needs ?? []).filter(dependency => dependency !== deleted.name);
+  state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: selected.pipelineIndex };
+  renderRepositoryConfigVisual();
+}
+
+function uniqueCiName(values, prefix) {
+  let suffix = 1;
+  let candidate = prefix;
+  while (values.includes(candidate)) candidate = `${prefix}-${++suffix}`;
+  return candidate;
+}
+
+function serializeCiModel(model) {
+  const lines = [];
+  const value = input => JSON.stringify(String(input));
+  const array = items => `[${items.map(item => value(item)).join(", ")}]`;
+  const appendJob = (job, table) => {
+    lines.push(`[[${table}]]`, `name = ${value(job.name)}`, `stage = ${value(job.stage)}`);
+    if (job.needs?.length) lines.push(`needs = ${array(job.needs)}`);
+    lines.push(`script = ${array(job.script)}`, `timeout_seconds = ${Number(job.timeout_seconds) || 3600}`, "");
+  };
+  if (model.pipelines.length) {
+    for (const pipeline of model.pipelines) {
+      lines.push("[[pipelines]]", `name = ${value(pipeline.name)}`, `category = ${value(pipeline.category)}`, `runner_os = ${value(pipeline.runner_os)}`);
+      if (pipeline.needs?.length) lines.push(`needs = ${array(pipeline.needs)}`);
+      if (pipeline.sparse_view) lines.push(`sparse_view = ${value(pipeline.sparse_view)}`);
+      lines.push(`changes = ${array(pipeline.changes)}`, `working_directory = ${value(pipeline.working_directory)}`, `stages = ${array(pipeline.stages)}`, "");
+      for (const job of pipeline.jobs) appendJob(job, "pipelines.jobs");
+    }
+  } else {
+    lines.push(`stages = ${array(model.stages)}`, "");
+    for (const job of model.jobs) appendJob(job, "jobs");
+  }
+  return `${lines.join("\n").trim()}\n`;
 }
 
 function openNewRepository() {
@@ -1517,6 +2241,12 @@ function populateExecutionGraph(graph, pipeline, jobs, snapshot) {
   graph.append(graphConnector());
   const sparseView = pipeline.sparse_view_name || snapshot?.sparse_view;
   graph.append(graphNode("view", t("Sparse View"), [sparseView || t("dynamic.noSparseView")], pipeline.status, t("dynamic.viewSnapshot")));
+  const pipelineNeeds = pipeline.pipeline_needs?.length ? pipeline.pipeline_needs : snapshot?.pipeline_needs || [];
+  if (pipelineNeeds.length) {
+    graph.append(graphConnector());
+    const dependencyStatus = ["running", "succeeded"].includes(pipeline.status) ? "succeeded" : pipeline.status;
+    graph.append(graphNode("dependency", t("Pipeline dependencies"), pipelineNeeds, dependencyStatus, pipeline.status === "queued" ? t("Waiting for pipeline dependencies") : t("Pipeline dependencies")));
+  }
   graph.append(graphConnector());
   graph.append(graphNode("pipeline", t("Pipeline"), [pipeline.pipeline_name], pipeline.status, pipeline.working_directory ? t("dynamic.runsIn", { directory: pipeline.working_directory }) : t("dynamic.repositoryRoot")));
   graph.append(graphConnector());
@@ -1571,7 +2301,7 @@ function graphNode(kind, eyebrow, values, status, meta) {
   const icon = document.createElement("span");
   icon.className = "execution-node-icon";
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = kind === "folder" ? "⌁" : kind === "view" ? "◫" : kind === "pipeline" ? "◆" : kind === "runner" ? "▣" : "●";
+  icon.textContent = kind === "folder" ? "⌁" : kind === "view" ? "◫" : kind === "dependency" ? "◇" : kind === "pipeline" ? "◆" : kind === "runner" ? "▣" : "●";
   const copy = document.createElement("span");
   copy.className = "execution-node-copy";
   const label = document.createElement("small"); label.textContent = eyebrow;
@@ -1614,6 +2344,12 @@ function renderDetailSummary(pipeline, sparseViewRules) {
     const item = document.createElement("div"); item.className = "summary-item";
     const title = document.createElement("span"); title.textContent = label;
     const content = document.createElement("strong"); content.textContent = value;
+    item.append(title, content); elements["detail-summary"].append(item);
+  }
+  if (pipeline.error) {
+    const item = document.createElement("div"); item.className = "summary-item summary-item--error";
+    const title = document.createElement("span"); title.textContent = t("Failure reason");
+    const content = document.createElement("strong"); content.textContent = pipeline.error;
     item.append(title, content); elements["detail-summary"].append(item);
   }
   if (pipeline.sparse_view_name && sparseViewRules) {

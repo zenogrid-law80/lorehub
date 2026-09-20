@@ -171,6 +171,7 @@ async fn selected_manual_pipeline_preserves_execution_snapshot(pool: PgPool) {
     request.branch = Some("main".into());
     let selected = db::SelectedPipeline {
         pipeline_name: "build".into(),
+        pipeline_needs: Vec::new(),
         category: "server".into(),
         runner_os: "linux".into(),
         trigger_patterns: vec!["src/**".into()],
@@ -224,6 +225,48 @@ async fn status(pool: &PgPool, id: Uuid) -> String {
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn pipeline_dependency_claim_waits_for_success(pool: PgPool) {
+    let upstream = Uuid::new_v4();
+    let dependent = Uuid::new_v4();
+    let repository = "lores://127.0.0.1:41337/dependencies";
+    let revision = "d".repeat(64);
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name,created_at) VALUES($1,$2,$3,'main','data-table-generate',now() - interval '1 second')")
+        .bind(upstream).bind(repository).bind(&revision).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name,pipeline_needs) VALUES($1,$2,$3,'main','server',ARRAY['data-table-generate'])")
+        .bind(dependent).bind(repository).bind(&revision).execute(&pool).await.unwrap();
+    let worker = Uuid::new_v4();
+    assert_eq!(
+        db::claim(&pool, worker).await.unwrap().unwrap().id,
+        upstream
+    );
+    assert!(db::claim(&pool, Uuid::new_v4()).await.unwrap().is_none());
+    db::finish(&pool, upstream, worker, "succeeded", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db::claim(&pool, Uuid::new_v4()).await.unwrap().unwrap().id,
+        dependent
+    );
+
+    let failed_revision = "e".repeat(64);
+    let blocked = Uuid::new_v4();
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name,status,error,finished_at) VALUES($1,$2,$3,'main','data-table-generate','failed','data table generation failed: schema mismatch',now())")
+        .bind(Uuid::new_v4()).bind(repository).bind(&failed_revision).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name,pipeline_needs) VALUES($1,$2,$3,'main','server-windows-build',ARRAY['data-table-generate'])")
+        .bind(blocked).bind(repository).bind(&failed_revision).execute(&pool).await.unwrap();
+    assert!(db::claim(&pool, Uuid::new_v4()).await.unwrap().is_none());
+    assert_eq!(status(&pool, blocked).await, "failed");
+    let error: String = sqlx::query_scalar("SELECT error FROM pipelines WHERE id = $1")
+        .bind(blocked)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(error.contains("data-table-generate"));
+    assert!(error.contains("schema mismatch"));
 }
 
 #[sqlx::test]

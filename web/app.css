@@ -234,6 +234,7 @@ th:nth-child(1) { width: 122px; } th:nth-child(3) { width: 126px; } th:nth-child
 dialog { color: var(--ink); }
 dialog::backdrop { background: rgba(20, 16, 39, .48); backdrop-filter: blur(3px); }
 .modal { width: min(520px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 14px; box-shadow: 0 24px 80px rgba(22,17,44,.24); }
+.modal--wide { width: min(1240px, calc(100% - 32px)); max-width: none; }
 .modal form { padding: 27px; }
 .modal-header, .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .modal-header .eyebrow, .drawer-header .eyebrow { margin-bottom: 6px; }
@@ -271,6 +272,8 @@ dialog::backdrop { background: rgba(20, 16, 39, .48); backdrop-filter: blur(3px)
 .summary-item span { color: #9995a3; font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .summary-item strong { font-size: 11px; font-weight: 680; }
 .summary-item--view-rules { flex: 1 1 100%; }
+.summary-item--error { flex: 1 1 100%; }
+.summary-item--error strong { color: #b42318; overflow-wrap: anywhere; line-height: 1.45; }
 .summary-item--view-rules code { padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font: 9px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 .drawer-section-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 10px; }
 .drawer-section-heading h3 { margin: 0; font-size: 12px; }
@@ -280,6 +283,7 @@ dialog::backdrop { background: rgba(20, 16, 39, .48); backdrop-filter: blur(3px)
 .execution-node { flex: 0 0 142px; display: flex; align-items: flex-start; gap: 9px; min-height: 82px; padding: 12px; border: 1px solid #dedbe5; border-top: 3px solid #aaa6b2; border-radius: 9px; background: #fcfbfd; }
 .execution-node--folder { border-top-color: var(--purple); background: #fbf9ff; }
 .execution-node--view { border-top-color: #8b6ccf; background: #faf7ff; }
+.execution-node--dependency { border-top-color: #a175d1; background: #fcf8ff; }
 .execution-node--pipeline { border-top-color: var(--blue); background: #f8fbff; }
 .execution-node--runner { border-top-color: #777383; }
 .execution-node--succeeded { border-top-color: var(--green); }
@@ -374,6 +378,85 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
 .repository-branch-option:hover { background: #faf9fc; }
 .repository-branch-option input { width: 16px; height: 16px; accent-color: var(--purple); }
 .repository-branch-option strong { overflow-wrap: anywhere; font-size: 12px; }
+.repository-config-toolbar { display: grid; grid-template-columns: minmax(180px, .55fr) minmax(0, 1fr); align-items: end; gap: 14px; margin-bottom: 15px; }
+.repository-config-toolbar .field { margin: 0; }
+.repository-config-revision { display: grid; gap: 7px; min-width: 0; }
+.repository-config-revision > span { font-size: 11px; font-weight: 750; }
+.repository-config-revision code { display: block; overflow: hidden; height: 43px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: #f7f6f9; font: 10px/43px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.repository-config-source { min-height: 360px; max-height: min(52vh, 560px); margin: 0; overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 9px; color: #413b4c; background: #f8f7fa; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; }
+.repository-config-source.is-empty { display: grid; place-content: center; color: var(--muted); font-family: inherit; text-align: center; white-space: pre-wrap; }
+.repository-config-editor { gap: 8px; margin: 0; }
+.repository-config-editor textarea { min-height: 360px; max-height: min(52vh, 560px); font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; }
+.repository-config-mode { display: inline-flex; align-self: flex-start; margin-bottom: 12px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: #f5f3f8; }
+.repository-config-mode button { min-width: 88px; height: 34px; padding: 0 15px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 760; cursor: pointer; }
+.repository-config-mode button.is-active { color: white; background: var(--purple); box-shadow: 0 4px 10px rgba(110,73,203,.22); }
+.repository-config-mode button:disabled { opacity: .45; cursor: not-allowed; }
+.repository-config-visual { display: grid; grid-template-columns: 190px minmax(420px, 1fr) 285px; min-height: 430px; max-height: min(58vh, 620px); overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #f8f7fa; }
+.config-pipeline-sidebar, .config-inspector-panel { min-width: 0; overflow-y: auto; background: white; }
+.config-pipeline-sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+.config-inspector-panel { border-left: 1px solid var(--line); }
+.config-graph-panel { min-width: 0; overflow: hidden; background-image: radial-gradient(#d8d4df 1px, transparent 1px); background-size: 18px 18px; }
+.config-panel-heading { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.92); }
+.config-panel-heading > div { min-width: 0; display: grid; gap: 4px; }
+.config-panel-heading span { color: #9a94a5; font-size: 8px; font-weight: 800; letter-spacing: .12em; }
+.config-panel-heading strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.config-panel-heading small { color: var(--muted); font-size: 8px; white-space: nowrap; }
+.config-count { min-width: 24px; padding: 4px 7px; border-radius: 999px; background: var(--purple-soft); color: var(--purple) !important; text-align: center; letter-spacing: 0 !important; }
+.config-pipeline-list { display: grid; gap: 7px; padding: 11px; }
+.config-pipeline-item { display: grid; gap: 4px; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.config-pipeline-item:hover { background: #f7f5fa; }
+.config-pipeline-item.is-active { border-color: #b8a5e7; background: var(--purple-soft); box-shadow: inset 3px 0 0 var(--purple); }
+.config-pipeline-item strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.config-pipeline-item span { color: var(--muted); font-size: 8px; }
+.config-pipeline-item .config-pipeline-needs { overflow: hidden; color: var(--purple); text-overflow: ellipsis; white-space: nowrap; }
+.config-add-button { margin: auto 11px 11px; min-height: 38px; border: 1px dashed #ac99d8; border-radius: 8px; color: var(--purple); background: var(--purple-soft); font-size: 10px; font-weight: 750; cursor: pointer; }
+.config-stage-graph { position: relative; display: flex; align-items: flex-start; gap: 28px; min-height: 365px; height: calc(100% - 64px); overflow: auto; padding: 28px; }
+.config-stage-column { position: relative; z-index: 1; flex: 0 0 210px; min-height: 250px; padding: 10px; border: 2px solid #c7b7eb; border-radius: 12px; background: rgba(255,255,255,.94); box-shadow: 0 9px 25px rgba(42,32,67,.07); }
+.config-stage-column:not(:last-of-type)::after { content: ""; position: absolute; top: 33px; right: -30px; width: 28px; border-top: 2px solid #a99cba; }
+.config-stage-column:not(:last-of-type)::before { content: ""; position: absolute; z-index: 1; top: 29px; right: -30px; width: 7px; height: 7px; border-top: 2px solid #a99cba; border-right: 2px solid #a99cba; transform: rotate(45deg); }
+.config-stage-header { display: grid; grid-template-columns: 24px minmax(0,1fr); align-items: center; width: 100%; padding: 7px 8px 11px; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.config-stage-header.is-active { color: var(--purple); }
+.config-stage-header span { color: var(--purple); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.config-stage-header strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.config-job-list { display: grid; gap: 8px; padding-top: 10px; }
+.config-job-card { display: grid; grid-template-columns: 17px minmax(0,1fr); align-items: center; gap: 8px; width: 100%; padding: 12px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; text-align: left; cursor: pointer; }
+.config-job-card:hover { border-color: #b8a5e7; }
+.config-job-card.is-active { border-color: var(--purple); box-shadow: 0 0 0 2px var(--purple-soft); }
+.config-job-icon { color: var(--purple); font-size: 11px; }
+.config-job-card > span:last-child { min-width: 0; display: grid; gap: 4px; }
+.config-job-card strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.config-job-card small { color: var(--muted); font-size: 8px; }
+.config-job-card .config-job-needs { overflow: hidden; color: var(--purple); text-overflow: ellipsis; white-space: nowrap; }
+.config-dependency-layer { position: absolute; z-index: 2; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.config-dependency-layer path { fill: none; stroke: #9a8baa; stroke-width: 1.6; opacity: .72; }
+.config-dependency-layer path.is-active { stroke: var(--purple); stroke-width: 2.4; opacity: 1; }
+.config-dependency-layer marker path { fill: #9a8baa; stroke: none; opacity: 1; }
+.config-inline-add, .config-stage-add { min-height: 42px; border: 1px dashed #ae9bd8; border-radius: 8px; color: var(--purple); background: rgba(239,233,251,.62); font-size: 10px; font-weight: 750; cursor: pointer; }
+.config-stage-add { flex: 0 0 150px; min-height: 92px; }
+.config-inspector { display: grid; gap: 14px; padding: 16px; }
+.config-inspector-field { display: grid; gap: 6px; }
+.config-inspector-field > span { font-size: 10px; font-weight: 750; }
+.config-inspector-field :is(input, select, textarea) { width: 100%; border: 1px solid #dcd9e2; border-radius: 8px; outline: 0; color: var(--ink); background: white; font-size: 11px; }
+.config-inspector-field :is(input, select) { height: 39px; padding: 0 10px; }
+.config-inspector-field textarea { min-height: 92px; padding: 9px 10px; resize: vertical; font: 10px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.config-inspector-field :is(input, select, textarea):focus { border-color: #9b7cdc; box-shadow: 0 0 0 3px var(--purple-soft); }
+.config-inspector-field :is(input, select, textarea):disabled { color: var(--muted); background: #f5f3f7; }
+.config-inspector-field small, .config-inspector-note { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
+.config-dependency-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.config-dependency-field legend { margin-bottom: 6px; padding: 0; font-size: 10px; font-weight: 750; }
+.config-dependency-field > small { display: block; margin-bottom: 8px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.config-dependency-options { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+.config-dependency-options label { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 36px; padding: 6px 8px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.config-dependency-options label:last-child { border-bottom: 0; }
+.config-dependency-options label:hover { background: var(--purple-soft); }
+.config-dependency-options input { width: 14px; height: 14px; accent-color: var(--purple); }
+.config-dependency-options strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.config-dependency-options small, .config-dependency-empty { color: var(--muted); font-size: 8px; }
+.config-dependency-empty { display: block; padding: 10px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
+.config-inspector-danger { width: 100%; margin-top: 6px; }
+.config-visual-empty { display: grid; align-content: center; justify-items: center; gap: 7px; min-width: 260px; min-height: 260px; margin: auto; padding: 24px; color: var(--muted); text-align: center; }
+.config-visual-empty strong { color: var(--ink); font-size: 13px; }
+.config-visual-empty span { max-width: 260px; font-size: 10px; line-height: 1.6; }
 .repository-action { min-height: 33px; padding-inline: 11px; font-size: 9px; }
 .runner-download-panel { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-bottom: 18px; padding: 18px 20px; border: 1px solid #dcd5ec; border-radius: 11px; background: linear-gradient(115deg, #fbf9ff, #fff); }
 .runner-download-copy { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -431,6 +514,9 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
   .user-copy { display: none; }
   .login-view { grid-template-columns: 1fr 440px; }
   .login-panel { padding-inline: 48px; }
+  .repository-config-visual { grid-template-columns: 175px minmax(400px, 1fr); max-height: 72vh; overflow: auto; }
+  .config-inspector-panel { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+  .config-inspector { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 780px) {
   .login-view { display: block; background: #fbfafd; }
@@ -447,6 +533,15 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
   .detail-drawer { width: 100%; }.drawer-shell { padding: 22px 18px; }
   .execution-node { flex-basis: 132px; }
   .repository-card { grid-template-columns: 42px minmax(0,1fr); }.repository-actions { grid-column: 2; flex-wrap: wrap; }
+  .repository-config-toolbar { grid-template-columns: 1fr; }
+  .repository-config-source, .repository-config-editor textarea { min-height: 300px; }
+  .repository-config-visual { display: block; max-height: 68vh; overflow: auto; }
+  .config-pipeline-sidebar, .config-inspector-panel { overflow: visible; border: 0; border-bottom: 1px solid var(--line); }
+  .config-pipeline-list { display: flex; overflow-x: auto; }
+  .config-pipeline-item { min-width: 150px; }
+  .config-add-button { width: calc(100% - 22px); margin-top: 0; }
+  .config-stage-graph { min-height: 330px; height: auto; }
+  .config-inspector { grid-template-columns: 1fr; }
   .runner-download-panel { align-items: flex-start; flex-direction: column; }
   .runner-download-actions { width: 100%; }
   .button--download { flex: 1; }
@@ -577,6 +672,23 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
 :root[data-color-scheme="dark"] :is(.icon-button:hover, .button--ghost:hover, tbody tr[data-id]:hover, .repository-card:hover, .repository-branch-option:hover, .button--download:hover) {
   background: #2d2938;
 }
+:root[data-color-scheme="dark"] :is(.repository-config-source, .repository-config-revision code) {
+  border-color: var(--line);
+  color: #d2cddd;
+  background: #292532;
+}
+:root[data-color-scheme="dark"] .summary-item--error strong { color: #ff9a9a; }
+:root[data-color-scheme="dark"] .repository-config-mode { border-color: var(--line); background: #292532; }
+:root[data-color-scheme="dark"] .repository-config-visual { border-color: var(--line); background: #211e28; }
+:root[data-color-scheme="dark"] :is(.config-pipeline-sidebar, .config-inspector-panel, .config-panel-heading, .config-stage-column, .config-job-card) { border-color: var(--line); background: #282530; }
+:root[data-color-scheme="dark"] .config-graph-panel { background-color: #211e28; background-image: radial-gradient(#413b4a 1px, transparent 1px); }
+:root[data-color-scheme="dark"] .config-pipeline-item:hover { background: #302b3a; }
+:root[data-color-scheme="dark"] .config-pipeline-item.is-active { border-color: #7052b5; background: #30283e; }
+:root[data-color-scheme="dark"] .config-inspector-field :is(input, select, textarea) { border-color: var(--line); color: var(--ink); background: #211e28; }
+:root[data-color-scheme="dark"] .config-inspector-field :is(input, select, textarea):disabled { color: var(--muted); background: #2b2833; }
+:root[data-color-scheme="dark"] .config-dependency-options { border-color: var(--line); }
+:root[data-color-scheme="dark"] .config-dependency-options label { border-color: var(--line); }
+:root[data-color-scheme="dark"] .config-dependency-options label:hover { background: #30283e; }
 :root[data-color-scheme="dark"] .status-tab.is-active {
   background: var(--surface);
 }

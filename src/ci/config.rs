@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -65,13 +65,15 @@ pub struct PipelineConfig {
 pub struct JobConfig {
     pub name: String,
     pub stage: String,
+    #[serde(default)]
+    pub needs: Vec<String>,
     pub script: Vec<String>,
     #[serde(default = "default_timeout")]
     pub timeout_seconds: u64,
 }
 
 /// A repository can keep the original single pipeline, or opt into push CI.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PipelineFile {
     #[serde(default)]
@@ -82,12 +84,14 @@ pub struct PipelineFile {
     pub pipelines: Vec<NamedPipeline>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct NamedPipeline {
     pub name: String,
     #[serde(default = "default_category")]
     pub category: String,
+    #[serde(default)]
+    pub needs: Vec<String>,
     pub runner_os: String,
     #[serde(default)]
     pub sparse_view: Option<String>,
@@ -182,6 +186,50 @@ impl PipelineFile {
                 let mut config = pipeline.config();
                 config.validate()?;
                 pipeline.jobs = config.jobs;
+            }
+            let pipeline_indices = file
+                .pipelines
+                .iter()
+                .enumerate()
+                .map(|(index, pipeline)| (pipeline.name.as_str(), index))
+                .collect::<HashMap<_, _>>();
+            let mut dependents = vec![Vec::new(); file.pipelines.len()];
+            let mut indegrees = vec![0usize; file.pipelines.len()];
+            for (index, pipeline) in file.pipelines.iter().enumerate() {
+                ensure!(
+                    pipeline.needs.len() <= 32,
+                    "provide at most 32 pipeline dependencies"
+                );
+                let mut dependencies = HashSet::new();
+                for dependency in &pipeline.needs {
+                    ensure!(
+                        dependency != &pipeline.name && dependencies.insert(dependency),
+                        "pipeline {} has a duplicate or self dependency",
+                        pipeline.name
+                    );
+                    let dependency_index =
+                        *pipeline_indices.get(dependency.as_str()).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "pipeline {} depends on unknown pipeline {}",
+                                pipeline.name,
+                                dependency
+                            )
+                        })?;
+                    dependents[dependency_index].push(index);
+                    indegrees[index] += 1;
+                }
+            }
+            let mut emitted = vec![false; file.pipelines.len()];
+            for _ in 0..file.pipelines.len() {
+                let Some(next) = (0..file.pipelines.len())
+                    .find(|&index| !emitted[index] && indegrees[index] == 0)
+                else {
+                    anyhow::bail!("pipeline dependencies must not contain a cycle");
+                };
+                emitted[next] = true;
+                for &dependent in &dependents[next] {
+                    indegrees[dependent] -= 1;
+                }
             }
         }
         Ok(file)
@@ -285,9 +333,63 @@ impl PipelineConfig {
                 "job script cannot be empty or contain NUL"
             );
         }
-        config
+        let job_indices = config
             .jobs
-            .sort_by_key(|j| config.stages.iter().position(|s| s == &j.stage).unwrap());
+            .iter()
+            .enumerate()
+            .map(|(index, job)| (job.name.clone(), index))
+            .collect::<HashMap<_, _>>();
+        let stage_indices = config
+            .stages
+            .iter()
+            .enumerate()
+            .map(|(index, stage)| (stage.as_str(), index))
+            .collect::<HashMap<_, _>>();
+        let mut dependents = vec![Vec::new(); config.jobs.len()];
+        let mut indegrees = vec![0usize; config.jobs.len()];
+        for (index, job) in config.jobs.iter().enumerate() {
+            ensure!(
+                job.needs.len() <= 128,
+                "provide at most 128 job dependencies"
+            );
+            let mut needs = HashSet::new();
+            for dependency in &job.needs {
+                ensure!(
+                    dependency != &job.name && needs.insert(dependency),
+                    "job {} has a duplicate or self dependency",
+                    job.name
+                );
+                let dependency_index = *job_indices.get(dependency).ok_or_else(|| {
+                    anyhow::anyhow!("job {} depends on unknown job {}", job.name, dependency)
+                })?;
+                ensure!(
+                    stage_indices[config.jobs[dependency_index].stage.as_str()]
+                        <= stage_indices[job.stage.as_str()],
+                    "job {} cannot depend on later-stage job {}",
+                    job.name,
+                    dependency
+                );
+                dependents[dependency_index].push(index);
+                indegrees[index] += 1;
+            }
+        }
+        let mut order = Vec::with_capacity(config.jobs.len());
+        let mut emitted = vec![false; config.jobs.len()];
+        while order.len() < config.jobs.len() {
+            let next = (0..config.jobs.len())
+                .filter(|&index| !emitted[index] && indegrees[index] == 0)
+                .min_by_key(|&index| (stage_indices[config.jobs[index].stage.as_str()], index));
+            let Some(next) = next else {
+                anyhow::bail!("job dependencies must not contain a cycle");
+            };
+            emitted[next] = true;
+            order.push(next);
+            for &dependent in &dependents[next] {
+                indegrees[dependent] -= 1;
+            }
+        }
+        let jobs = config.jobs.clone();
+        config.jobs = order.into_iter().map(|index| jobs[index].clone()).collect();
         Ok(())
     }
 }
@@ -407,6 +509,7 @@ stages = ["build", "test"]
 [[jobs]]
 name = "test"
 stage = "test"
+needs = ["build"]
 script = ["cargo test"]
 [[jobs]]
 name = "build"
@@ -422,5 +525,130 @@ script = ["cargo build"]
             PipelineConfig::parse(&source.replace("name = \"test\"", "name = \"build\"")).is_err()
         );
         assert!(PipelineConfig::parse(&format!("{source}\ntimeout_seconds = 0")).is_err());
+    }
+
+    #[test]
+    fn validates_and_orders_job_dependencies() {
+        let source = r#"
+stages = ["build", "test"]
+[[jobs]]
+name = "package"
+stage = "build"
+needs = ["compile"]
+script = ["cargo build"]
+[[jobs]]
+name = "compile"
+stage = "build"
+script = ["cargo check"]
+[[jobs]]
+name = "test"
+stage = "test"
+needs = ["package"]
+script = ["cargo test"]
+"#;
+        let config = PipelineConfig::parse(source).unwrap();
+        assert_eq!(
+            config
+                .jobs
+                .iter()
+                .map(|job| job.name.as_str())
+                .collect::<Vec<_>>(),
+            ["compile", "package", "test"]
+        );
+        assert!(
+            PipelineConfig::parse(
+                &source.replace("needs = [\"compile\"]", "needs = [\"missing\"]")
+            )
+            .is_err()
+        );
+        assert!(
+            PipelineConfig::parse(&source.replace(
+                "name = \"compile\"\nstage = \"build\"",
+                "name = \"compile\"\nstage = \"build\"\nneeds = [\"package\"]"
+            ))
+            .is_err()
+        );
+        assert!(
+            PipelineConfig::parse(&source.replace("needs = [\"compile\"]", "needs = [\"test\"]"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn validates_pipeline_dependencies() {
+        let source = r#"
+[[pipelines]]
+name = "data-table-generate"
+runner_os = "linux"
+changes = ["data/**"]
+working_directory = "."
+stages = ["generate"]
+[[pipelines.jobs]]
+name = "generate"
+stage = "generate"
+script = ["./generate.sh"]
+
+[[pipelines]]
+name = "server-windows-build"
+needs = ["data-table-generate"]
+runner_os = "windows"
+changes = ["Server/**"]
+working_directory = "Server"
+stages = ["build"]
+[[pipelines.jobs]]
+name = "build"
+stage = "build"
+script = ["./build.ps1"]
+
+[[pipelines]]
+name = "server"
+needs = ["data-table-generate"]
+runner_os = "linux"
+changes = ["Server/**"]
+working_directory = "Server"
+stages = ["build"]
+[[pipelines.jobs]]
+name = "build"
+stage = "build"
+script = ["cargo build"]
+"#;
+        let file = PipelineFile::parse(source).unwrap();
+        assert_eq!(file.pipelines[1].needs, ["data-table-generate"]);
+        assert_eq!(file.pipelines[2].needs, ["data-table-generate"]);
+        assert!(
+            PipelineFile::parse(
+                &source.replace("needs = [\"data-table-generate\"]", "needs = [\"missing\"]")
+            )
+            .is_err()
+        );
+        let cycle = source.replace(
+            "name = \"data-table-generate\"\nrunner_os",
+            "name = \"data-table-generate\"\nneeds = [\"server\"]\nrunner_os",
+        );
+        assert!(PipelineFile::parse(&cycle).is_err());
+    }
+
+    #[test]
+    fn serializes_the_validated_model_for_visual_editing() {
+        let manual = PipelineFile::parse(include_str!("../../examples/.lore-ci.toml")).unwrap();
+        let manual_json = serde_json::to_value(manual).unwrap();
+        assert!(
+            manual_json["stages"]
+                .as_array()
+                .is_some_and(|stages| !stages.is_empty())
+        );
+        assert!(
+            manual_json["jobs"]
+                .as_array()
+                .is_some_and(|jobs| !jobs.is_empty())
+        );
+
+        let named =
+            PipelineFile::parse(include_str!("../../examples/monorepo.lore-ci.toml")).unwrap();
+        let named_json = serde_json::to_value(named).unwrap();
+        assert_eq!(named_json["stages"], serde_json::json!([]));
+        assert_eq!(named_json["jobs"], serde_json::json!([]));
+        assert_eq!(named_json["pipelines"][0]["name"], "client");
+        assert!(named_json["pipelines"][0]["jobs"].is_array());
     }
 }

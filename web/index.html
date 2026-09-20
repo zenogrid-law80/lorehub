@@ -104,7 +104,7 @@
         </nav>
         <div class="sidebar-spacer"></div>
         <div class="sidebar-status"><span class="pulse"></span><span>Coordinator online</span></div>
-        <p class="sidebar-version">LoreHub v0.2.17</p>
+        <p class="sidebar-version">LoreHub v0.2.18</p>
       </aside>
 
       <div class="content-shell">
@@ -406,6 +406,51 @@
         <div id="repository-branches-list" class="repository-branches-list" aria-live="polite"></div>
         <p class="management-note">선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.</p>
         <div class="modal-actions"><button class="button button--ghost repository-branches-modal-cancel" type="button">Cancel</button><button id="save-repository-branches-button" class="button button--primary" type="submit">Save branches</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="repository-config-dialog" class="modal modal--wide">
+      <form id="repository-config-form" method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">CI CONFIGURATION</p><h2>.lore-ci.toml</h2></div>
+          <button class="repository-config-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro"><strong id="repository-config-name"></strong> 저장소의 branch별 CI 설정을 확인하고 편집합니다.</p>
+        <div class="repository-config-toolbar">
+          <label class="field"><span>Branch</span><select id="repository-config-branch" required disabled></select></label>
+          <div class="repository-config-revision"><span>Revision</span><code id="repository-config-revision">—</code></div>
+        </div>
+        <div id="repository-config-mode" class="repository-config-mode" role="tablist" aria-label="Editor mode">
+          <button id="repository-config-visual-tab" class="is-active" type="button" role="tab" aria-selected="true">Visual</button>
+          <button id="repository-config-toml-tab" type="button" role="tab" aria-selected="false">TOML</button>
+        </div>
+        <div id="repository-config-visual" class="repository-config-visual" aria-live="polite">
+          <aside class="config-pipeline-sidebar">
+            <div class="config-panel-heading"><div><span>PIPELINES</span><strong>Pipeline list</strong></div><span id="repository-config-pipeline-count" class="config-count">0</span></div>
+            <div id="repository-config-pipeline-list" class="config-pipeline-list"></div>
+            <button id="repository-config-add-pipeline" class="config-add-button" type="button">＋ Add pipeline</button>
+          </aside>
+          <section class="config-graph-panel">
+            <div class="config-panel-heading"><div><span>VISUAL GRAPH</span><strong id="repository-config-graph-title">Pipeline</strong></div><small>Stages run from left to right</small></div>
+            <div id="repository-config-stage-graph" class="config-stage-graph"></div>
+          </section>
+          <aside class="config-inspector-panel">
+            <div class="config-panel-heading"><div><span>SETTINGS</span><strong id="repository-config-inspector-title">Pipeline settings</strong></div></div>
+            <div id="repository-config-inspector" class="config-inspector"></div>
+          </aside>
+        </div>
+        <pre id="repository-config-viewer" class="repository-config-source" tabindex="0" aria-label=".lore-ci.toml viewer" hidden></pre>
+        <label id="repository-config-editor-field" class="field repository-config-editor" hidden>
+          <span class="sr-only">.lore-ci.toml editor</span>
+          <textarea id="repository-config-editor" rows="20" maxlength="262144" required spellcheck="false" autocomplete="off" aria-label=".lore-ci.toml editor"></textarea>
+          <small>유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.</small>
+        </label>
+        <div class="modal-actions">
+          <button class="button button--ghost repository-config-modal-close" type="button">Close</button>
+          <button id="repository-config-cancel-edit" class="button button--ghost" type="button" hidden>Cancel</button>
+          <button id="repository-config-edit" class="button button--secondary" type="button" disabled>Edit</button>
+          <button id="repository-config-save" class="button button--primary" type="submit" hidden><span>Save changes</span><span class="button-spinner" hidden></span></button>
+        </div>
       </form>
     </dialog>
 

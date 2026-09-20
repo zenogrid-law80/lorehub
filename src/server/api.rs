@@ -27,7 +27,7 @@ use super::{
     triggers, web,
 };
 use crate::ci::{
-    config::{PipelineConfig, SubmitPipeline},
+    config::{PipelineConfig, PipelineFile, SubmitPipeline},
     db::{self, Job, Log, Pipeline, Runner, SelectedPipeline},
 };
 
@@ -89,6 +89,16 @@ pub fn router_with_releases(
         .route(
             "/api/v1/repositories/{name}/branches",
             get(list_repository_branches),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config",
+            get(repository_ci_config)
+                .post(update_repository_ci_config)
+                .layer(DefaultBodyLimit::max(300 * 1024)),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/parse",
+            post(parse_repository_ci_config).layer(DefaultBodyLimit::max(300 * 1024)),
         )
         .route(
             "/api/v1/repositories/{name}/pipelines",
@@ -540,11 +550,21 @@ impl From<sqlx::Error> for ApiError {
 impl From<RepositoryCommandError> for ApiError {
     fn from(error: RepositoryCommandError) -> Self {
         let lower = error.message.to_lowercase();
-        let status = if lower.contains("already exists") {
+        let status = if lower.contains("already exists")
+            || lower.contains("has changed")
+            || lower.contains("conflict")
+        {
             StatusCode::CONFLICT
         } else if lower.contains("not found") {
             StatusCode::NOT_FOUND
-        } else if lower.contains("repository name") || lower.contains("description") {
+        } else if lower.contains("repository name")
+            || lower.contains("description")
+            || lower.contains("invalid .lore-ci.toml")
+            || lower.contains(".lore-ci.toml exceeds")
+            || lower.contains(".lore-ci.toml must")
+            || lower.contains("branch must")
+            || lower.contains("revision must")
+        {
             StatusCode::BAD_REQUEST
         } else {
             StatusCode::BAD_GATEWAY
@@ -713,6 +733,129 @@ async fn list_repository_branches(
             .branches_on(&name, backend, &access_token)
             .await?,
     ))
+}
+
+#[derive(Deserialize)]
+struct RepositoryCiConfigQuery {
+    branch: String,
+}
+
+#[derive(Serialize)]
+struct RepositoryCiConfig {
+    branch: String,
+    revision: String,
+    content: Option<String>,
+    configuration: Option<PipelineFile>,
+}
+
+async fn repository_ci_config(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Query(query): Query<RepositoryCiConfigQuery>,
+) -> Result<(HeaderMap, Json<RepositoryCiConfig>), ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let branch = state
+        .repositories
+        .branches_on(&name, backend, &access_token)
+        .await?
+        .into_iter()
+        .find(|branch| branch.name == query.branch)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                format!("branch '{}' was not found", query.branch),
+            )
+        })?;
+    let content = state
+        .repositories
+        .pipeline_source_on(&name, &branch.revision, backend, &access_token)
+        .await?;
+    let configuration = content
+        .as_deref()
+        .and_then(|source| PipelineFile::parse(source).ok());
+    let mut headers = HeaderMap::new();
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok((
+        headers,
+        Json(RepositoryCiConfig {
+            branch: branch.name,
+            revision: branch.revision,
+            content,
+            configuration,
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
+struct UpdateRepositoryCiConfig {
+    branch: String,
+    expected_revision: String,
+    content: String,
+}
+
+async fn update_repository_ci_config(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<UpdateRepositoryCiConfig>,
+) -> Result<Json<RepositoryCiConfig>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let configuration = PipelineFile::parse(&input.content).map_err(|error| {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            format!("invalid .lore-ci.toml: {error}"),
+        )
+    })?;
+    let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let revision = state
+        .repositories
+        .update_pipeline_source_on(
+            &name,
+            &input.branch,
+            &input.expected_revision,
+            &input.content,
+            backend,
+            &access_token,
+        )
+        .await?;
+    Ok(Json(RepositoryCiConfig {
+        branch: input.branch,
+        revision,
+        content: Some(input.content),
+        configuration: Some(configuration),
+    }))
+}
+
+#[derive(Deserialize)]
+struct ParseRepositoryCiConfig {
+    content: String,
+}
+
+async fn parse_repository_ci_config(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<ParseRepositoryCiConfig>,
+) -> Result<Json<PipelineFile>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    PipelineFile::parse(&input.content)
+        .map(Json)
+        .map_err(|error| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                format!("invalid .lore-ci.toml: {error}"),
+            )
+        })
 }
 
 #[derive(Deserialize)]
@@ -1028,6 +1171,7 @@ async fn submit(
                 .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
         let selected = SelectedPipeline {
             pipeline_name: pipeline.name.clone(),
+            pipeline_needs: pipeline.needs.clone(),
             category: pipeline.category.clone(),
             runner_os: pipeline.runner_os.clone(),
             trigger_patterns: pipeline.changes.clone(),

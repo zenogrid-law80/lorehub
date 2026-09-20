@@ -516,9 +516,14 @@ async fn read_pipeline_config(
 pub(crate) fn pipeline_graph_definition(pipeline: &NamedPipeline) -> Result<String> {
     Ok(serde_json::to_string(&serde_json::json!({
         "sparse_view": pipeline.sparse_view,
+        "pipeline_needs": pipeline.needs,
         "stages": pipeline.stages.iter().map(|stage| serde_json::json!({
             "name": stage,
             "jobs": pipeline.jobs.iter().filter(|job| &job.stage == stage).map(|job| &job.name).collect::<Vec<_>>()
+        })).collect::<Vec<_>>(),
+        "dependencies": pipeline.jobs.iter().filter(|job| !job.needs.is_empty()).map(|job| serde_json::json!({
+            "job": job.name,
+            "needs": job.needs
         })).collect::<Vec<_>>()
     }))?)
 }
@@ -671,9 +676,9 @@ pub async fn enqueue(
         let changed_path_count = i32::try_from(matching_paths.len())?;
         let changed_paths: Vec<_> = matching_paths.into_iter().take(32).collect();
         let graph_definition = pipeline_graph_definition(pipeline)?;
-        let result = sqlx::query("INSERT INTO pipelines (id, repository_url, revision, submitted_by, pipeline_name, category, runner_os, branch, previous_revision, trigger_patterns, changed_paths, changed_path_count, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT DO NOTHING")
+        let result = sqlx::query("INSERT INTO pipelines (id, repository_url, revision, submitted_by, pipeline_name, pipeline_needs, category, runner_os, branch, previous_revision, trigger_patterns, changed_paths, changed_path_count, working_directory, graph_definition, sparse_view_name, sparse_view_rules) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT DO NOTHING")
             .bind(Uuid::new_v4()).bind(url).bind(revision).bind(owner)
-            .bind(&pipeline.name).bind(&pipeline.category).bind(&pipeline.runner_os).bind(branch).bind(previous)
+            .bind(&pipeline.name).bind(&pipeline.needs).bind(&pipeline.category).bind(&pipeline.runner_os).bind(branch).bind(previous)
             .bind(&trigger_patterns).bind(&changed_paths).bind(changed_path_count).bind(&pipeline.working_directory).bind(graph_definition)
             .bind(sparse_view_name).bind(sparse_view_rules)
             .execute(&mut **tx).await?;
@@ -688,6 +693,32 @@ pub async fn enqueue(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graph_snapshot_includes_job_dependencies() {
+        let source = r#"
+[[pipelines]]
+name = "build"
+runner_os = "linux"
+changes = ["src/**"]
+working_directory = "."
+stages = ["build"]
+[[pipelines.jobs]]
+name = "compile"
+stage = "build"
+script = ["cargo check"]
+[[pipelines.jobs]]
+name = "package"
+stage = "build"
+needs = ["compile"]
+script = ["cargo build"]
+"#;
+        let file = PipelineFile::parse(source).unwrap();
+        let graph: serde_json::Value =
+            serde_json::from_str(&pipeline_graph_definition(&file.pipelines[0]).unwrap()).unwrap();
+        assert_eq!(graph["dependencies"][0]["job"], "package");
+        assert_eq!(graph["dependencies"][0]["needs"][0], "compile");
+    }
 
     #[cfg(unix)]
     #[sqlx::test]
