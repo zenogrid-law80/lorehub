@@ -248,7 +248,12 @@ function renderExecutionWorkspace(host, original, baseKey) {
     }
   }
   const body = document.createElement("div"); body.className = "run-body"; body.append(center, inspector);
-  workspace.append(toolbar, context, body); host.append(workspace);
+  workspace.append(toolbar, context);
+  if (!configured) workspace.append(renderExecutionAnalysis(workspace, detail, memo, id => {
+    const job = jobs.find(job => job.id === id);
+    if (job) { memo.selected = job.id; memo.follow = false; memo.expanded.add(job.stage); memo.reveal = true; rerender(); }
+  }));
+  workspace.append(body); host.append(workspace);
   const savedX = memo.x, savedY = memo.y;
   viewport.addEventListener("scroll", () => { memo.x = viewport.scrollLeft; memo.y = viewport.scrollTop; });
   window.requestAnimationFrame(() => {

@@ -170,6 +170,7 @@ async fn fixture(uri: Uri) -> Response {
         "/assets/ci-visual.js" => Some(("ci-visual.js", "text/javascript")),
         "/assets/ci-editor.js" => Some(("ci-editor.js", "text/javascript")),
         "/assets/execution-graph.js" => Some(("execution-graph.js", "text/javascript")),
+        "/assets/execution-analysis.js" => Some(("execution-analysis.js", "text/javascript")),
         "/assets/management.js" => Some(("management.js", "text/javascript")),
         "/assets/theme.js" => Some(("theme.js", "text/javascript")),
         "/assets/app.css" => Some(("app.css", "text/css")),

@@ -68,6 +68,10 @@ pub fn router_with_releases(
         .route("/api/v1/pipeline-history", get(pipeline_history))
         .route("/api/v1/pipeline-graphs", get(pipeline_graphs))
         .route("/api/v1/pipelines/{id}", get(detail))
+        .route(
+            "/api/v1/pipelines/{id}/insights",
+            get(super::execution::insights),
+        )
         .route("/api/v1/pipelines/{id}/cancel", post(cancel))
         .route("/api/v1/pipelines/{id}/logs", get(logs))
         .route("/api/v1/runners", get(list_runners))
@@ -184,6 +188,10 @@ pub fn router_with_releases(
         .route("/assets/ci-visual.js", get(web::ci_script))
         .route("/assets/ci-editor.js", get(web::ci_editor_script))
         .route("/assets/execution-graph.js", get(web::execution_script))
+        .route(
+            "/assets/execution-analysis.js",
+            get(web::execution_analysis_script),
+        )
         .route("/assets/management.js", get(web::management_script))
         .route("/healthz", get(health))
         .route("/.well-known/openid-configuration", get(oidc_discovery))

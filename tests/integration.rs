@@ -522,6 +522,35 @@ async fn authenticated_api_and_log_cursor(pool: PgPool) {
     let payload: serde_json::Value =
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     let id: Uuid = payload["id"].as_str().unwrap().parse().unwrap();
+    let insights_path = format!("/api/v1/pipelines/{id}/insights");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&insights_path)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&insights_path)
+                .header("cookie", &cookies)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let insights: serde_json::Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(insights["current"]["pipeline"]["id"], id.to_string());
+    assert_eq!(insights["comparable"], false);
+    assert!(insights["previous"].is_null());
     assert!(
         payload["revision_number"]
             .as_i64()

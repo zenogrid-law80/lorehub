@@ -9,6 +9,7 @@ const SCRIPT: &str = include_str!("../../web/app.js");
 const CI_SCRIPT: &str = include_str!("../../web/ci-visual.js");
 const CI_EDITOR_SCRIPT: &str = include_str!("../../web/ci-editor.js");
 const EXECUTION_SCRIPT: &str = include_str!("../../web/execution-graph.js");
+const EXECUTION_ANALYSIS_SCRIPT: &str = include_str!("../../web/execution-analysis.js");
 const MANAGEMENT_SCRIPT: &str = include_str!("../../web/management.js");
 #[cfg(feature = "embedded-runner-installers")]
 const LINUX_RUNNER: &[u8] =
@@ -50,6 +51,14 @@ pub async fn ci_editor_script() -> Response {
 
 pub async fn execution_script() -> Response {
     asset(EXECUTION_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn execution_analysis_script() -> Response {
+    asset(
+        EXECUTION_ANALYSIS_SCRIPT,
+        "text/javascript; charset=utf-8",
+        false,
+    )
 }
 
 pub async fn theme_script() -> Response {
@@ -180,6 +189,8 @@ mod tests {
         assert!(SCRIPT.contains("/api/v1/pipeline-graphs"));
         assert!(SCRIPT.contains("loadPipelineGraphs"));
         assert!(INDEX.contains("/assets/execution-graph.js"));
+        assert!(INDEX.contains("/assets/execution-analysis.js"));
+        assert!(EXECUTION_ANALYSIS_SCRIPT.contains("renderExecutionAnalysis"));
         assert!(EXECUTION_SCRIPT.contains("renderExecutionWorkspace"));
         assert_eq!(
             execution_script().await.headers()[header::CONTENT_TYPE],

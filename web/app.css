@@ -329,6 +329,39 @@ dialog::backdrop { background: rgba(20, 16, 39, .48); backdrop-filter: blur(3px)
 .run-inspector > :not(.run-log) { flex: none; }
 .run-log { flex: 1 1 230px; min-height: 120px; margin: 0; padding: 10px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--canvas); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace, monospace; }
 .run-workspace :is(button, .run-viewport, .run-log):focus-visible { outline: 2px solid var(--purple); outline-offset: -2px; }
+.run-analysis { min-width: 0; border-bottom: 1px solid var(--line); background: var(--surface); font-size: 11px; }
+.run-analysis > summary { padding: 12px; color: var(--purple); font-weight: 700; cursor: pointer; }
+.run-analysis-content { min-width: 0; padding: 0 12px 12px; }
+.run-analysis-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.run-analysis button { min-height: 32px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--canvas); overflow-wrap: anywhere; text-align: left; }
+.run-analysis-tabs button[aria-pressed="true"] { border-color: var(--purple); color: var(--purple); background: var(--purple-soft); }
+.run-analysis-scroll { min-width: 0; max-height: 420px; overflow: auto; overscroll-behavior: contain; padding: 3px; }
+.run-analysis-note, .run-analysis-scroll > .run-warning { display: block; margin: 5px 0 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.run-analysis-note { color: var(--muted); }
+.run-relations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 26px; padding: 8px 0; }
+.run-relations > section { display: grid; gap: 8px; position: relative; min-width: 0; }
+.run-relations > section:not(:last-child)::after { content: "→"; position: absolute; right: -23px; top: 30px; color: var(--purple); font-size: 20px; }
+.run-relations button:disabled { opacity: 1; color: var(--muted); }
+.run-time-row { display: grid; grid-template-columns: minmax(110px, .8fr) minmax(100px, 1.2fr); align-items: center; gap: 8px 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+.run-time-row > span { grid-column: 1 / -1; color: var(--muted); line-height: 1.5; }
+.run-time-track { position: relative; height: 16px; border-radius: 4px; overflow: hidden; background: var(--canvas); }
+.run-time-track > span { position: absolute; height: 100%; }
+.run-time-wait { background: var(--amber); opacity: .6; }
+.run-time-work { background: var(--purple); }
+.run-time-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; }
+.run-time-wait-label { border-left: 10px solid var(--amber); padding-left: 6px; }
+.run-time-work-label { border-left: 10px solid var(--purple); padding-left: 6px; }
+.run-analysis .run-comparison { width: 100%; min-width: 470px; table-layout: fixed; border-collapse: collapse; font-size: 11px; }
+.run-analysis .run-comparison :is(th, td) { display: table-cell; width: auto; height: auto; padding: 8px; white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.run-analysis .run-comparison th { position: sticky; top: 0; background: var(--surface); }
+.run-analysis .run-comparison th:first-child { width: 32%; }
+.run-analysis .run-comparison th:last-child { width: 28%; }
+.run-analysis .run-comparison td button { width: 100%; }
+.run-analysis :is(summary, button, .run-analysis-scroll):focus-visible { outline: 2px solid var(--purple); outline-offset: -2px; }
+@media (max-width: 780px) {
+  .run-relations { grid-template-columns: minmax(0, 1fr); }
+  .run-relations > section:not(:last-child)::after { content: "↓"; top: auto; bottom: -25px; right: 50%; }
+}
 .detail-drawer .run-body { grid-template-columns: minmax(0, 1fr); height: auto; }
 .detail-drawer .run-center { height: 400px; }
 .detail-drawer .run-inspector { height: 300px; border-left: 0; border-top: 1px solid var(--line); }

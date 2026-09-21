@@ -9,6 +9,7 @@ const links = [{ path: "Test", source_repository_id: source.id, source_path: "Te
 const operations = [];
 const assets = { "/": ["index.html", "text/html"], "/app.js": ["app.js", "text/javascript"], "/ci-visual.js": ["ci-visual.js", "text/javascript"], "/ci-editor.js": ["ci-editor.js", "text/javascript"], "/app.css": ["app.css", "text/css"], "/theme.js": ["theme.js", "text/javascript"], "/management.js": ["management.js", "text/javascript"] };
 assets["/execution-graph.js"] = ["execution-graph.js", "text/javascript"];
+assets["/execution-analysis.js"] = ["execution-analysis.js", "text/javascript"];
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://127.0.0.1:4179");

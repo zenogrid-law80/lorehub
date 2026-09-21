@@ -26,7 +26,30 @@ const runs = Object.fromEntries([makeRun("server", "failed"), makeRun("client", 
 const routes = Object.values(runs).map(({ pipeline }) => ({ ...pipeline, runner_os: "windows", revision: "b".repeat(64), revision_number: 11,
   graph: { stages: [{ name: "new-config", jobs: ["new-job"] }] }, latest_pipeline_id: pipeline.id, latest_created_at: now,
 }));
-const assets = new Set(["app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-graph.js", "management.js", "theme.js"]);
+const assets = new Set(["app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "theme.js"]);
+// Deterministic analysis timings with a queue delay, longer completed jobs,
+// an unfinished job, missing prerequisites, and a changed-configuration baseline.
+const at = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
+function analysisFixture(id) {
+  const current = structuredClone(runs[id]);
+  current.pipeline.created_at = at(-600);
+  current.pipeline.started_at = current.pipeline.status === "queued" ? null : at(-570);
+  current.pipeline.finished_at = current.pipeline.status === "failed" ? at(-200) : null;
+  current.jobs.forEach((job, i) => {
+    job.started_at = ["queued", "skipped"].includes(job.status) ? null : at(-560 + i * 20);
+    job.finished_at = ["running", "queued", "skipped"].includes(job.status) ? null : at(-545 + i * 20);
+  });
+  const previous = structuredClone(current);
+  previous.pipeline.id = `${id}-previous`; previous.pipeline.revision_number = 9; previous.pipeline.revision = "9".repeat(64);
+  previous.pipeline.status = "succeeded"; previous.pipeline.created_at = at(-1200); previous.pipeline.started_at = at(-1180); previous.pipeline.finished_at = at(-700);
+  previous.jobs.forEach((job, i) => { job.status = "succeeded"; job.started_at = at(-1170 + i * 20); job.finished_at = at(-1160 + i * 20); });
+  return { observed_at: new Date().toISOString(), current, previous: id === "waiting-runner" ? null : previous,
+    upstream: [{ name: id === "client" ? "server" : "client", run_id: id === "client" ? "server" : "client", status: id === "client" ? "failed" : "running", created_at: at(-700) }, { name: "missing", run_id: null, status: null, created_at: null }],
+    downstream: [{ name: "waiting-dependency", run_id: "waiting-dependency", status: "queued", created_at: at(-100) }],
+    comparable: id !== "waiting-dependency", comparison_warnings: id === "waiting-dependency" ? ["runner_os"] : ["revision"],
+    upstream_truncated: false, downstream_truncated: false,
+  };
+}
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://127.0.0.1:4181");
@@ -40,10 +63,18 @@ createServer(async (req, res) => {
     else if (url.pathname === "/api/v1/pipeline-history") data = { pipelines: Object.values(runs).map(run => run.pipeline), next_before: null };
     else if (url.pathname === "/api/v1/pipeline-graphs") data = routes;
     else if (url.pathname === "/api/v1/runners") data = [{ id: "runner1", name: "Linux test runner", os: "linux", status: "busy", arch: "x86_64", last_seen: now }];
+    else if (url.pathname.endsWith("/insights")) {
+      const id = url.pathname.split("/")[4];
+      data = analysisFixture(id.replace(/-previous$/, ""));
+      if (id.endsWith("-previous")) data = { ...data, current: data.previous, previous: null, upstream: [], downstream: [], comparable: false };
+    }
     else if (url.pathname.endsWith("/logs")) {
       const id = url.pathname.split("/")[4], job = url.searchParams.get("job_id"), after = Number(url.searchParams.get("after") || 0);
       data = Array.from({ length: job?.includes("compile-16") ? 501 : 3 }, (_, i) => ({ id: i + 1, job_id: job, stream: i === 1 ? "stderr" : "stdout", content: `${job || id}: ${i === 1 ? "fixture diagnostic <script>literal text</script>" : `log ${i + 1}`}\n` })).filter(row => row.id > after).slice(0, Number(url.searchParams.get("limit") || 100));
-    } else if (url.pathname.startsWith("/api/v1/pipelines/")) data = runs[url.pathname.split("/")[4]];
+    } else if (url.pathname.startsWith("/api/v1/pipelines/")) {
+      const id = url.pathname.split("/")[4];
+      data = id.endsWith("-previous") ? analysisFixture(id.replace(/-previous$/, "")).previous : analysisFixture(id).current;
+    }
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(data));
   } catch (error) { res.writeHead(500); res.end(JSON.stringify({ error: error.message })); }
 }).listen(4181, "127.0.0.1", () => console.log("Execution fixture: http://127.0.0.1:4181/#graphs"));
