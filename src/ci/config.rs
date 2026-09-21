@@ -3,6 +3,79 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
+/// Indices refer to the submitted document, before jobs are topologically sorted.
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct ConfigLocation {
+    pub pipeline_index: Option<usize>,
+    pub job_index: Option<usize>,
+    pub stage_index: Option<usize>,
+    pub field: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConfigDiagnostic {
+    pub message: String,
+    #[serde(flatten)]
+    pub location: ConfigLocation,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+}
+
+impl std::fmt::Display for ConfigDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for ConfigDiagnostic {}
+
+impl ConfigDiagnostic {
+    fn at(error: anyhow::Error, location: ConfigLocation) -> anyhow::Error {
+        let mut diagnostic = error.downcast_ref::<Self>().cloned().unwrap_or(Self {
+            message: error.to_string(),
+            location: location.clone(),
+            line: None,
+            column: None,
+        });
+        if location.pipeline_index.is_some() {
+            diagnostic.location.pipeline_index = location.pipeline_index;
+        }
+        diagnostic.into()
+    }
+
+    pub fn from_error(error: &anyhow::Error, source: &str) -> Self {
+        if let Some(diagnostic) = error.downcast_ref::<Self>() {
+            return diagnostic.clone();
+        }
+        let mut diagnostic = Self {
+            message: error.to_string(),
+            location: ConfigLocation::default(),
+            line: None,
+            column: None,
+        };
+        if let Some(error) = error.downcast_ref::<toml::de::Error>()
+            && let Some(span) = error.span()
+        {
+            let mut offset = span.start.min(source.len());
+            while !source.is_char_boundary(offset) {
+                offset -= 1;
+            }
+            let prefix = &source[..offset];
+            diagnostic.line = Some(prefix.bytes().filter(|b| *b == b'\n').count() + 1);
+            diagnostic.column = Some(prefix.rsplit('\n').next().unwrap_or("").chars().count() + 1);
+        }
+        diagnostic
+    }
+}
+
+macro_rules! ensure_config {
+    ($condition:expr, $location:expr, $($message:tt)*) => {
+        if !$condition {
+            return Err(ConfigDiagnostic::at(anyhow::anyhow!($($message)*), $location));
+        }
+    };
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SubmitPipeline {
@@ -110,18 +183,20 @@ impl NamedPipeline {
     }
 
     pub fn matches(&self, paths: &[String]) -> bool {
-        self.changes.iter().any(|pattern| {
-            paths.iter().any(|path| {
-                if let Some(directory) = pattern.strip_suffix("/**") {
-                    path == directory
-                        || path
-                            .strip_prefix(directory)
-                            .is_some_and(|tail| tail.starts_with('/'))
-                } else {
-                    path == pattern
-                }
-            })
-        })
+        self.changes
+            .iter()
+            .any(|pattern| paths.iter().any(|path| change_path_matches(pattern, path)))
+    }
+}
+
+pub fn change_path_matches(pattern: &str, path: &str) -> bool {
+    if let Some(directory) = pattern.strip_suffix("/**") {
+        path == directory
+            || path
+                .strip_prefix(directory)
+                .is_some_and(|tail| tail.starts_with('/'))
+    } else {
+        path == pattern
     }
 }
 
@@ -148,43 +223,60 @@ impl PipelineFile {
             );
             ensure!(file.pipelines.len() <= 32, "provide at most 32 pipelines");
             let mut names = HashSet::new();
-            for pipeline in &mut file.pipelines {
-                ensure!(
+            for (index, pipeline) in file.pipelines.iter_mut().enumerate() {
+                let location = |field| ConfigLocation {
+                    pipeline_index: Some(index),
+                    field,
+                    ..Default::default()
+                };
+                ensure_config!(
                     valid_name(&pipeline.name) && names.insert(pipeline.name.clone()),
+                    location("name"),
                     "invalid or duplicate pipeline name"
                 );
-                ensure!(valid_name(&pipeline.category), "invalid pipeline category");
-                ensure!(
+                ensure_config!(
+                    valid_name(&pipeline.category),
+                    location("category"),
+                    "invalid pipeline category"
+                );
+                ensure_config!(
                     matches!(pipeline.runner_os.as_str(), "windows" | "macos" | "linux"),
+                    location("runner_os"),
                     "runner_os must be windows, macos or linux"
                 );
                 if let Some(view) = pipeline.sparse_view.as_mut() {
                     *view = view.trim().to_owned();
-                    ensure!(
+                    ensure_config!(
                         !view.is_empty()
                             && view.len() <= 100
                             && !view.chars().any(char::is_control),
+                        location("sparse_view"),
                         "sparse_view must be 1 to 100 characters without control characters"
                     );
                 }
-                ensure!(
+                ensure_config!(
                     pipeline.working_directory == "."
                         || valid_relative_path(&pipeline.working_directory),
+                    location("working_directory"),
                     "working_directory must stay inside the checkout"
                 );
-                ensure!(
+                ensure_config!(
                     !pipeline.changes.is_empty() && pipeline.changes.len() <= 128,
+                    location("changes"),
                     "provide 1..128 change paths"
                 );
                 for pattern in &pipeline.changes {
                     let path = pattern.strip_suffix("/**").unwrap_or(pattern);
-                    ensure!(
+                    ensure_config!(
                         valid_relative_path(path) && !path.contains(['*', '?', '[', ']']),
+                        location("changes"),
                         "changes must contain relative exact paths or directory/** patterns"
                     );
                 }
                 let mut config = pipeline.config();
-                config.validate()?;
+                config
+                    .validate()
+                    .map_err(|error| ConfigDiagnostic::at(error, location("")))?;
                 pipeline.jobs = config.jobs;
             }
             let pipeline_indices = file
@@ -194,28 +286,40 @@ impl PipelineFile {
                 .map(|(index, pipeline)| (pipeline.name.as_str(), index))
                 .collect::<HashMap<_, _>>();
             let mut dependents = vec![Vec::new(); file.pipelines.len()];
+            let mut prerequisites = vec![Vec::new(); file.pipelines.len()];
             let mut indegrees = vec![0usize; file.pipelines.len()];
             for (index, pipeline) in file.pipelines.iter().enumerate() {
-                ensure!(
+                let location = ConfigLocation {
+                    pipeline_index: Some(index),
+                    field: "needs",
+                    ..Default::default()
+                };
+                ensure_config!(
                     pipeline.needs.len() <= 32,
+                    location.clone(),
                     "provide at most 32 pipeline dependencies"
                 );
                 let mut dependencies = HashSet::new();
                 for dependency in &pipeline.needs {
-                    ensure!(
+                    ensure_config!(
                         dependency != &pipeline.name && dependencies.insert(dependency),
+                        location.clone(),
                         "pipeline {} has a duplicate or self dependency",
                         pipeline.name
                     );
                     let dependency_index =
                         *pipeline_indices.get(dependency.as_str()).ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "pipeline {} depends on unknown pipeline {}",
-                                pipeline.name,
-                                dependency
+                            ConfigDiagnostic::at(
+                                anyhow::anyhow!(
+                                    "pipeline {} depends on unknown pipeline {}",
+                                    pipeline.name,
+                                    dependency
+                                ),
+                                location.clone(),
                             )
                         })?;
                     dependents[dependency_index].push(index);
+                    prerequisites[index].push(dependency_index);
                     indegrees[index] += 1;
                 }
             }
@@ -224,7 +328,14 @@ impl PipelineFile {
                 let Some(next) = (0..file.pipelines.len())
                     .find(|&index| !emitted[index] && indegrees[index] == 0)
                 else {
-                    anyhow::bail!("pipeline dependencies must not contain a cycle");
+                    return Err(ConfigDiagnostic::at(
+                        anyhow::anyhow!("pipeline dependencies must not contain a cycle"),
+                        ConfigLocation {
+                            pipeline_index: cycle_member(&prerequisites, &emitted),
+                            field: "needs",
+                            ..Default::default()
+                        },
+                    ));
                 };
                 emitted[next] = true;
                 for &dependent in &dependents[next] {
@@ -292,44 +403,66 @@ impl PipelineConfig {
 
     pub(crate) fn validate(&mut self) -> Result<()> {
         let config = self;
-        ensure!(
+        ensure_config!(
             !config.stages.is_empty() && config.stages.len() <= 32,
+            ConfigLocation {
+                field: "stages",
+                ..Default::default()
+            },
             "provide 1..32 stages"
         );
-        let stages: HashSet<_> = config.stages.iter().collect();
-        ensure!(
-            stages.len() == config.stages.len(),
-            "stage names must be unique"
-        );
-        ensure!(
-            config.stages.iter().all(|s| valid_name(s)),
-            "invalid stage name"
-        );
-        ensure!(
+        let mut stages = HashSet::new();
+        for (index, stage) in config.stages.iter().enumerate() {
+            let location = ConfigLocation {
+                stage_index: Some(index),
+                field: "name",
+                ..Default::default()
+            };
+            ensure_config!(
+                stages.insert(stage),
+                location.clone(),
+                "stage names must be unique"
+            );
+            ensure_config!(valid_name(stage), location, "invalid stage name");
+        }
+        ensure_config!(
             !config.jobs.is_empty() && config.jobs.len() <= 128,
+            ConfigLocation {
+                field: "jobs",
+                ..Default::default()
+            },
             "provide 1..128 jobs"
         );
         let mut names = HashSet::new();
-        for job in &config.jobs {
-            ensure!(
+        for (index, job) in config.jobs.iter().enumerate() {
+            let location = |field| ConfigLocation {
+                job_index: Some(index),
+                field,
+                ..Default::default()
+            };
+            ensure_config!(
                 valid_name(&job.name) && names.insert(&job.name),
+                location("name"),
                 "invalid or duplicate job name"
             );
-            ensure!(
+            ensure_config!(
                 stages.contains(&job.stage),
+                location("stage"),
                 "unknown stage for job {}",
                 job.name
             );
-            ensure!(
+            ensure_config!(
                 (1..=86400).contains(&job.timeout_seconds),
+                location("timeout_seconds"),
                 "job timeout must be 1..86400 seconds"
             );
-            ensure!(
+            ensure_config!(
                 !job.script.is_empty()
                     && job
                         .script
                         .iter()
                         .all(|s| !s.trim().is_empty() && !s.contains('\0')),
+                location("script"),
                 "job script cannot be empty or contain NUL"
             );
         }
@@ -346,30 +479,43 @@ impl PipelineConfig {
             .map(|(index, stage)| (stage.as_str(), index))
             .collect::<HashMap<_, _>>();
         let mut dependents = vec![Vec::new(); config.jobs.len()];
+        let mut prerequisites = vec![Vec::new(); config.jobs.len()];
         let mut indegrees = vec![0usize; config.jobs.len()];
         for (index, job) in config.jobs.iter().enumerate() {
-            ensure!(
+            let location = ConfigLocation {
+                job_index: Some(index),
+                field: "needs",
+                ..Default::default()
+            };
+            ensure_config!(
                 job.needs.len() <= 128,
+                location.clone(),
                 "provide at most 128 job dependencies"
             );
             let mut needs = HashSet::new();
             for dependency in &job.needs {
-                ensure!(
+                ensure_config!(
                     dependency != &job.name && needs.insert(dependency),
+                    location.clone(),
                     "job {} has a duplicate or self dependency",
                     job.name
                 );
                 let dependency_index = *job_indices.get(dependency).ok_or_else(|| {
-                    anyhow::anyhow!("job {} depends on unknown job {}", job.name, dependency)
+                    ConfigDiagnostic::at(
+                        anyhow::anyhow!("job {} depends on unknown job {}", job.name, dependency),
+                        location.clone(),
+                    )
                 })?;
-                ensure!(
+                ensure_config!(
                     stage_indices[config.jobs[dependency_index].stage.as_str()]
                         <= stage_indices[job.stage.as_str()],
+                    location.clone(),
                     "job {} cannot depend on later-stage job {}",
                     job.name,
                     dependency
                 );
                 dependents[dependency_index].push(index);
+                prerequisites[index].push(dependency_index);
                 indegrees[index] += 1;
             }
         }
@@ -380,7 +526,14 @@ impl PipelineConfig {
                 .filter(|&index| !emitted[index] && indegrees[index] == 0)
                 .min_by_key(|&index| (stage_indices[config.jobs[index].stage.as_str()], index));
             let Some(next) = next else {
-                anyhow::bail!("job dependencies must not contain a cycle");
+                return Err(ConfigDiagnostic::at(
+                    anyhow::anyhow!("job dependencies must not contain a cycle"),
+                    ConfigLocation {
+                        job_index: cycle_member(&prerequisites, &emitted),
+                        field: "needs",
+                        ..Default::default()
+                    },
+                ));
             };
             emitted[next] = true;
             order.push(next);
@@ -392,6 +545,16 @@ impl PipelineConfig {
         config.jobs = order.into_iter().map(|index| jobs[index].clone()).collect();
         Ok(())
     }
+}
+
+// Walk upstream from a blocked node; the repeated node is in the cycle, not just downstream of it.
+fn cycle_member(prerequisites: &[Vec<usize>], emitted: &[bool]) -> Option<usize> {
+    let mut node = emitted.iter().position(|done| !done)?;
+    let mut visited = HashSet::new();
+    while visited.insert(node) {
+        node = *prerequisites[node].iter().find(|&&index| !emitted[index])?;
+    }
+    Some(node)
 }
 
 fn valid_name(name: &str) -> bool {

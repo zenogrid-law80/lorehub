@@ -1251,32 +1251,18 @@ pub async fn enqueue(
             .changes
             .iter()
             .filter(|pattern| {
-                changes.iter().any(|path| {
-                    pattern
-                        .strip_suffix("/**")
-                        .map_or(path == *pattern, |directory| {
-                            path == directory
-                                || path
-                                    .strip_prefix(directory)
-                                    .is_some_and(|tail| tail.starts_with('/'))
-                        })
-                })
+                changes
+                    .iter()
+                    .any(|path| crate::ci::config::change_path_matches(pattern, path))
             })
             .cloned()
             .collect();
         let matching_paths: Vec<_> = changes
             .iter()
             .filter(|path| {
-                trigger_patterns.iter().any(|pattern| {
-                    pattern
-                        .strip_suffix("/**")
-                        .map_or(*path == pattern, |directory| {
-                            *path == directory
-                                || path
-                                    .strip_prefix(directory)
-                                    .is_some_and(|tail| tail.starts_with('/'))
-                        })
-                })
+                trigger_patterns
+                    .iter()
+                    .any(|pattern| crate::ci::config::change_path_matches(pattern, path))
             })
             .cloned()
             .collect();

@@ -76,6 +76,30 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 
 executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. Runner에는 PostgreSQL 접속 정보가 없으며 Google OAuth 자격 증명도 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
 
+## CI 설정 시각화
+
+`CI 설정`에서 저장소와 branch를 선택하면 **전체 파이프라인** 의존성 개요가 기본으로 표시됩니다. 카드를 선택하면 설정을 확인할 수 있고, **단계·작업**으로 전환하면 기존 stage/job 편집기를 사용합니다. 연결선은 `needs` 관계이며, 한 파이프라인 안의 작업은 병렬이 아닌 순차 실행입니다.
+
+**변경 경로 미리보기**에 저장소 기준 파일 경로를 한 줄씩 입력하면 일치한 파이프라인·규칙·파일을 표시합니다. 실제 push 처리와 동일하게 대소문자를 구분하고, 정확한 경로 또는 `directory/**` 규칙만 지원합니다. `needs`에 포함됐지만 경로가 일치하지 않는 파이프라인은 “의존성만 있음”으로 구분하며 자동 실행 대상으로 간주하지 않습니다. 실제 실행 여부에는 branch 자동 CI 정책과 Runner 상태도 영향을 줍니다.
+
+편집 중 서버의 실제 설정 검증기를 사용해 첫 오류를 표시하고, 오류를 누르면 해당 파이프라인·단계·작업 입력란 또는 TOML 위치로 이동합니다. 저장 전 다시 검증하며, 분석/미리보기는 commit·push·파이프라인 실행을 하지 않습니다. 추가 DB migration은 없습니다.
+
+그래프의 `＋`/`−`, **원래 크기**, **화면 맞춤**으로 배율을 조절하고 빈 공간을 드래그해 이동할 수 있습니다. **실행 취소/다시 실행**은 입력 변경, 작업·단계·파이프라인 삭제, 의존성 수정과 Visual/TOML 전환을 복원합니다. 단축키는 `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`이며 Windows에서는 `Ctrl+Y`도 지원합니다. 이력은 편집 중에만 유지되고 저장·취소·저장소 전환 시 초기화됩니다. 최근 최대 100개 상태를 보관하며 큰 설정에서는 메모리 한도에 맞춰 오래된 상태부터 제거합니다.
+
+**변경 비교**는 저장된 원문과 실제 저장할 내용을 줄 단위로 보여 줍니다. Visual 편집에서 다시 작성되는 주석·서식도 포함합니다. 큰 변경은 나누어 표시하고 매우 긴 파일은 전체 원문 비교로 전환합니다. 이력·diff 회귀 테스트는 `node --test tests/ci-editor.test.mjs`로 실행합니다.
+
+운영 데이터 없이 화면을 검증하려면 `cargo run --no-default-features --example ci_visual_preview` 실행 후 `http://127.0.0.1:4180/#ci-settings`를 엽니다. 이 테스트 서버는 localhost에만 바인딩하고, 저장은 메모리에만 반영합니다.
+
+## 실행 그래프
+
+실행 그래프는 최근 실행의 스냅샷과 **현재 설정**을 분리합니다. 과거 실행의 OS·경로·단계는 최신 설정으로 덮어쓰지 않습니다. 스냅샷이 없으면 기록된 작업만 표시하며, 스냅샷과 실제 등록된 작업이 다르면 실제 작업 기준임을 안내합니다.
+
+단계별 작업 카드를 선택하면 상태·소요 시간·종료 코드와 해당 작업의 로그를 확인할 수 있습니다. 실패 위치 이동, 실행 중 작업 따라가기, 완료 단계 접기, 확대/축소와 화면 맞춤을 지원하며 자동 갱신 시 선택·배율·스크롤을 유지합니다. 로그는 작업별로 페이지 조회하고, 메모리에는 최근 불러온 내용만 제한적으로 보관합니다.
+
+대기 사유는 서버의 claim 조건에 맞춰 선행 파이프라인 대기와 Runner 할당 대기를 구분합니다. 같은 저장소·branch·revision의 실제 선행 실행만 확인하며, 실행되지 않은 선행 파이프라인을 임의의 대기 원인으로 표시하지 않습니다. 알 수 없는 사유는 확인 중으로 표시합니다. DB migration은 추가하지 않습니다.
+
+회귀 테스트: `node --test tests/execution-graph.test.mjs`. 운영 데이터 없이 UI를 확인하려면 `node tests/execution-preview.mjs` 실행 후 `http://127.0.0.1:4181/#graphs`를 엽니다.
+
 ## 저장소 링크 관리
 
 **Source → Root** 방향으로 연결합니다. 실제 링크와 pin은 Lore revision이 기준이며, DB에는 동기화 정책, 마지막 성공·오류, 생성 작업 이력을 별도로 저장합니다.
@@ -342,6 +366,7 @@ cargo run --locked -- validate examples/monorepo.lore-ci.toml
 | GET | `/api/v1/repositories/{name}/ci-config?branch={branch}` | branch 최신 revision의 `.lore-ci.toml` 원문 조회 |
 | POST | `/api/v1/repositories/{name}/ci-config` | TOML 검증 후 `.lore-ci.toml` commit·push; CSRF와 기준 revision 필요 |
 | POST | `/api/v1/repositories/{name}/ci-config/parse` | Visual 편집 전 TOML 검증·구조화; CSRF 필요 |
+| POST | `/api/v1/repositories/{name}/ci-config/analyze` | `{content, changed_paths}` 읽기 전용 검증·오류 위치·경로 미리보기; 저장소 접근 권한과 CSRF 필요; 경로 최대 128개 |
 | GET | `/api/v1/repositories/{name}/pipeline-branches` | 자동 CI 대상 branch 설정 조회 |
 | POST | `/api/v1/repositories/{name}/pipeline-branches` | 자동 CI 대상 branch 설정 저장; CSRF 필요 |
 | POST | `/api/v1/repositories` | repository 생성: 201; CSRF 필요 |

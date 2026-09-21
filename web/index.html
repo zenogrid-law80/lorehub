@@ -8,6 +8,9 @@
     <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/app.css">
     <script src="/assets/app.js" defer></script>
+    <script src="/assets/ci-visual.js" defer></script>
+    <script src="/assets/ci-editor.js" defer></script>
+    <script src="/assets/execution-graph.js" defer></script>
     <script src="/assets/management.js" defer></script>
   </head>
   <body>
@@ -254,7 +257,7 @@
               <div>
                 <p class="breadcrumb">Zenogrid <span>/</span> CI routing</p>
                 <h1>Pipeline graphs</h1>
-                <p>폴더 변경이 어떤 파이프라인과 Runner, stage를 실행하는지 확인합니다.</p>
+                <p>Inspect run status, waiting reasons, and job logs against the execution snapshot.</p>
               </div>
             </div>
             <section class="stats-grid graph-stats" aria-label="Pipeline graph 요약">
@@ -284,7 +287,7 @@
                 <h3>표시할 routing graph가 없습니다</h3>
                 <p>changes와 runner_os가 있는 pipeline이 실행되면 여기에 표시됩니다.</p>
               </div>
-              <div class="panel-footer"><span>그래프를 선택하면 실행 상세를 엽니다.</span><span id="graph-last-updated">업데이트 대기 중</span></div>
+              <div class="panel-footer"><span>Select a job for its logs. Current configuration is separate from run history.</span><span id="graph-last-updated">업데이트 대기 중</span></div>
             </section>
           </section>
 
@@ -332,10 +335,13 @@
                 <p>저장소와 branch별 CI 파이프라인을 편집합니다.</p>
               </div>
             </div>
-            <form id="repository-config-form" class="pipeline-panel repository-config-page-form">
+            <form id="repository-config-form" class="pipeline-panel repository-config-page-form" novalidate>
               <div class="repository-config-page-header">
                 <div><p class="eyebrow">CI CONFIGURATION</p><h2>.lore-ci.toml</h2><p>선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.</p></div>
                 <div class="repository-config-actions">
+                  <button id="ci-undo" class="button button--ghost" type="button" hidden>Undo</button>
+                  <button id="ci-redo" class="button button--ghost" type="button" hidden>Redo</button>
+                  <button id="ci-review" class="button button--secondary" type="button" hidden>Review changes</button>
                   <button id="repository-config-cancel-edit" class="button button--ghost" type="button" hidden>Cancel</button>
                   <button id="repository-config-edit" class="button button--secondary" type="button" disabled>Edit</button>
                   <button id="repository-config-save" class="button button--primary" type="submit" hidden><span>Save changes</span><span class="button-spinner" hidden></span></button>
@@ -351,6 +357,24 @@
                   <button id="repository-config-visual-tab" class="is-active" type="button" role="tab" aria-selected="true">Visual</button>
                   <button id="repository-config-toml-tab" type="button" role="tab" aria-selected="false">TOML</button>
                 </div>
+                <section id="ci-analysis-panel" class="ci-analysis-panel" hidden>
+                  <div class="ci-analysis-heading"><strong>Configuration check</strong><span id="ci-validation-status" role="status"></span></div>
+                  <div id="ci-diagnostics" class="ci-diagnostics"></div>
+                  <details id="ci-path-preview" class="ci-path-preview">
+                    <summary>Preview changed paths</summary>
+                    <div class="ci-preview-body">
+                      <label class="field"><span>Changed files · one repository-relative path per line</span><textarea id="ci-changed-paths" rows="3" maxlength="65536" spellcheck="false" placeholder="Game/src/main.rs" aria-describedby="ci-preview-note"></textarea></label>
+                      <div class="ci-preview-output"><p id="ci-preview-summary" role="status"></p><div id="ci-preview-results"></div></div>
+                    </div>
+                    <p id="ci-preview-note">Path matching only. Actual runs also depend on branch policy and Runner availability. Dependencies do not automatically trigger unmatched pipelines.</p>
+                  </details>
+                </section>
+                <details id="ci-change-review" class="ci-change-review" hidden>
+                  <summary>Review changes</summary>
+                  <p id="ci-diff-note">Compare the saved file with the exact content that will be saved. Visual editing may rewrite comments and formatting.</p>
+                  <p id="ci-diff-summary" role="status"></p>
+                  <div id="ci-diff-body" class="ci-diff-body" tabindex="0" aria-label="Configuration changes"></div>
+                </details>
                 <div id="repository-config-visual" class="repository-config-visual" aria-live="polite">
                   <aside class="config-pipeline-sidebar">
                     <div class="config-panel-heading"><div><span>PIPELINES</span><strong>Pipeline list</strong></div><span id="repository-config-pipeline-count" class="config-count">0</span></div>
@@ -358,8 +382,18 @@
                     <button id="repository-config-add-pipeline" class="config-add-button" type="button">＋ Add pipeline</button>
                   </aside>
                   <section class="config-graph-panel">
-                    <div class="config-panel-heading"><div><span>VISUAL GRAPH</span><strong id="repository-config-graph-title">Pipeline</strong></div><small>Stages run from left to right</small></div>
-                    <div id="repository-config-stage-graph" class="config-stage-graph"></div>
+                    <div class="config-panel-heading"><div><span>VISUAL GRAPH</span><strong id="repository-config-graph-title">Pipeline</strong></div><div class="ci-graph-scope" role="group" aria-label="Graph view"><button id="ci-overview-button" type="button" aria-pressed="true">All pipelines</button><button id="ci-detail-button" type="button" aria-pressed="false">Stages &amp; jobs</button></div></div>
+                    <p id="ci-graph-legend" class="ci-graph-legend"></p>
+                    <div class="ci-zoom-controls" role="group" aria-label="Graph zoom">
+                      <button id="ci-zoom-out" type="button" aria-label="Zoom out">−</button>
+                      <button id="ci-zoom-reset" type="button" aria-label="Reset zoom">100%</button>
+                      <button id="ci-zoom-in" type="button" aria-label="Zoom in">＋</button>
+                      <button id="ci-zoom-fit" type="button">Fit graph</button>
+                      <span>Drag empty space to pan</span>
+                    </div>
+                    <div id="ci-graph-viewport" class="ci-graph-viewport" tabindex="0" aria-label="Pipeline graph">
+                      <div id="repository-config-stage-graph" class="config-stage-graph"></div>
+                    </div>
                   </section>
                   <aside class="config-inspector-panel">
                     <div class="config-panel-heading"><div><span>SETTINGS</span><strong id="repository-config-inspector-title">Pipeline settings</strong></div></div>
@@ -595,7 +629,7 @@
         </div>
         <div id="detail-summary" class="detail-summary"></div>
         <section id="execution-graph-section" class="execution-graph-section" aria-labelledby="execution-graph-title" hidden>
-          <div class="drawer-section-heading"><h3 id="execution-graph-title">Execution graph</h3><span>folder routing</span></div>
+          <div class="drawer-section-heading"><h3 id="execution-graph-title">Execution graph</h3></div>
           <div id="execution-graph" class="execution-graph"></div>
         </section>
         <div class="drawer-section-heading"><h3>Jobs</h3><span id="job-count"></span></div>

@@ -6,6 +6,9 @@ const INDEX: &str = include_str!("../../web/index.html");
 const STYLES: &str = include_str!("../../web/app.css");
 const THEME_SCRIPT: &str = include_str!("../../web/theme.js");
 const SCRIPT: &str = include_str!("../../web/app.js");
+const CI_SCRIPT: &str = include_str!("../../web/ci-visual.js");
+const CI_EDITOR_SCRIPT: &str = include_str!("../../web/ci-editor.js");
+const EXECUTION_SCRIPT: &str = include_str!("../../web/execution-graph.js");
 const MANAGEMENT_SCRIPT: &str = include_str!("../../web/management.js");
 #[cfg(feature = "embedded-runner-installers")]
 const LINUX_RUNNER: &[u8] =
@@ -35,6 +38,18 @@ pub async fn styles() -> Response {
 
 pub async fn script() -> Response {
     asset(SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn ci_script() -> Response {
+    asset(CI_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn ci_editor_script() -> Response {
+    asset(CI_EDITOR_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn execution_script() -> Response {
+    asset(EXECUTION_SCRIPT, "text/javascript; charset=utf-8", false)
 }
 
 pub async fn theme_script() -> Response {
@@ -164,6 +179,12 @@ mod tests {
         assert!(THEME_SCRIPT.contains("lorehub_theme"));
         assert!(SCRIPT.contains("/api/v1/pipeline-graphs"));
         assert!(SCRIPT.contains("loadPipelineGraphs"));
+        assert!(INDEX.contains("/assets/execution-graph.js"));
+        assert!(EXECUTION_SCRIPT.contains("renderExecutionWorkspace"));
+        assert_eq!(
+            execution_script().await.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
         assert!(SCRIPT.contains("graph-repository-tree"));
         assert!(SCRIPT.contains("graph-branch-tree"));
         assert!(SCRIPT.contains("graphExpandedRepositories: new Set()"));

@@ -129,6 +129,10 @@ pub fn router_with_releases(
             post(parse_repository_ci_config).layer(DefaultBodyLimit::max(300 * 1024)),
         )
         .route(
+            "/api/v1/repositories/{name}/ci-config/analyze",
+            post(analyze_repository_ci_config).layer(DefaultBodyLimit::max(600 * 1024)),
+        )
+        .route(
             "/api/v1/repositories/{name}/pipelines",
             get(list_repository_pipelines),
         )
@@ -177,6 +181,9 @@ pub fn router_with_releases(
         .route("/assets/app.css", get(web::styles))
         .route("/assets/theme.js", get(web::theme_script))
         .route("/assets/app.js", get(web::script))
+        .route("/assets/ci-visual.js", get(web::ci_script))
+        .route("/assets/ci-editor.js", get(web::ci_editor_script))
+        .route("/assets/execution-graph.js", get(web::execution_script))
         .route("/assets/management.js", get(web::management_script))
         .route("/healthz", get(health))
         .route("/.well-known/openid-configuration", get(oidc_discovery))
@@ -1205,6 +1212,25 @@ struct ParseRepositoryCiConfig {
     content: String,
 }
 
+#[derive(Deserialize)]
+struct AnalyzeRepositoryCiConfig {
+    content: String,
+    #[serde(default)]
+    changed_paths: Vec<String>,
+}
+
+async fn analyze_repository_ci_config(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<AnalyzeRepositoryCiConfig>,
+) -> Result<Json<crate::ci::analysis::CiAnalysis>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    crate::ci::analysis::analyze(&input.content, &input.changed_paths)
+        .map(Json)
+        .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))
+}
+
 async fn parse_repository_ci_config(
     State(state): State<AppState>,
     Extension(session): Extension<AuthSession>,
@@ -1562,6 +1588,7 @@ struct LogPage {
     after: i64,
     #[serde(default = "page_size")]
     limit: i64,
+    job_id: Option<Uuid>,
 }
 fn page_size() -> i64 {
     100
@@ -1811,6 +1838,7 @@ struct Detail {
     jobs: Vec<Job>,
     graph: Option<serde_json::Value>,
     sparse_view_rules: Option<String>,
+    queue_reason: Option<&'static str>,
 }
 async fn detail(
     State(state): State<AppState>,
@@ -1821,6 +1849,7 @@ async fn detail(
         .fetch_optional(&state.pool)
         .await?
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "pipeline not found".into()))?;
+    let execution_branch = pipeline.branch.clone();
     normalize_legacy_pipeline_branches(&state.pool, std::slice::from_mut(&mut pipeline)).await?;
     let jobs = sqlx::query_as("SELECT * FROM jobs WHERE pipeline_id = $1 ORDER BY position")
         .bind(id)
@@ -1839,11 +1868,36 @@ async fn detail(
             )
         })?;
     let sparse_view_rules = pipeline.sparse_view_rules.clone();
+    // Match claim(): only existing upstream runs in the same branch/revision
+    // can block a claim. Missing upstream runs are not assumed to be blockers.
+    let queue_reason = if pipeline.status != "queued" {
+        None
+    } else if pipeline.cancel_requested {
+        Some("canceling")
+    } else {
+        let blocked: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM unnest($1::text[]) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = $2 AND upstream.branch IS NOT DISTINCT FROM $3 AND upstream.revision = $4 AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded')",
+        )
+        .bind(&pipeline.pipeline_needs)
+        .bind(&pipeline.repository_url)
+        .bind(&execution_branch)
+        .bind(&pipeline.revision)
+        .fetch_one(&state.pool)
+        .await?;
+        Some(if blocked {
+            "dependencies"
+        } else if pipeline.worker_id.is_none() {
+            "runner"
+        } else {
+            "unknown"
+        })
+    };
     Ok(Json(Detail {
         pipeline,
         jobs,
         graph,
         sparse_view_rules,
+        queue_reason,
     }))
 }
 
@@ -1901,11 +1955,12 @@ async fn logs(
     }
     Ok(Json(
         sqlx::query_as(
-            "SELECT * FROM logs WHERE pipeline_id = $1 AND id > $2 ORDER BY id LIMIT $3",
+            "SELECT * FROM logs WHERE pipeline_id = $1 AND id > $2 AND ($4::uuid IS NULL OR job_id = $4) ORDER BY id LIMIT $3",
         )
         .bind(id)
         .bind(page.after)
         .bind(page.limit)
+        .bind(page.job_id)
         .fetch_all(&state.pool)
         .await?,
     ))

@@ -15,6 +15,97 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn ci_analysis_requires_repository_access_and_csrf_without_lore_calls(pool: PgPool) {
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(
+            "/usr/bin/false",
+            "lores://127.0.0.1:41337",
+            "lores://127.0.0.1:41337",
+        )
+        .unwrap(),
+        None,
+    );
+    let owner = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    for id in [owner, outsider] {
+        sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec()).bind(id)
+            .bind(Sha256::digest(b"test-csrf").to_vec()).execute(&pool).await.unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES('ci-test','ci-test',$1)",
+    )
+    .bind(owner.to_string())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let path = "/api/v1/repositories/ci-test/ci-config/analyze";
+    let content = "stages = [\"build\"]\n[[jobs]]\nname = \"build\"\nstage = \"build\"\nscript = [\"echo test\"]";
+    let input = json!({"content":content, "changed_paths":["src/main.rs"]});
+    for (user, csrf, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(owner), false, StatusCode::FORBIDDEN),
+        (Some(outsider), true, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            request(&app, user, "POST", path, input.clone(), csrf)
+                .await
+                .0,
+            expected
+        );
+    }
+    let (status, result) = request(&app, Some(owner), "POST", path, input.clone(), true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["valid"], true);
+    assert_eq!(result["manual"], true);
+    let (status, result) = request(
+        &app,
+        Some(owner),
+        "POST",
+        path,
+        json!({"content": format!("{content}\ntimeout_seconds = 0")}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(result["valid"], false);
+    assert_eq!(result["diagnostics"][0]["job_index"], 0);
+    assert_eq!(result["diagnostics"][0]["field"], "timeout_seconds");
+    assert_eq!(
+        request(
+            &app,
+            Some(owner),
+            "POST",
+            path,
+            json!({"content":content, "changed_paths":["../outside"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let queued: i64 = sqlx::query_scalar("SELECT count(*) FROM pipelines")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(queued, 0);
+}
+
 #[cfg(unix)]
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]

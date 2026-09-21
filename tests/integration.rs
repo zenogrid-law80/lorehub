@@ -554,6 +554,132 @@ async fn authenticated_api_and_log_cursor(pool: PgPool) {
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(logs.as_array().unwrap().len(), 1);
     assert_eq!(logs[0]["content"], "second line");
+    // Job filters remain scoped to the requested pipeline and retain cursor semantics.
+    let job_a = Uuid::new_v4();
+    let job_b = Uuid::new_v4();
+    for (position, job) in [job_a, job_b].into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO jobs(id,pipeline_id,position,name,stage) VALUES($1,$2,$3,$4,'test')",
+        )
+        .bind(job)
+        .bind(id)
+        .bind(position as i32)
+        .bind(format!("job-{position}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+        db::log(
+            &pool,
+            id,
+            Some(job),
+            "stdout",
+            &format!("job-{position}-only"),
+        )
+        .await
+        .unwrap();
+    }
+    for (job, expected) in [(job_a, 1), (Uuid::new_v4(), 0)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/v1/pipelines/{id}/logs?job_id={job}&after={cursor}"
+                    ))
+                    .header("cookie", &cookies)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let rows: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), expected);
+        if expected == 1 {
+            assert_eq!(rows[0]["content"], "job-0-only");
+        }
+    }
+
+    // Read-only queue diagnostics use the same revision/branch matching as claim().
+    sqlx::query("UPDATE pipelines SET pipeline_needs = ARRAY['fixture-upstream'] WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let upstream = Uuid::new_v4();
+    for (case, expected) in [
+        ("missing", "runner"),
+        ("queued", "dependencies"),
+        ("other-revision", "runner"),
+        ("other-branch", "runner"),
+        ("succeeded", "runner"),
+        ("failed", "dependencies"),
+        ("canceling", "canceling"),
+    ] {
+        if case == "queued" {
+            sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,pipeline_name) SELECT $1,repository_url,revision,branch,'fixture-upstream' FROM pipelines WHERE id = $2")
+                .bind(upstream).bind(id).execute(&pool).await.unwrap();
+        } else if case == "other-revision" {
+            sqlx::query("UPDATE pipelines SET revision = $2 WHERE id = $1")
+                .bind(upstream)
+                .bind("b".repeat(64))
+                .execute(&pool)
+                .await
+                .unwrap();
+        } else if case == "other-branch" {
+            sqlx::query(
+                "UPDATE pipelines SET revision = $2, branch = 'another-branch' WHERE id = $1",
+            )
+            .bind(upstream)
+            .bind("a".repeat(64))
+            .execute(&pool)
+            .await
+            .unwrap();
+        } else if ["succeeded", "failed"].contains(&case) {
+            sqlx::query("UPDATE pipelines SET branch = NULL, status = $2 WHERE id = $1")
+                .bind(upstream)
+                .bind(case)
+                .execute(&pool)
+                .await
+                .unwrap();
+        } else if case == "canceling" {
+            sqlx::query("UPDATE pipelines SET cancel_requested = true WHERE id = $1")
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/v1/pipelines/{id}"))
+                    .header("cookie", &cookies)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let detail: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(detail["queue_reason"], expected, "queue reason for {case}");
+    }
+    sqlx::query(
+        "UPDATE pipelines SET pipeline_needs = '{}', cancel_requested = false WHERE id = $1",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM pipelines WHERE id = $1")
+        .bind(upstream)
+        .execute(&pool)
+        .await
+        .unwrap();
     let mut invalid = input();
     invalid.revision = "main@head".into();
     let response = app

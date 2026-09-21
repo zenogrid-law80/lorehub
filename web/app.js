@@ -741,6 +741,7 @@ async function loadRunners(notify) {
 }
 
 async function loadPipelineGraphs(notify) {
+  const request = ++executionGraphRequest;
   elements["refresh-button"].disabled = true;
   elements["pipeline-graph-list"].setAttribute("aria-busy", "true");
   try {
@@ -748,15 +749,7 @@ async function loadPipelineGraphs(notify) {
     const details = await Promise.all(routes.map(async (route) => {
       if (route.latest_pipeline_id) {
         const detail = await api(`/api/v1/pipelines/${encodeURIComponent(route.latest_pipeline_id)}`);
-        detail.pipeline.pipeline_name = route.pipeline_name;
-        detail.pipeline.category = route.category;
-        detail.pipeline.runner_os = route.runner_os;
-        detail.pipeline.branch = route.branch;
-        detail.pipeline.trigger_patterns = route.trigger_patterns;
-        detail.pipeline.working_directory = route.working_directory;
-        detail.graph = route.graph;
-        detail.route = route;
-        return detail;
+        return executionRouteDetail(route, detail);
       }
       const jobs = (route.graph?.stages || []).flatMap((stage, stageIndex) =>
         (stage.jobs || []).map((name, jobIndex) => ({
@@ -789,6 +782,7 @@ async function loadPipelineGraphs(notify) {
         },
       };
     }));
+    if (request !== executionGraphRequest) return;
     state.pipelineGraphs = details;
     renderPipelineGraphs();
     state.updatedAt.graphs = new Date();
@@ -821,6 +815,7 @@ function renderPipelineGraphs() {
     return !state.query || terms.some((value) => String(value).toLowerCase().includes(state.query));
   });
   const list = elements["pipeline-graph-list"];
+  captureExecutionFocus(list);
   list.replaceChildren();
   list.hidden = details.length === 0;
   elements["graph-empty-state"].hidden = details.length !== 0;
@@ -963,7 +958,7 @@ function pipelineGraphCard(detail) {
   const run = document.createElement("button");
   run.type = "button";
   run.className = "button button--primary graph-run-button";
-  run.textContent = t("dynamic.runPipeline");
+  run.textContent = t("Run current configuration");
   run.addEventListener("click", () => void runPipelineFromGraph(detail, run));
   const open = document.createElement("button");
   open.type = "button";
@@ -975,7 +970,7 @@ function pipelineGraphCard(detail) {
   header.append(identity, actions);
   const graph = document.createElement("div");
   graph.className = "execution-graph graph-page-flow";
-  populateExecutionGraph(graph, pipeline, detail.jobs, detail.graph);
+  renderExecutionWorkspace(graph, detail, `route:${JSON.stringify([detail.route.repository_url, detail.route.branch, detail.route.pipeline_name])}`);
   card.append(header, graph);
   return card;
 }
@@ -1002,7 +997,7 @@ async function runPipelineFromGraph(detail, button) {
     toast(error.message, "error");
   } finally {
     button.disabled = false;
-    button.textContent = t("dynamic.runPipeline");
+    button.textContent = t("Run current configuration");
   }
 }
 
@@ -1797,6 +1792,7 @@ async function loadRepositoryConfig() {
 }
 
 function renderRepositoryConfig() {
+  syncCiEditor();
   const editing = state.repositoryConfigEditing;
   const ready = state.repositoryConfigStatus === "ready";
   const visual = ready && state.repositoryConfigMode === "visual";
@@ -1833,6 +1829,9 @@ function renderRepositoryConfig() {
   elements["repository-config-save"].querySelector("span:first-child").textContent = state.repositoryConfigSaving ? t("dynamic.saving") : t("Save changes");
   elements["repository-config-save"].querySelector(".button-spinner").hidden = !state.repositoryConfigSaving;
   if (visual) renderRepositoryConfigVisual();
+  scheduleCiAnalysis();
+  setCiSavingState();
+  updateCiHistoryControls();
 }
 
 function setRepositoryConfigEditing(editing) {
@@ -1851,6 +1850,7 @@ function setRepositoryConfigEditing(editing) {
 }
 
 async function setRepositoryConfigMode(mode) {
+  if (state.repositoryConfigSaving) return;
   if (mode === state.repositoryConfigMode || state.repositoryConfigStatus !== "ready") return;
   if (mode === "toml") {
     if (state.repositoryConfigEditing && state.repositoryConfigDraft) {
@@ -1867,12 +1867,18 @@ async function setRepositoryConfigMode(mode) {
     renderRepositoryConfig();
     return;
   }
+  const source = elements["repository-config-editor"].value;
+  const generation = ciEditor.generation;
+  const request = state.repositoryConfigRequest;
   try {
     const configuration = await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryConfigName)}/ci-config/parse`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({ content: elements["repository-config-editor"].value }),
+      body: JSON.stringify({ content: source }),
     });
+    if (!state.repositoryConfigEditing || state.repositoryConfigSaving || generation !== ciEditor.generation
+      || request !== state.repositoryConfigRequest || state.repositoryConfigMode !== "toml"
+      || elements["repository-config-editor"].value !== source) return;
     state.repositoryConfigDraft = configuration;
     state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
     state.repositoryConfigMode = "visual";
@@ -1884,7 +1890,7 @@ async function setRepositoryConfigMode(mode) {
 
 async function saveRepositoryConfig(event) {
   event.preventDefault();
-  if (!state.repositoryConfigName || !state.repositoryConfigRevision || !state.repositoryConfigEditing) return;
+  if (!state.repositoryConfigName || !state.repositoryConfigRevision || !state.repositoryConfigEditing || state.repositoryConfigSaving) return;
   const name = state.repositoryConfigName;
   const branch = elements["repository-config-branch"].value;
   const content = state.repositoryConfigMode === "visual"
@@ -1893,6 +1899,7 @@ async function saveRepositoryConfig(event) {
   state.repositoryConfigSaving = true;
   renderRepositoryConfig();
   try {
+    if (!await validateCiBeforeSave(content, name)) return;
     const config = await api(`/api/v1/repositories/${encodeURIComponent(name)}/ci-config`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
@@ -1915,6 +1922,7 @@ async function saveRepositoryConfig(event) {
 }
 
 function resetRepositoryConfig() {
+  resetCiEditor();
   state.repositoryConfigRequest += 1;
   state.repositoryConfigName = null;
   state.repositoryConfigRevision = null;
@@ -1933,6 +1941,7 @@ function discardRepositoryConfigEdit() {
   if (state.repositoryConfigEditing && !window.confirm(t("dynamic.discardConfig"))) return false;
   state.repositoryConfigEditing = false;
   state.repositoryConfigDraft = null;
+  resetCiEditor();
   return true;
 }
 
@@ -1953,6 +1962,7 @@ function selectedCiPipeline(model) {
 }
 
 function renderRepositoryConfigVisual() {
+  recordCiEdit();
   const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
   const entries = ciPipelineEntries(model);
   const list = elements["repository-config-pipeline-list"];
@@ -1961,6 +1971,10 @@ function renderRepositoryConfigVisual() {
   list.replaceChildren();
   graph.replaceChildren();
   inspector.replaceChildren();
+  graph.classList.toggle("ci-overview-graph", ciVisual.scope === "overview");
+  updateCiGraphScope();
+  applyCiZoom();
+  scheduleCiAnalysis();
   elements["repository-config-pipeline-count"].textContent = String(entries.length);
   elements["repository-config-add-pipeline"].hidden = !state.repositoryConfigEditing;
   if (!entries.length) {
@@ -1979,6 +1993,7 @@ function renderRepositoryConfigVisual() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "config-pipeline-item";
+    button.dataset.pipelineIndex = entry.pipelineIndex;
     button.classList.toggle("is-active", entry.pipelineIndex === selected.pipelineIndex);
     const name = document.createElement("strong"); name.textContent = entry.pipeline.name;
     const meta = document.createElement("span"); meta.textContent = entry.legacy ? t("Manual") : `${entry.pipeline.runner_os} · ${entry.pipeline.category}`;
@@ -1987,6 +2002,7 @@ function renderRepositoryConfigVisual() {
       const needs = document.createElement("span"); needs.className = "config-pipeline-needs"; needs.textContent = t("dynamic.pipelineNeeds", { pipelines: entry.pipeline.needs.join(", ") }); button.append(needs);
     }
     button.addEventListener("click", () => {
+      ciVisual.scope = "detail";
       state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: entry.pipelineIndex };
       renderRepositoryConfigVisual();
     });
@@ -1994,6 +2010,13 @@ function renderRepositoryConfigVisual() {
   }
 
   elements["repository-config-add-pipeline"].textContent = selected.legacy ? t("Convert to auto pipeline") : t("Add pipeline");
+  if (ciVisual.scope === "overview") {
+    renderCiOverview(entries);
+    renderConfigInspector(selected, model);
+    decorateCiAnalysis();
+    setCiSavingState();
+    return;
+  }
   elements["repository-config-graph-title"].textContent = selected.pipeline.name;
   selected.pipeline.stages.forEach((stage, stageIndex) => {
     const column = document.createElement("section");
@@ -2001,6 +2024,7 @@ function renderRepositoryConfigVisual() {
     const header = document.createElement("button");
     header.type = "button";
     header.className = "config-stage-header";
+    header.dataset.stageIndex = stageIndex;
     header.classList.toggle("is-active", state.repositoryConfigSelection?.type === "stage" && state.repositoryConfigSelection.stageIndex === stageIndex);
     const order = document.createElement("span"); order.textContent = String(stageIndex + 1).padStart(2, "0");
     const title = document.createElement("strong"); title.textContent = stage;
@@ -2017,6 +2041,7 @@ function renderRepositoryConfigVisual() {
       job.type = "button";
       job.className = "config-job-card";
       job.dataset.jobName = entry.job.name;
+      job.dataset.jobIndex = entry.jobIndex;
       job.classList.toggle("is-active", state.repositoryConfigSelection?.type === "job" && state.repositoryConfigSelection.jobIndex === entry.jobIndex);
       const icon = document.createElement("span"); icon.className = "config-job-icon"; icon.textContent = "◆";
       const copy = document.createElement("span");
@@ -2047,6 +2072,8 @@ function renderRepositoryConfigVisual() {
     graph.append(addStage);
   }
   renderConfigInspector(selected, model);
+  decorateCiAnalysis();
+  setCiSavingState();
   window.requestAnimationFrame(() => renderConfigDependencyEdges(selected.pipeline));
 }
 
@@ -2131,9 +2158,9 @@ function configInspectorInput(labelText, value, update, type = "text", attribute
   const label = document.createElement("label"); label.className = "config-inspector-field";
   const caption = document.createElement("span"); caption.textContent = labelText;
   const input = document.createElement("input"); input.type = type; input.value = value; input.disabled = !state.repositoryConfigEditing;
+  input.dataset.configField = ciFieldKey(labelText);
   for (const [key, attributeValue] of Object.entries(attributes)) input[key] = attributeValue;
-  input.addEventListener("input", () => update(input.value));
-  input.addEventListener("change", renderRepositoryConfigVisual);
+  input.addEventListener("input", () => { update(input.value); refreshCiGraphLabels(); });
   label.append(caption, input); return label;
 }
 
@@ -2141,6 +2168,7 @@ function configInspectorSelect(labelText, options, value, update) {
   const label = document.createElement("label"); label.className = "config-inspector-field";
   const caption = document.createElement("span"); caption.textContent = labelText;
   const select = document.createElement("select"); select.disabled = !state.repositoryConfigEditing;
+  select.dataset.configField = ciFieldKey(labelText);
   for (const option of options) select.add(new Option(option, option));
   select.value = value;
   select.addEventListener("change", () => { update(select.value); renderRepositoryConfigVisual(); });
@@ -2151,7 +2179,8 @@ function configInspectorTextarea(labelText, value, update, hintText) {
   const label = document.createElement("label"); label.className = "config-inspector-field";
   const caption = document.createElement("span"); caption.textContent = labelText;
   const textarea = document.createElement("textarea"); textarea.rows = 6; textarea.value = value; textarea.disabled = !state.repositoryConfigEditing; textarea.spellcheck = false;
-  textarea.addEventListener("input", () => update(textarea.value));
+  textarea.dataset.configField = ciFieldKey(labelText);
+  textarea.addEventListener("input", () => { update(textarea.value); refreshCiGraphLabels(); });
   const hint = document.createElement("small"); hint.textContent = hintText;
   label.append(caption, textarea, hint); return label;
 }
@@ -2160,6 +2189,7 @@ function configInspectorDependencies(pipeline, jobIndex) {
   const job = pipeline.jobs[jobIndex];
   job.needs ??= [];
   const field = document.createElement("fieldset"); field.className = "config-dependency-field";
+  field.dataset.configField = "needs";
   const legend = document.createElement("legend"); legend.textContent = t("Dependencies"); field.append(legend);
   const hint = document.createElement("small"); hint.textContent = t("Select jobs that must complete first."); field.append(hint);
   const jobStage = pipeline.stages.indexOf(job.stage);
@@ -2190,6 +2220,7 @@ function configInspectorPipelineDependencies(model, pipelineIndex) {
   const pipeline = model.pipelines[pipelineIndex];
   pipeline.needs ??= [];
   const field = document.createElement("fieldset"); field.className = "config-dependency-field";
+  field.dataset.configField = "needs";
   const legend = document.createElement("legend"); legend.textContent = t("Pipeline dependencies"); field.append(legend);
   const hint = document.createElement("small"); hint.textContent = t("Select pipelines that must succeed first."); field.append(hint);
   const candidates = model.pipelines.filter(candidate => candidate !== pipeline
@@ -2244,6 +2275,7 @@ function wouldCreateCiDependencyCycle(pipeline, jobName, dependencyName) {
 
 function renderConfigDependencyEdges(pipeline) {
   if (state.repositoryConfigMode !== "visual") return;
+  if (ciVisual.scope === "overview") { renderCiOverviewEdges(); return; }
   const graph = elements["repository-config-stage-graph"];
   graph.querySelector(".config-dependency-layer")?.remove();
   const cards = new Map([...graph.querySelectorAll(".config-job-card")].map(card => [card.dataset.jobName, card]));
@@ -2263,10 +2295,10 @@ function renderConfigDependencyEdges(pipeline) {
     if (!source || !target) continue;
     const sourceRect = source.getBoundingClientRect(); const targetRect = target.getBoundingClientRect();
     const sameStage = source.closest(".config-stage-column") === target.closest(".config-stage-column");
-    const x1 = sourceRect.right - graphRect.left + graph.scrollLeft;
-    const y1 = sourceRect.top + sourceRect.height / 2 - graphRect.top + graph.scrollTop;
-    const x2 = sameStage ? targetRect.right - graphRect.left + graph.scrollLeft : targetRect.left - graphRect.left + graph.scrollLeft;
-    const y2 = targetRect.top + targetRect.height / 2 - graphRect.top + graph.scrollTop;
+    const x1 = (sourceRect.right - graphRect.left) / ciEditor.zoom + graph.scrollLeft;
+    const y1 = (sourceRect.top + sourceRect.height / 2 - graphRect.top) / ciEditor.zoom + graph.scrollTop;
+    const x2 = ((sameStage ? targetRect.right : targetRect.left) - graphRect.left) / ciEditor.zoom + graph.scrollLeft;
+    const y2 = (targetRect.top + targetRect.height / 2 - graphRect.top) / ciEditor.zoom + graph.scrollTop;
     const path = document.createElementNS(namespace, "path");
     if (sameStage) {
       const control = Math.max(x1, x2) + 22;
@@ -2373,7 +2405,7 @@ function serializeCiModel(model) {
   const appendJob = (job, table) => {
     lines.push(`[[${table}]]`, `name = ${value(job.name)}`, `stage = ${value(job.stage)}`);
     if (job.needs?.length) lines.push(`needs = ${array(job.needs)}`);
-    lines.push(`script = ${array(job.script)}`, `timeout_seconds = ${Number(job.timeout_seconds) || 3600}`, "");
+    lines.push(`script = ${array(job.script)}`, `timeout_seconds = ${Number.isFinite(Number(job.timeout_seconds)) ? Number(job.timeout_seconds) : 0}`, "");
   };
   if (model.pipelines.length) {
     for (const pipeline of model.pipelines) {
@@ -2756,15 +2788,16 @@ async function openPipeline(id) {
 }
 
 async function loadPipelineDetail(id) {
+  const request = ++executionDetailRequest;
   const detail = await api(`/api/v1/pipelines/${encodeURIComponent(id)}`);
-  if (state.selectedId !== id) return;
+  if (state.selectedId !== id || request !== executionDetailRequest) return;
   if (state.detailLogsPipelineId !== id) {
     state.detailLogs = [];
     state.detailLogsPipelineId = id;
   }
   const after = state.detailLogs.at(-1)?.id || 0;
   const logs = await loadPipelineLogs(id, after);
-  if (state.selectedId !== id) return;
+  if (state.selectedId !== id || request !== executionDetailRequest) return;
   state.detailLogs.push(...logs);
   const pipeline = detail.pipeline;
   elements["detail-repository"].textContent = [
@@ -2774,7 +2807,7 @@ async function loadPipelineDetail(id) {
   ].filter(Boolean).join(" / ");
   elements["detail-title"].textContent = pipeline.pipeline_name || revisionLabel(pipeline);
   renderDetailSummary(pipeline, detail.sparse_view_rules);
-  renderExecutionGraph(pipeline, detail.jobs, detail.graph);
+  renderExecutionGraph(pipeline, detail.jobs, detail.graph, detail.queue_reason);
   renderJobs(detail.jobs);
   renderLogs(state.detailLogs);
   const cancellable = ["queued", "running"].includes(pipeline.status) && !pipeline.cancel_requested;
@@ -2793,7 +2826,7 @@ async function loadPipelineLogs(id, after) {
   }
 }
 
-function renderExecutionGraph(pipeline, jobs, snapshot) {
+function renderExecutionGraph(pipeline, jobs, snapshot, queueReason) {
   const section = elements["execution-graph-section"];
   const graph = elements["execution-graph"];
   if (!pipeline.pipeline_name) {
@@ -2803,94 +2836,7 @@ function renderExecutionGraph(pipeline, jobs, snapshot) {
   }
 
   section.hidden = false;
-  graph.replaceChildren();
-  populateExecutionGraph(graph, pipeline, jobs, snapshot);
-}
-
-function populateExecutionGraph(graph, pipeline, jobs, snapshot) {
-  const patterns = pipeline.trigger_patterns?.length ? pipeline.trigger_patterns : [pipeline.working_directory || "repository"];
-  const changedCount = pipeline.changed_path_count || 0;
-  graph.append(graphNode("folder", t("dynamic.changedFolder"), patterns, pipeline.status, changedCount ? tc("dynamic.matchingPaths", changedCount) : t("dynamic.pathRule")));
-  graph.append(graphConnector());
-  const sparseView = pipeline.sparse_view_name || snapshot?.sparse_view;
-  graph.append(graphNode("view", t("Sparse View"), [sparseView || t("dynamic.noSparseView")], pipeline.status, t("dynamic.viewSnapshot")));
-  const pipelineNeeds = pipeline.pipeline_needs?.length ? pipeline.pipeline_needs : snapshot?.pipeline_needs || [];
-  if (pipelineNeeds.length) {
-    graph.append(graphConnector());
-    const dependencyStatus = ["running", "succeeded"].includes(pipeline.status) ? "succeeded" : pipeline.status;
-    graph.append(graphNode("dependency", t("Pipeline dependencies"), pipelineNeeds, dependencyStatus, pipeline.status === "queued" ? t("Waiting for pipeline dependencies") : t("Pipeline dependencies")));
-  }
-  graph.append(graphConnector());
-  graph.append(graphNode("pipeline", t("Pipeline"), [pipeline.pipeline_name], pipeline.status, pipeline.working_directory ? t("dynamic.runsIn", { directory: pipeline.working_directory }) : t("dynamic.repositoryRoot")));
-  graph.append(graphConnector());
-  const assigned = state.runners.find((runner) => runner.id === pipeline.worker_id);
-  const runnerName = assigned ? assigned.name : `${osLabel(pipeline.runner_os)} Runner`;
-  const configured = pipeline.status === "configured";
-  const runnerMeta = assigned
-    ? t("dynamic.assigned", { os: osLabel(assigned.os) })
-    : configured
-      ? t("dynamic.target", { os: osLabel(pipeline.runner_os) })
-      : t("dynamic.waiting", { os: osLabel(pipeline.runner_os) });
-  graph.append(graphNode("runner", t("Runner"), [runnerName], assigned ? pipeline.status : configured ? "configured" : "queued", runnerMeta));
-
-  const stages = graphStages(snapshot, jobs);
-  for (const stage of stages) {
-    graph.append(graphConnector());
-    const stageJobs = stage.jobs.map((name) => jobs.find((job) => job.name === name)).filter(Boolean);
-    const status = stageStatus(stageJobs, pipeline.status);
-    graph.append(graphNode("stage", t("dynamic.stage", { status: statusLabel(status) }), [stage.name], status, tc("dynamic.jobs", stage.jobs.length)));
-  }
-  graph.setAttribute("aria-label", t("dynamic.graphAria", {
-    patterns: patterns.join(", "), pipeline: pipeline.pipeline_name,
-    os: osLabel(pipeline.runner_os), stages: stages.map((stage) => stage.name).join(", ")
-  }));
-}
-
-function graphStages(snapshot, jobs) {
-  if (snapshot && Array.isArray(snapshot.stages)) return snapshot.stages;
-  const stages = [];
-  for (const job of jobs) {
-    let stage = stages.find((candidate) => candidate.name === job.stage);
-    if (!stage) { stage = { name: job.stage, jobs: [] }; stages.push(stage); }
-    stage.jobs.push(job.name);
-  }
-  return stages;
-}
-
-function stageStatus(jobs, pipelineStatus) {
-  if (!jobs.length) return pipelineStatus === "canceled" ? "canceled" : pipelineStatus === "configured" ? "configured" : "queued";
-  if (jobs.some((job) => job.status === "failed")) return "failed";
-  if (jobs.some((job) => job.status === "canceled")) return "canceled";
-  if (jobs.some((job) => job.status === "running")) return "running";
-  if (jobs.every((job) => job.status === "succeeded")) return "succeeded";
-  if (jobs.every((job) => job.status === "skipped")) return "skipped";
-  if (jobs.every((job) => job.status === "configured")) return "configured";
-  return "queued";
-}
-
-function graphNode(kind, eyebrow, values, status, meta) {
-  const node = document.createElement("div");
-  node.className = `execution-node execution-node--${kind} execution-node--${status}`;
-  const icon = document.createElement("span");
-  icon.className = "execution-node-icon";
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = kind === "folder" ? "⌁" : kind === "view" ? "◫" : kind === "dependency" ? "◇" : kind === "pipeline" ? "◆" : kind === "runner" ? "▣" : "●";
-  const copy = document.createElement("span");
-  copy.className = "execution-node-copy";
-  const label = document.createElement("small"); label.textContent = eyebrow;
-  const title = document.createElement("strong"); title.textContent = values.join(", ");
-  const detail = document.createElement("span"); detail.textContent = meta;
-  copy.append(label, title, detail);
-  node.append(icon, copy);
-  return node;
-}
-
-function graphConnector() {
-  const connector = document.createElement("span");
-  connector.className = "execution-connector";
-  connector.setAttribute("aria-hidden", "true");
-  connector.textContent = "→";
-  return connector;
+  renderExecutionWorkspace(graph, { pipeline, jobs, graph: snapshot, queue_reason: queueReason }, `drawer:${pipeline.id}`);
 }
 
 function osLabel(os) {
@@ -2999,7 +2945,6 @@ async function refreshActiveViews() {
   await loadPipelines(false);
   if (state.section === "graphs") {
     await loadPipelineGraphs(false);
-    return;
   }
   if (state.selectedId && elements["pipeline-detail-dialog"].open) {
     try { await loadPipelineDetail(state.selectedId); } catch (_) { /* next poll retries */ }
