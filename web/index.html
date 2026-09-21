@@ -96,6 +96,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4"/></svg>
               <span>CI settings</span>
             </a>
+            <a class="nav-item" href="#repository-links" data-section="repository-links">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg>
+              <span>Repository links</span>
+            </a>
             <a class="nav-item" href="#runners" data-section="runners">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/></svg>
               <span>Runners</span>
@@ -372,6 +376,41 @@
             </form>
           </section>
 
+          <section id="repository-links-page" class="repository-links-page" hidden>
+            <div class="page-heading">
+              <div>
+                <p class="breadcrumb">Zenogrid <span>/</span> Lore dependencies</p>
+                <h1>Repository links</h1>
+                <p>저장소 branch가 참조하는 다른 Lore 저장소의 경로와 pin을 관리합니다.</p>
+              </div>
+              <button id="new-repository-link-button" class="button button--primary" type="button" disabled>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+                Add link
+              </button>
+            </div>
+            <section class="pipeline-panel repository-link-panel">
+              <div class="repository-link-toolbar">
+                <label class="field"><span>Repository</span><select id="repository-link-repository" required disabled></select></label>
+                <label class="field"><span>Branch</span><select id="repository-link-branch" required disabled></select></label>
+                <div class="repository-config-revision"><span>Revision</span><code id="repository-link-revision">—</code></div>
+              </div>
+              <div class="panel-header repository-link-list-header">
+                <div><h2>Linked paths</h2><p>선택한 root revision에 기록된 repository link</p></div>
+                <span id="repository-link-count" class="repository-total">0 links</span>
+              </div>
+              <div id="repository-link-list" class="repository-link-list" aria-live="polite">
+                <div class="table-loading"><span></span><span></span><span></span></div>
+              </div>
+              <div id="repository-link-empty-state" class="empty-state" hidden>
+                <div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg></div>
+                <h3>Repository link가 없습니다</h3>
+                <p>다른 저장소의 경로를 이 branch에 연결하세요.</p>
+                <button class="button button--secondary js-open-repository-link" type="button">Add link</button>
+              </div>
+              <div class="panel-footer"><span>변경 사항은 새 Lore revision으로 commit 후 push됩니다.</span><span id="repository-link-last-updated">업데이트 대기 중</span></div>
+            </section>
+          </section>
+
           <section id="runners-page" class="runners-page" hidden>
             <div class="page-heading">
               <div>
@@ -482,6 +521,23 @@
         </fieldset>
         <label class="field"><span>Description <em>optional</em></span><input id="repository-description" name="description" type="text" maxlength="500" placeholder="Repository purpose"></label>
         <div class="modal-actions"><button class="button button--ghost repository-modal-cancel" type="button">Cancel</button><button id="create-repository-button" class="button button--primary" type="submit"><span>Create repository</span><span class="button-spinner" hidden></span></button></div>
+      </form>
+    </dialog>
+
+    <dialog id="new-repository-link-dialog" class="modal">
+      <form id="repository-link-form" method="dialog">
+        <div class="modal-header">
+          <div><p class="eyebrow">LORE DEPENDENCY</p><h2>Add repository link</h2></div>
+          <button class="repository-link-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        </div>
+        <p class="modal-intro"><strong id="repository-link-root-name"></strong>의 선택한 branch에 다른 저장소 경로를 연결합니다.</p>
+        <label class="field"><span>Link path</span><input id="repository-link-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Dependencies/Shared"><small>현재 저장소 안에 생성될 상대 경로</small></label>
+        <label class="field"><span>Source repository</span><select id="repository-link-source-repository" required></select></label>
+        <label class="field"><span>Source branch</span><select id="repository-link-source-branch" required disabled></select></label>
+        <label class="field"><span>Source path</span><input id="repository-link-source-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Libraries/Shared"><small>Source 저장소의 상대 경로이며 전체 root는 <code>.</code>을 사용합니다.</small></label>
+        <label class="repository-link-checkbox"><input id="repository-link-disable-branching" type="checkbox"><span>Disable linked branch creation</span></label>
+        <div id="repository-link-form-error" class="repository-link-form-error" role="alert" hidden><strong>Link creation failed</strong><span></span></div>
+        <div class="modal-actions"><button class="button button--ghost repository-link-modal-cancel" type="button">Cancel</button><button id="create-repository-link-button" class="button button--primary" type="submit"><span>Add link</span><span class="button-spinner" hidden></span></button></div>
       </form>
     </dialog>
 

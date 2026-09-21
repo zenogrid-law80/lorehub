@@ -91,6 +91,18 @@ pub fn router_with_releases(
             get(list_repository_branches),
         )
         .route(
+            "/api/v1/repositories/{name}/links",
+            get(repository_links).post(add_repository_link),
+        )
+        .route(
+            "/api/v1/repositories/{name}/links/update",
+            post(update_repository_link),
+        )
+        .route(
+            "/api/v1/repositories/{name}/links/remove",
+            post(remove_repository_link),
+        )
+        .route(
             "/api/v1/repositories/{name}/ci-config",
             get(repository_ci_config)
                 .post(update_repository_ci_config)
@@ -564,6 +576,8 @@ impl From<RepositoryCommandError> for ApiError {
             || lower.contains(".lore-ci.toml must")
             || lower.contains("branch must")
             || lower.contains("revision must")
+            || lower.contains("link path")
+            || lower.contains("link source path")
         {
             StatusCode::BAD_REQUEST
         } else {
@@ -733,6 +747,248 @@ async fn list_repository_branches(
             .branches_on(&name, backend, &access_token)
             .await?,
     ))
+}
+
+#[derive(Deserialize)]
+struct RepositoryLinksQuery {
+    branch: String,
+}
+
+async fn repository_links(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Query(query): Query<RepositoryLinksQuery>,
+) -> Result<Response, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let links = state
+        .repositories
+        .links_on(&name, &query.branch, backend, &access_token)
+        .await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok((headers, Json(links)).into_response())
+}
+
+#[derive(Deserialize)]
+struct AddRepositoryLink {
+    branch: String,
+    expected_revision: String,
+    path: String,
+    source_repository: String,
+    source_path: String,
+    source_branch: String,
+    #[serde(default)]
+    disable_branching: bool,
+}
+
+#[derive(Deserialize)]
+struct ChangeRepositoryLink {
+    branch: String,
+    expected_revision: String,
+    path: String,
+}
+
+#[derive(Serialize)]
+struct RepositoryLinkChange {
+    revision: String,
+}
+
+#[derive(Serialize)]
+struct RepositoryLinkAddition {
+    revision: String,
+    source_path_created: bool,
+}
+
+async fn add_repository_link(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<AddRepositoryLink>,
+) -> Result<Json<RepositoryLinkAddition>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    require_repository_access(&state.pool, &input.source_repository, &session).await?;
+    if name.eq_ignore_ascii_case(&input.source_repository) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "a repository cannot link to itself".into(),
+        ));
+    }
+    let access_token = user_access_token(&state, &session).await?;
+    let repositories = state.repositories.list(&access_token).await?;
+    let root_repository = repositories
+        .iter()
+        .find(|repository| repository.name == name)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                format!("repository '{name}' was not found"),
+            )
+        })?;
+    let source_repository = repositories
+        .iter()
+        .find(|repository| repository.name == input.source_repository)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                format!("repository '{}' was not found", input.source_repository),
+            )
+        })?;
+    let root_backend = root_repository.storage_backend;
+    let source_backend = source_repository.storage_backend;
+    let root_resource_id = root_repository
+        .id
+        .strip_prefix("urc-")
+        .unwrap_or(&root_repository.id);
+    let root_resource_id = format!("urc-{}", root_resource_id.to_ascii_lowercase());
+    let mut link_tx = state.pool.begin().await?;
+    triggers::acquire_link_branch_lock(&mut link_tx, &root_resource_id, &input.branch).await?;
+    let source_path_created = state
+        .repositories
+        .ensure_source_directory_on(
+            &input.source_repository,
+            &input.source_branch,
+            &input.source_path,
+            source_backend,
+            &access_token,
+        )
+        .await?;
+    let source_branch = state
+        .repositories
+        .branches_on(&input.source_repository, source_backend, &access_token)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.name == input.source_branch)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                format!("source branch '{}' was not found", input.source_branch),
+            )
+        })?;
+    let source_url = state
+        .repositories
+        .command_repository_url_for(source_backend, &input.source_repository)?;
+    // A display name such as `main` is not present in the detached root checkout and Lore
+    // interprets it as a revision, producing `revision not found: main`. Pin the full source
+    // revision instead. Lore still records the source branch ID discovered from the repository,
+    // so automatic updates can continue following that branch.
+    let mut expected_revision = input.expected_revision.clone();
+    let mut stale_revision_retries = 0;
+    let revision = loop {
+        match state
+            .repositories
+            .add_link_on(
+                &name,
+                &input.branch,
+                &expected_revision,
+                &input.path,
+                &source_url,
+                &input.source_path,
+                &source_repository.id,
+                &source_branch.id,
+                &source_branch.revision,
+                input.disable_branching,
+                root_backend,
+                &access_token,
+            )
+            .await
+        {
+            Ok(revision) => break revision,
+            Err(error)
+                if source_path_created
+                    && stale_revision_retries < 2
+                    && error.message.contains("has changed from revision") =>
+            {
+                expected_revision = state
+                    .repositories
+                    .branches_on(&name, root_backend, &access_token)
+                    .await?
+                    .into_iter()
+                    .find(|candidate| candidate.name == input.branch)
+                    .ok_or_else(|| {
+                        ApiError(
+                            StatusCode::BAD_REQUEST,
+                            format!("branch '{}' was not found", input.branch),
+                        )
+                    })?
+                    .revision;
+                stale_revision_retries += 1;
+            }
+            Err(error) => {
+                let message = if source_path_created {
+                    format!(
+                        "source folder '{}' was created and pushed, but root link creation failed: {}",
+                        input.source_path, error.message
+                    )
+                } else {
+                    error.message
+                };
+                return Err(RepositoryCommandError { message }.into());
+            }
+        }
+    };
+    link_tx.commit().await?;
+    Ok(Json(RepositoryLinkAddition {
+        revision,
+        source_path_created,
+    }))
+}
+
+async fn update_repository_link(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<ChangeRepositoryLink>,
+) -> Result<Json<RepositoryLinkChange>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let revision = state
+        .repositories
+        .update_link_on(
+            &name,
+            &input.branch,
+            &input.expected_revision,
+            &input.path,
+            backend,
+            &access_token,
+        )
+        .await?;
+    Ok(Json(RepositoryLinkChange { revision }))
+}
+
+async fn remove_repository_link(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<ChangeRepositoryLink>,
+) -> Result<Json<RepositoryLinkChange>, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let access_token = user_access_token(&state, &session).await?;
+    let backend = state
+        .repositories
+        .storage_backend(&name, &access_token)
+        .await?;
+    let revision = state
+        .repositories
+        .remove_link_on(
+            &name,
+            &input.branch,
+            &input.expected_revision,
+            &input.path,
+            backend,
+            &access_token,
+        )
+        .await?;
+    Ok(Json(RepositoryLinkChange { revision }))
 }
 
 #[derive(Deserialize)]

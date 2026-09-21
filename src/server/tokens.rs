@@ -194,12 +194,22 @@ impl TokenIssuer {
     }
 
     pub fn issue_worker(&self, worker_id: &str, resource_id: String) -> Result<IssuedToken> {
+        self.issue_worker_resources(worker_id, vec![resource_id])
+    }
+
+    pub fn issue_worker_resources(
+        &self,
+        worker_id: &str,
+        mut resource_ids: Vec<String>,
+    ) -> Result<IssuedToken> {
+        resource_ids.sort();
+        resource_ids.dedup();
         self.issue(
             format!("lorehub-worker:{worker_id}"),
             "LoreHub worker".to_owned(),
             "lorehub-worker@zenogrid.co.kr".to_owned(),
             WORKER_TOKEN_SECONDS,
-            vec![resource_id],
+            resource_ids,
         )
     }
 

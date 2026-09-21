@@ -156,6 +156,20 @@ Object.assign(I18N["zh-CN"], { "Pipeline dependencies": "流水线依赖", "Sele
 Object.assign(I18N.en, { "Failure reason": "Failure reason" });
 Object.assign(I18N.ko, { "Failure reason": "실패 사유" });
 Object.assign(I18N["zh-CN"], { "Failure reason": "失败原因" });
+Object.assign(I18N.en, {
+  "Repository links": "Repository links", "Lore dependencies": "Lore dependencies", "저장소 branch가 참조하는 다른 Lore 저장소의 경로와 pin을 관리합니다.": "Manage paths and pins from other Lore repositories referenced by a repository branch.",
+  "Add link": "Add link", "Linked paths": "Linked paths", "선택한 root revision에 기록된 repository link": "Repository links recorded in the selected root revision", "Repository link가 없습니다": "No repository links", "다른 저장소의 경로를 이 branch에 연결하세요.": "Connect a path from another repository to this branch.", "변경 사항은 새 Lore revision으로 commit 후 push됩니다.": "Changes are committed and pushed as a new Lore revision.",
+  "LORE DEPENDENCY": "LORE DEPENDENCY", "Add repository link": "Add repository link", "의 선택한 branch에 다른 저장소 경로를 연결합니다.": "Connect a path from another repository to the selected branch.", "Link path": "Link path", "현재 저장소 안에 생성될 상대 경로": "Relative path created in the current repository", "Source repository": "Source repository", "Source branch": "Source branch", "Source path": "Source path", "Source 저장소의 상대 경로이며 전체 root는": "Relative path in the source repository; use", "을 사용합니다.": "for the entire root.", "Disable linked branch creation": "Disable linked branch creation", "Link creation failed": "Link creation failed",
+  "dynamic.refreshRepositoryLinks": "Repository links refreshed.", "dynamic.countLinks": "{count} links", "dynamic.updateLink": "Update to latest", "dynamic.removeLink": "Remove", "dynamic.linkAdded": "Repository link added and pushed.", "dynamic.linkAddedWithSourceFolder": "The missing source folder was created and pushed before adding the repository link.", "dynamic.linkUpdated": "Repository link updated and pushed.", "dynamic.linkRemoved": "Repository link removed and pushed.", "dynamic.removeLinkConfirm": "Remove repository link {path}? This creates and pushes a new revision.", "dynamic.loadingLinks": "Loading repository links…", "dynamic.noSourceRepositories": "No other accessible repositories are available.", "dynamic.sourceUnavailable": "Repository {id}", "dynamic.pinnedRevision": "Pinned revision", "dynamic.tracking": "Branch creation enabled", "dynamic.fixed": "Branch creation disabled"
+});
+Object.assign(I18N.ko, {
+  "Repository links": "저장소 링크", "Lore dependencies": "Lore 의존성", "Add link": "링크 추가", "Linked paths": "연결된 경로", "Add repository link": "저장소 링크 추가", "Link path": "링크 경로", "Source repository": "Source 저장소", "Source branch": "Source branch", "Source path": "Source 경로", "Disable linked branch creation": "연결된 branch 자동 생성을 사용하지 않음", "Link creation failed": "링크 생성 실패",
+  "dynamic.refreshRepositoryLinks": "저장소 링크를 새로고침했습니다.", "dynamic.countLinks": "링크 {count}개", "dynamic.updateLink": "최신 revision으로 갱신", "dynamic.removeLink": "제거", "dynamic.linkAdded": "저장소 링크를 추가하고 push했습니다.", "dynamic.linkAddedWithSourceFolder": "없는 Source 폴더를 생성하고 commit·push한 뒤 저장소 링크를 추가했습니다.", "dynamic.linkUpdated": "저장소 링크를 갱신하고 push했습니다.", "dynamic.linkRemoved": "저장소 링크를 제거하고 push했습니다.", "dynamic.removeLinkConfirm": "저장소 링크 {path}을(를) 제거할까요? 새 revision이 생성되어 push됩니다.", "dynamic.loadingLinks": "저장소 링크를 불러오는 중…", "dynamic.noSourceRepositories": "접근 가능한 다른 저장소가 없습니다.", "dynamic.sourceUnavailable": "저장소 {id}", "dynamic.pinnedRevision": "고정 revision", "dynamic.tracking": "Branch 생성 허용", "dynamic.fixed": "Branch 생성 비활성"
+});
+Object.assign(I18N["zh-CN"], {
+  "Repository links": "仓库链接", "Lore dependencies": "Lore 依赖", "저장소 branch가 참조하는 다른 Lore 저장소의 경로와 pin을 관리합니다.": "管理仓库分支引用的其他 Lore 仓库路径和固定修订。", "Add link": "添加链接", "Linked paths": "已链接路径", "선택한 root revision에 기록된 repository link": "所选根修订中记录的仓库链接", "Repository link가 없습니다": "没有仓库链接", "다른 저장소의 경로를 이 branch에 연결하세요.": "将其他仓库中的路径连接到此分支。", "변경 사항은 새 Lore revision으로 commit 후 push됩니다.": "更改将作为新的 Lore 修订提交并推送。", "Add repository link": "添加仓库链接", "Link path": "链接路径", "Source repository": "源仓库", "Source branch": "源分支", "Source path": "源路径", "Disable linked branch creation": "禁用链接分支创建", "Link creation failed": "链接创建失败",
+  "dynamic.refreshRepositoryLinks": "仓库链接已刷新。", "dynamic.countLinks": "{count} 个链接", "dynamic.updateLink": "更新到最新", "dynamic.removeLink": "移除", "dynamic.linkAdded": "仓库链接已添加并推送。", "dynamic.linkAddedWithSourceFolder": "缺失的源文件夹已创建并提交推送，然后添加了仓库链接。", "dynamic.linkUpdated": "仓库链接已更新并推送。", "dynamic.linkRemoved": "仓库链接已移除并推送。", "dynamic.removeLinkConfirm": "要移除仓库链接 {path} 吗？这会创建并推送新修订。", "dynamic.loadingLinks": "正在加载仓库链接…", "dynamic.noSourceRepositories": "没有其他可访问的仓库。", "dynamic.sourceUnavailable": "仓库 {id}", "dynamic.pinnedRevision": "固定修订", "dynamic.tracking": "允许创建分支", "dynamic.fixed": "禁用分支创建"
+});
 
 function initialLocale() {
   const saved = window.localStorage.getItem("lorehub_locale");
@@ -213,6 +227,14 @@ const state = {
   repositoryConfigStatus: "idle",
   repositoryConfigError: "",
   repositoryConfigRequest: 0,
+  repositoryLinksName: null,
+  repositoryLinksBranch: null,
+  repositoryLinksRevision: null,
+  repositoryLinks: [],
+  repositoryLinksStatus: "idle",
+  repositoryLinksError: "",
+  repositoryLinksRequest: 0,
+  repositoryLinksBusy: false,
   runnerToRemove: null,
   filter: "all",
   pipelineRepositoryFilter: "",
@@ -256,6 +278,12 @@ document.addEventListener("DOMContentLoaded", () => {
     "repository-config-visual", "repository-config-pipeline-count", "repository-config-pipeline-list",
     "repository-config-add-pipeline", "repository-config-graph-title", "repository-config-stage-graph",
     "repository-config-inspector-title", "repository-config-inspector",
+    "repository-links-page", "new-repository-link-button", "repository-link-repository",
+    "repository-link-branch", "repository-link-revision", "repository-link-count",
+    "repository-link-list", "repository-link-empty-state", "repository-link-last-updated",
+    "new-repository-link-dialog", "repository-link-form", "repository-link-root-name",
+    "repository-link-path", "repository-link-source-repository", "repository-link-source-branch",
+    "repository-link-source-path", "repository-link-disable-branching", "repository-link-form-error", "create-repository-link-button",
     "create-lore-token-button", "lore-token-dialog", "lore-access-token", "copy-lore-token-button",
     "runners-page", "runner-table-body", "runner-empty-state", "runner-count", "nav-runner-count",
     "runner-stat-total", "runner-stat-online", "runner-stat-offline", "runner-last-updated",
@@ -355,6 +383,7 @@ function applyLocale(rerender) {
   renderPipelineGraphs();
   renderUpdatedLabels();
   if (state.section === "ci-settings") renderRepositoryConfig();
+  if (state.section === "repository-links") renderRepositoryLinks();
   if (state.selectedId && elements["pipeline-detail-dialog"].open) void loadPipelineDetail(state.selectedId);
 }
 
@@ -381,6 +410,14 @@ function bindEvents() {
   elements["repository-config-visual-tab"].addEventListener("click", () => void setRepositoryConfigMode("visual"));
   elements["repository-config-toml-tab"].addEventListener("click", () => void setRepositoryConfigMode("toml"));
   elements["repository-config-add-pipeline"].addEventListener("click", addVisualPipeline);
+  elements["new-repository-link-button"].addEventListener("click", openNewRepositoryLink);
+  document.querySelectorAll(".js-open-repository-link").forEach((button) => button.addEventListener("click", openNewRepositoryLink));
+  document.querySelectorAll(".repository-link-modal-close, .repository-link-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-link-dialog"].close()));
+  elements["repository-link-form"].addEventListener("submit", createRepositoryLink);
+  elements["repository-link-repository"].addEventListener("change", () => void loadRepositoryLinksPage(elements["repository-link-repository"].value));
+  elements["repository-link-branch"].addEventListener("change", () => void loadRepositoryLinks());
+  elements["repository-link-source-repository"].addEventListener("change", () => void loadRepositoryLinkSourceBranches());
+  elements["repository-link-list"].addEventListener("click", repositoryLinkAction);
   window.addEventListener("resize", () => {
     if (state.section !== "ci-settings" || state.repositoryConfigMode !== "visual") return;
     const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
@@ -492,7 +529,7 @@ function sectionFromHash() {
 }
 
 function availableSections() {
-  return ["pipelines", "graphs", "repositories", "ci-settings", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
+  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
 }
 
 async function showSection(section) {
@@ -518,6 +555,7 @@ async function showSection(section) {
   elements["graphs-page"].hidden = section !== "graphs";
   elements["repositories-page"].hidden = section !== "repositories";
   elements["ci-settings-page"].hidden = section !== "ci-settings";
+  elements["repository-links-page"].hidden = section !== "repository-links";
   elements["runners-page"].hidden = section !== "runners";
   document.querySelectorAll(".nav-item[data-section]").forEach((link) => {
     const active = link.dataset.section === section;
@@ -529,6 +567,7 @@ async function showSection(section) {
   if (isManagement()) await loadManagement();
   else if (section === "repositories") await loadRepositories(false);
   else if (section === "ci-settings") await loadCiSettings(false);
+  else if (section === "repository-links") await loadRepositoryLinksPage(state.repositoryLinksName);
   else if (section === "runners") await loadRunners(false);
   else if (section === "graphs") await loadPipelineGraphs(false);
   else renderPipelines();
@@ -542,10 +581,11 @@ function updateSectionSearch() {
     elements["pipeline-search"].previousElementSibling.textContent = mt(key);
     return;
   }
-  if (state.section === "ci-settings") {
+  if (["ci-settings", "repository-links"].includes(state.section)) {
     elements["pipeline-search"].disabled = true;
-    elements["pipeline-search"].placeholder = t("CI configuration");
-    elements["pipeline-search"].previousElementSibling.textContent = t("CI configuration");
+    const label = state.section === "ci-settings" ? t("CI configuration") : t("Repository links");
+    elements["pipeline-search"].placeholder = label;
+    elements["pipeline-search"].previousElementSibling.textContent = label;
     return;
   }
   const key = state.section === "repositories" ? "search.repositories" : state.section === "runners" ? "search.runners" : state.section === "graphs" ? "search.graphs" : "search.pipelines";
@@ -559,6 +599,7 @@ function renderUpdatedLabels() {
     repositories: "repository-last-updated",
     runners: "runner-last-updated",
     graphs: "graph-last-updated",
+    repositoryLinks: "repository-link-last-updated",
   };
   for (const [section, elementId] of Object.entries(labels)) {
     const updatedAt = state.updatedAt[section];
@@ -1049,6 +1090,7 @@ function refreshSection(notify) {
   if (isManagement()) return discardManagement() ? loadManagement() : Promise.resolve();
   if (state.section === "repositories") return loadRepositories(notify);
   if (state.section === "ci-settings") return discardRepositoryConfigEdit() ? loadCiSettings(notify) : Promise.resolve();
+  if (state.section === "repository-links") return loadRepositoryLinksPage(state.repositoryLinksName, notify);
   if (state.section === "runners") return loadRunners(notify);
   if (state.section === "graphs") return loadPipelines(false).then(() => loadPipelineGraphs(notify));
   return loadPipelines(notify);
@@ -1085,7 +1127,7 @@ function renderRepositories() {
     const url = document.createElement("code"); url.textContent = repository.url;
     content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
-    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
+    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("links", t("Repository links")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
     elements["repository-list"].append(card);
   }
@@ -1118,6 +1160,8 @@ async function repositoryAction(event) {
     catch (_) { toast(t("dynamic.copyFailed"), "error"); }
   } else if (button.dataset.action === "config") {
     void openRepositoryConfig(repository);
+  } else if (button.dataset.action === "links") {
+    openRepositoryLinks(repository);
   } else if (button.dataset.action === "pipeline") {
     openNewPipeline(repository.url);
   } else if (button.dataset.action === "branches") {
@@ -1176,6 +1220,288 @@ async function saveRepositoryPipelineBranches(event) {
     toast(error.message, "error");
   } finally {
     button.disabled = false;
+  }
+}
+
+function openRepositoryLinks(repository) {
+  state.repositoryLinksName = repository.name;
+  if (window.location.hash === "#repository-links") {
+    void showSection("repository-links");
+  } else {
+    window.location.hash = "repository-links";
+  }
+}
+
+async function loadRepositoryLinksPage(preferredName, notify = false) {
+  const previousName = state.repositoryLinksName;
+  const previousBranch = state.repositoryLinksBranch;
+  const request = ++state.repositoryLinksRequest;
+  state.repositoryLinksStatus = "loading";
+  state.repositoryLinksError = "";
+  renderRepositoryLinks();
+  await loadRepositories(false);
+  if (state.section !== "repository-links" || request !== state.repositoryLinksRequest) return;
+
+  const candidates = await prioritizeRepositoryLinkRepositories(Boolean(preferredName));
+  if (state.section !== "repository-links" || request !== state.repositoryLinksRequest) return;
+
+  const repositorySelect = elements["repository-link-repository"];
+  const branchSelect = elements["repository-link-branch"];
+  repositorySelect.replaceChildren();
+  branchSelect.replaceChildren();
+  for (const candidate of candidates) repositorySelect.add(new Option(candidate.repository.name, candidate.repository.name));
+  const candidate = candidates.find(item => item.repository.name === preferredName) ?? candidates[0];
+  if (!candidate) {
+    state.repositoryLinksName = null;
+    state.repositoryLinksBranch = null;
+    state.repositoryLinksRevision = null;
+    state.repositoryLinks = [];
+    state.repositoryLinksStatus = "no-repositories";
+    renderRepositoryLinks();
+    return;
+  }
+
+  const repository = candidate.repository;
+  state.repositoryLinksName = repository.name;
+  repositorySelect.value = repository.name;
+  try {
+    const branches = candidate.branches ?? await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
+    if (request !== state.repositoryLinksRequest || state.repositoryLinksName !== repository.name) return;
+    for (const branch of branches) branchSelect.add(new Option(branch.name, branch.name));
+    if (!branches.length) {
+      state.repositoryLinksBranch = null;
+      state.repositoryLinksRevision = null;
+      state.repositoryLinks = [];
+      state.repositoryLinksStatus = "no-branches";
+      renderRepositoryLinks();
+      return;
+    }
+    const preferredBranch = previousName === repository.name && branches.some(item => item.name === previousBranch)
+      ? previousBranch
+      : candidate.hasLinks && branches.some(item => item.name === candidate.branch) ? candidate.branch
+      : branches.some(item => item.name === "main") ? "main" : branches[0].name;
+    branchSelect.value = preferredBranch;
+    state.repositoryLinksBranch = preferredBranch;
+    if (candidate.links && candidate.branch === preferredBranch) {
+      applyRepositoryLinks(candidate.links);
+    } else {
+      await loadRepositoryLinks();
+    }
+    if (notify && state.repositoryLinksStatus === "ready") toast(t("dynamic.refreshRepositoryLinks"), "success");
+  } catch (error) {
+    if (request !== state.repositoryLinksRequest) return;
+    state.repositoryLinksStatus = "error";
+    state.repositoryLinksError = error.message;
+    renderRepositoryLinks();
+    toast(error.message, "error");
+  }
+}
+
+async function prioritizeRepositoryLinkRepositories(keepCurrentOrder) {
+  if (keepCurrentOrder) return state.repositories.map(repository => ({ repository }));
+  const candidates = await Promise.all(state.repositories.map(async (repository, index) => {
+    try {
+      const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
+      const defaultBranch = branches.find(item => item.name === "main") ?? branches[0];
+      if (!defaultBranch) return { repository, branches, branch: null, links: null, hasLinks: false, index };
+      const orderedBranches = [defaultBranch, ...branches.filter(branch => branch !== defaultBranch)];
+      let defaultLinks = null;
+      for (const branch of orderedBranches) {
+        const links = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/links?branch=${encodeURIComponent(branch.name)}`);
+        if (branch === defaultBranch) defaultLinks = links;
+        if ((links.links ?? []).length > 0) {
+          return { repository, branches, branch: branch.name, links, hasLinks: true, index };
+        }
+      }
+      return { repository, branches, branch: defaultBranch.name, links: defaultLinks, hasLinks: false, index };
+    } catch (_) {
+      return { repository, branches: null, branch: null, links: null, hasLinks: false, index };
+    }
+  }));
+  return candidates.sort((left, right) => Number(right.hasLinks) - Number(left.hasLinks) || left.index - right.index);
+}
+
+function applyRepositoryLinks(result) {
+  state.repositoryLinksRevision = result.revision;
+  state.repositoryLinks = result.links ?? [];
+  state.repositoryLinksStatus = "ready";
+  state.updatedAt.repositoryLinks = new Date();
+  renderRepositoryLinks();
+  renderUpdatedLabels();
+}
+
+async function loadRepositoryLinks() {
+  const name = state.repositoryLinksName;
+  const branch = elements["repository-link-branch"].value;
+  if (!name || !branch) return;
+  state.repositoryLinksBranch = branch;
+  state.repositoryLinksStatus = "loading";
+  state.repositoryLinksError = "";
+  state.repositoryLinksRevision = null;
+  state.repositoryLinks = [];
+  const request = ++state.repositoryLinksRequest;
+  renderRepositoryLinks();
+  try {
+    const result = await api(`/api/v1/repositories/${encodeURIComponent(name)}/links?branch=${encodeURIComponent(branch)}`);
+    if (request !== state.repositoryLinksRequest || state.repositoryLinksName !== name || elements["repository-link-branch"].value !== branch) return;
+    applyRepositoryLinks(result);
+  } catch (error) {
+    if (request !== state.repositoryLinksRequest) return;
+    state.repositoryLinksStatus = "error";
+    state.repositoryLinksError = error.message;
+    renderRepositoryLinks();
+    toast(error.message, "error");
+  }
+}
+
+function repositoryIdentifier(value) {
+  return String(value ?? "").replace(/^urc-/i, "").toLowerCase();
+}
+
+function renderRepositoryLinks() {
+  const ready = state.repositoryLinksStatus === "ready";
+  const list = elements["repository-link-list"];
+  elements["repository-link-repository"].disabled = state.repositoryLinksBusy || state.repositoryLinksStatus === "loading" || state.repositoryLinksStatus === "no-repositories";
+  elements["repository-link-branch"].disabled = state.repositoryLinksBusy || state.repositoryLinksStatus === "loading" || state.repositoryLinksStatus === "no-branches" || state.repositoryLinksStatus === "no-repositories";
+  elements["new-repository-link-button"].disabled = !ready || state.repositoryLinksBusy || state.repositories.length < 2;
+  elements["repository-link-revision"].textContent = state.repositoryLinksRevision ?? "—";
+  elements["repository-link-revision"].title = state.repositoryLinksRevision ?? "";
+  elements["repository-link-count"].textContent = tc("dynamic.countLinks", ready ? state.repositoryLinks.length : 0);
+  list.replaceChildren();
+  const showEmpty = ready && state.repositoryLinks.length === 0;
+  elements["repository-link-empty-state"].hidden = !showEmpty;
+  list.hidden = showEmpty;
+
+  if (!ready) {
+    const message = state.repositoryLinksStatus === "no-repositories" ? t("dynamic.noRepositories")
+      : state.repositoryLinksStatus === "no-branches" ? t("dynamic.noRemoteBranches")
+      : state.repositoryLinksStatus === "error" ? state.repositoryLinksError
+      : t("dynamic.loadingLinks");
+    list.append(textNode(message, "repository-link-message"));
+    return;
+  }
+
+  for (const link of state.repositoryLinks) {
+    const source = state.repositories.find(repository => repositoryIdentifier(repository.id) === repositoryIdentifier(link.source_repository_id));
+    const card = document.createElement("article");
+    card.className = "repository-link-card";
+    card.dataset.path = link.path;
+    const identity = document.createElement("div"); identity.className = "repository-link-identity";
+    identity.append(textNode(link.path, "repository-link-path"), textNode(`${source?.name ?? t("dynamic.sourceUnavailable", { id: link.source_repository_id.slice(0, 12) })}:${link.source_path}`, "repository-link-source"));
+    const branch = document.createElement("div"); branch.className = "repository-link-detail";
+    branch.append(textNode(t("Source branch"), "repository-link-detail-label"), textNode(link.source_branch_id, "repository-link-detail-value"));
+    const revision = document.createElement("div"); revision.className = "repository-link-detail";
+    revision.append(textNode(t("dynamic.pinnedRevision"), "repository-link-detail-label"), textNode(link.source_revision.slice(0, 12), "repository-link-detail-value repository-link-monospace"));
+    const mode = textNode(t(link.tracking ? "dynamic.tracking" : "dynamic.fixed"), `repository-link-badge repository-link-badge--${link.tracking ? "tracking" : "fixed"}`);
+    const actions = document.createElement("div"); actions.className = "repository-link-actions";
+    actions.append(repositoryButton("update", t("dynamic.updateLink")), repositoryButton("remove", t("dynamic.removeLink"), "button--danger"));
+    for (const button of actions.querySelectorAll("button")) button.disabled = state.repositoryLinksBusy;
+    card.append(identity, branch, revision, mode, actions);
+    list.append(card);
+  }
+}
+
+function openNewRepositoryLink() {
+  if (state.repositoryLinksStatus !== "ready" || !state.repositoryLinksRevision) return;
+  const sources = state.repositories.filter(repository => repository.name !== state.repositoryLinksName);
+  elements["repository-link-form"].reset();
+  setRepositoryLinkFormError();
+  elements["repository-link-root-name"].textContent = `${state.repositoryLinksName} / ${state.repositoryLinksBranch}`;
+  elements["repository-link-source-repository"].replaceChildren();
+  for (const repository of sources) elements["repository-link-source-repository"].add(new Option(repository.name, repository.name));
+  elements["repository-link-source-path"].value = ".";
+  elements["create-repository-link-button"].disabled = true;
+  if (!sources.length) elements["repository-link-source-repository"].add(new Option(t("dynamic.noSourceRepositories"), ""));
+  elements["new-repository-link-dialog"].showModal();
+  void loadRepositoryLinkSourceBranches();
+  window.setTimeout(() => elements["repository-link-path"].focus(), 0);
+}
+
+async function loadRepositoryLinkSourceBranches() {
+  const repository = elements["repository-link-source-repository"].value;
+  const select = elements["repository-link-source-branch"];
+  select.replaceChildren();
+  select.disabled = true;
+  elements["create-repository-link-button"].disabled = true;
+  if (!repository) return;
+  try {
+    const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository)}/branches`);
+    if (elements["repository-link-source-repository"].value !== repository) return;
+    for (const branch of branches) select.add(new Option(branch.name, branch.name));
+    if (branches.length) {
+      select.value = branches.some(branch => branch.name === "main") ? "main" : branches[0].name;
+      select.disabled = false;
+    }
+    elements["create-repository-link-button"].disabled = branches.length === 0;
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function createRepositoryLink(event) {
+  event.preventDefault();
+  setRepositoryLinkFormError();
+  const button = elements["create-repository-link-button"];
+  button.disabled = true;
+  button.querySelector("span:first-child").textContent = t("dynamic.saving");
+  button.querySelector(".button-spinner").hidden = false;
+  state.repositoryLinksBusy = true;
+  try {
+    const result = await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryLinksName)}/links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({
+        branch: state.repositoryLinksBranch,
+        expected_revision: state.repositoryLinksRevision,
+        path: elements["repository-link-path"].value.trim(),
+        source_repository: elements["repository-link-source-repository"].value,
+        source_branch: elements["repository-link-source-branch"].value,
+        source_path: elements["repository-link-source-path"].value.trim(),
+        disable_branching: elements["repository-link-disable-branching"].checked,
+      }),
+    });
+    elements["new-repository-link-dialog"].close();
+    toast(t(result.source_path_created ? "dynamic.linkAddedWithSourceFolder" : "dynamic.linkAdded"), "success");
+    await loadRepositoryLinks();
+  } catch (error) {
+    setRepositoryLinkFormError(error.message);
+    toast(error.message, "error");
+  } finally {
+    state.repositoryLinksBusy = false;
+    button.disabled = false;
+    button.querySelector("span:first-child").textContent = t("Add link");
+    button.querySelector(".button-spinner").hidden = true;
+    renderRepositoryLinks();
+  }
+}
+
+function setRepositoryLinkFormError(message = "") {
+  const error = elements["repository-link-form-error"];
+  error.hidden = !message;
+  error.querySelector("span").textContent = message;
+}
+
+async function repositoryLinkAction(event) {
+  const button = event.target.closest("button[data-action]");
+  const card = event.target.closest("[data-path]");
+  if (!button || !card || state.repositoryLinksBusy || !state.repositoryLinksRevision) return;
+  const action = button.dataset.action;
+  if (action === "remove" && !window.confirm(t("dynamic.removeLinkConfirm", { path: card.dataset.path }))) return;
+  state.repositoryLinksBusy = true;
+  renderRepositoryLinks();
+  try {
+    await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryLinksName)}/links/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({ branch: state.repositoryLinksBranch, expected_revision: state.repositoryLinksRevision, path: card.dataset.path }),
+    });
+    toast(t(action === "update" ? "dynamic.linkUpdated" : "dynamic.linkRemoved"), "success");
+    await loadRepositoryLinks();
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    state.repositoryLinksBusy = false;
+    renderRepositoryLinks();
   }
 }
 

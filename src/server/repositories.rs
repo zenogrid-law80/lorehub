@@ -1,4 +1,9 @@
-use std::{ffi::OsString, path::Path, process::Stdio, time::Duration};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
+};
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -8,7 +13,7 @@ use tokio::io::AsyncReadExt;
 use tokio::{process::Command, time::timeout};
 use url::Url;
 
-use crate::ci::config::PipelineFile;
+use crate::ci::config::{PipelineFile, valid_relative_path};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 const PIPELINE_FILE_NAME: &str = ".lore-ci.toml";
@@ -69,6 +74,41 @@ pub struct Branch {
     pub(crate) id: String,
     pub name: String,
     pub revision: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RepositoryLink {
+    pub path: String,
+    pub source_repository_id: String,
+    pub source_path: String,
+    pub source_branch_id: String,
+    pub source_revision: String,
+    pub tracking: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RepositoryLinks {
+    pub branch: String,
+    pub revision: String,
+    pub links: Vec<RepositoryLink>,
+}
+
+enum LinkMutation<'a> {
+    Add {
+        path: &'a str,
+        source_url: &'a str,
+        source_path: &'a str,
+        source_repository_id: &'a str,
+        source_branch_id: &'a str,
+        source_revision: &'a str,
+        disable_branching: bool,
+    },
+    Update {
+        path: &'a str,
+    },
+    Remove {
+        path: &'a str,
+    },
 }
 
 #[derive(Debug)]
@@ -327,6 +367,355 @@ impl RepositoryService {
         Ok(branches)
     }
 
+    pub async fn links_on(
+        &self,
+        name: &str,
+        branch: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<RepositoryLinks, CommandError> {
+        validate_name(name).map_err(|error| CommandError {
+            message: error.to_string(),
+        })?;
+        validate_branch(branch)?;
+        let current = self
+            .branches_on(name, storage_backend, access_token)
+            .await?
+            .into_iter()
+            .find(|candidate| candidate.name == branch)
+            .ok_or_else(|| CommandError {
+                message: format!("branch '{branch}' was not found"),
+            })?;
+        let (_workspace, repository) = self
+            .checkout(name, &current.revision, storage_backend, access_token)
+            .await?;
+        let output = self
+            .run(
+                ["--repository", ".", "--remote", "link", "list"],
+                Some(&repository),
+                access_token,
+            )
+            .await?;
+        let mut links = parse_links(&output)?;
+        links.sort_by(|left, right| left.path.cmp(&right.path));
+        Ok(RepositoryLinks {
+            branch: current.name,
+            revision: current.revision,
+            links,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn add_link_on(
+        &self,
+        name: &str,
+        branch: &str,
+        expected_revision: &str,
+        path: &str,
+        source_url: &str,
+        source_path: &str,
+        source_repository_id: &str,
+        source_branch_id: &str,
+        source_revision: &str,
+        disable_branching: bool,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<String, CommandError> {
+        validate_link_path(path)?;
+        validate_link_source_path(source_path)?;
+        validate_revision(source_revision)?;
+        self.mutate_link_on(
+            name,
+            branch,
+            expected_revision,
+            storage_backend,
+            access_token,
+            LinkMutation::Add {
+                path,
+                source_url,
+                source_path,
+                source_repository_id,
+                source_branch_id,
+                source_revision,
+                disable_branching,
+            },
+        )
+        .await
+    }
+
+    pub async fn ensure_source_directory_on(
+        &self,
+        name: &str,
+        branch: &str,
+        source_path: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<bool, CommandError> {
+        validate_name(name).map_err(|error| CommandError {
+            message: error.to_string(),
+        })?;
+        validate_branch(branch)?;
+        validate_link_source_path(source_path)?;
+        if source_path == "." {
+            return Ok(false);
+        }
+        let current = self
+            .branches_on(name, storage_backend, access_token)
+            .await?
+            .into_iter()
+            .find(|candidate| candidate.name == branch)
+            .ok_or_else(|| CommandError {
+                message: format!("source branch '{branch}' was not found"),
+            })?;
+        let (_workspace, repository) = self
+            .checkout(name, &current.revision, storage_backend, access_token)
+            .await?;
+        let mut candidate = repository.clone();
+        let mut exists = true;
+        for component in source_path.split('/') {
+            candidate.push(component);
+            match tokio::fs::symlink_metadata(&candidate).await {
+                Ok(metadata) if metadata.is_dir() => {}
+                Ok(_) => {
+                    return Err(CommandError {
+                        message: format!(
+                            "link source path '{source_path}' exists but is not a directory"
+                        ),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    exists = false;
+                    break;
+                }
+                Err(error) => return Err(internal_error(error)),
+            }
+        }
+        if exists {
+            return Ok(false);
+        }
+        tokio::fs::create_dir_all(repository.join(source_path))
+            .await
+            .map_err(internal_error)?;
+        self.run(
+            ["stage", "--scan", "--", source_path],
+            Some(&repository),
+            access_token,
+        )
+        .await?;
+        let message = format!("Create Lore link source folder {source_path} from LoreHub");
+        self.run(
+            ["commit", message.as_str()],
+            Some(&repository),
+            access_token,
+        )
+        .await?;
+        let output = self.run(["push"], Some(&repository), access_token).await?;
+        parse_pushed_revision(&output)?;
+        Ok(true)
+    }
+
+    pub async fn update_link_on(
+        &self,
+        name: &str,
+        branch: &str,
+        expected_revision: &str,
+        path: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<String, CommandError> {
+        validate_link_path(path)?;
+        self.mutate_link_on(
+            name,
+            branch,
+            expected_revision,
+            storage_backend,
+            access_token,
+            LinkMutation::Update { path },
+        )
+        .await
+    }
+
+    pub async fn remove_link_on(
+        &self,
+        name: &str,
+        branch: &str,
+        expected_revision: &str,
+        path: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<String, CommandError> {
+        validate_link_path(path)?;
+        self.mutate_link_on(
+            name,
+            branch,
+            expected_revision,
+            storage_backend,
+            access_token,
+            LinkMutation::Remove { path },
+        )
+        .await
+    }
+
+    async fn mutate_link_on(
+        &self,
+        name: &str,
+        branch: &str,
+        expected_revision: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+        mutation: LinkMutation<'_>,
+    ) -> Result<String, CommandError> {
+        validate_name(name).map_err(|error| CommandError {
+            message: error.to_string(),
+        })?;
+        validate_branch(branch)?;
+        validate_revision(expected_revision)?;
+        let current = self
+            .branches_on(name, storage_backend, access_token)
+            .await?
+            .into_iter()
+            .find(|candidate| candidate.name == branch)
+            .ok_or_else(|| CommandError {
+                message: format!("branch '{branch}' was not found"),
+            })?;
+        if !current.revision.eq_ignore_ascii_case(expected_revision) {
+            return Err(CommandError {
+                message: format!(
+                    "branch '{branch}' has changed from revision {expected_revision}; reload before saving"
+                ),
+            });
+        }
+        let (_workspace, repository) = self
+            .checkout(name, expected_revision, storage_backend, access_token)
+            .await?;
+        let is_update = matches!(&mutation, LinkMutation::Update { .. });
+        let (args, message) = match mutation {
+            LinkMutation::Add {
+                path,
+                source_url,
+                source_path,
+                source_repository_id,
+                source_branch_id,
+                source_revision,
+                disable_branching,
+            } => {
+                let output = self
+                    .run(
+                        ["--repository", ".", "--remote", "link", "list"],
+                        Some(&repository),
+                        access_token,
+                    )
+                    .await?;
+                let mut pin = source_revision.to_owned();
+                for link in parse_links(&output)? {
+                    if !repository_ids_equal(&link.source_repository_id, source_repository_id)
+                        || link.source_branch_id != source_branch_id
+                        || link.source_revision.eq_ignore_ascii_case(&pin)
+                    {
+                        continue;
+                    }
+                    let output = self
+                        .run(
+                            ["link", "update", "--", link.path.as_str()],
+                            Some(&repository),
+                            access_token,
+                        )
+                        .await?;
+                    if let Some(revision) = link_change_revision(&output) {
+                        pin = revision;
+                        let message = format!(
+                            "Update Lore link {} before adding {path} from LoreHub",
+                            link.path
+                        );
+                        self.run(
+                            ["commit", message.as_str()],
+                            Some(&repository),
+                            access_token,
+                        )
+                        .await?;
+                    }
+                }
+                let mut args = vec![
+                    OsString::from("link"),
+                    OsString::from("add"),
+                    OsString::from("--pin"),
+                    OsString::from(pin),
+                ];
+                if disable_branching {
+                    args.push(OsString::from("--disable-branching"));
+                }
+                args.extend([
+                    OsString::from("--"),
+                    OsString::from(path),
+                    OsString::from(source_url),
+                    OsString::from(source_path),
+                ]);
+                (args, format!("Add Lore link {path} from LoreHub"))
+            }
+            LinkMutation::Update { path } => (
+                vec![
+                    OsString::from("link"),
+                    OsString::from("update"),
+                    OsString::from("--"),
+                    OsString::from(path),
+                ],
+                format!("Update Lore link {path} from LoreHub"),
+            ),
+            LinkMutation::Remove { path } => (
+                vec![
+                    OsString::from("link"),
+                    OsString::from("remove"),
+                    OsString::from("--"),
+                    OsString::from(path),
+                ],
+                format!("Remove Lore link {path} from LoreHub"),
+            ),
+        };
+        let output = self.run(args, Some(&repository), access_token).await?;
+        if is_update {
+            let changed = link_change_revision(&output)
+                .is_some_and(|revision| !revision.bytes().all(|byte| byte == b'0'));
+            if !changed {
+                return Ok(current.revision);
+            }
+        }
+        self.run(
+            ["commit", message.as_str()],
+            Some(&repository),
+            access_token,
+        )
+        .await?;
+        let output = self.run(["push"], Some(&repository), access_token).await?;
+        parse_pushed_revision(&output)
+    }
+
+    async fn checkout(
+        &self,
+        name: &str,
+        revision: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+    ) -> Result<(TempDir, PathBuf), CommandError> {
+        validate_revision(revision)?;
+        let workspace = TempDir::new().map_err(internal_error)?;
+        let repository = workspace.path().join("repository");
+        let url = self.command_repository_url_for(storage_backend, name)?;
+        self.run(
+            [
+                "clone",
+                "--revision",
+                revision,
+                "--",
+                url.as_str(),
+                "repository",
+            ],
+            Some(workspace.path()),
+            access_token,
+        )
+        .await?;
+        Ok((workspace, repository))
+    }
+
     /// Reads the CI file through Lore so selection always reflects the immutable revision.
     pub async fn pipeline_file(
         &self,
@@ -534,19 +923,7 @@ impl RepositoryService {
         )
         .await?;
         let output = self.run(["push"], Some(&repository), access_token).await?;
-        json_events(&output)?
-            .into_iter()
-            .find_map(|event| {
-                (event["tagName"] == "branchPushRevisionPushEnd")
-                    .then(|| event["data"]["newRemoteRevision"].as_str())
-                    .flatten()
-                    .filter(|revision| {
-                        revision.len() == 64
-                            && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    })
-                    .map(str::to_owned)
-            })
-            .ok_or_else(parse_error)
+        parse_pushed_revision(&output)
     }
 
     fn endpoint(&self, backend: StorageBackend) -> Result<&RepositoryEndpoint, CommandError> {
@@ -664,6 +1041,24 @@ fn validate_revision(revision: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn validate_link_path(path: &str) -> Result<(), CommandError> {
+    if path.len() > 4096 || !valid_relative_path(path) {
+        return Err(CommandError {
+            message: "link path must be a safe repository-relative path".into(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_link_source_path(path: &str) -> Result<(), CommandError> {
+    if path.len() > 4096 || (path != "." && !valid_relative_path(path)) {
+        return Err(CommandError {
+            message: "link source path must be '.' or a safe repository-relative path".into(),
+        });
+    }
+    Ok(())
+}
+
 fn validate_description(description: &str) -> Result<()> {
     ensure!(
         description.chars().count() <= 500,
@@ -744,10 +1139,99 @@ fn parse_branches(output: &str) -> Result<Vec<Branch>, CommandError> {
     Ok(result)
 }
 
+fn parse_links(output: &str) -> Result<Vec<RepositoryLink>, CommandError> {
+    let mut result = Vec::new();
+    for event in json_events(output)? {
+        if event.get("tagName").and_then(Value::as_str) != Some("linkEntry") {
+            continue;
+        }
+        let data = &event["data"];
+        let path = data["linkPath"]
+            .as_str()
+            .filter(|path| path.len() <= 4096 && valid_relative_path(path))
+            .ok_or_else(parse_error)?
+            .to_owned();
+        let source_repository_id = data["link"]
+            .as_str()
+            .filter(|value| {
+                let value = value.strip_prefix("urc-").unwrap_or(value);
+                value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+            .ok_or_else(parse_error)?;
+        let source_repository_id = source_repository_id
+            .strip_prefix("urc-")
+            .unwrap_or(source_repository_id)
+            .to_ascii_lowercase();
+        let source_path = data["sourcePath"]
+            .as_str()
+            .ok_or_else(parse_error)?
+            .to_owned();
+        let source_branch_id = data["branch"]
+            .as_str()
+            .filter(|value| !value.is_empty() && value.len() <= 256)
+            .ok_or_else(parse_error)?
+            .to_owned();
+        let source_revision = data["revision"]
+            .as_str()
+            .filter(|revision| {
+                revision.len() == 64 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+            .ok_or_else(parse_error)?
+            .to_ascii_lowercase();
+        let tracking = data["tracking"].as_bool().ok_or_else(parse_error)?;
+        result.push(RepositoryLink {
+            path,
+            source_repository_id,
+            source_path,
+            source_branch_id,
+            source_revision,
+            tracking,
+        });
+    }
+    Ok(result)
+}
+
+fn repository_ids_equal(left: &str, right: &str) -> bool {
+    left.strip_prefix("urc-")
+        .unwrap_or(left)
+        .eq_ignore_ascii_case(right.strip_prefix("urc-").unwrap_or(right))
+}
+
+fn link_change_revision(output: &str) -> Option<String> {
+    json_events(output)
+        .ok()?
+        .into_iter()
+        .rev()
+        .find_map(|event| {
+            (event["tagName"] == "linkChange")
+                .then(|| event["data"]["revision"].as_str())
+                .flatten()
+                .filter(|revision| {
+                    revision.len() == 64 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+                .map(str::to_ascii_lowercase)
+        })
+}
+
+fn parse_pushed_revision(output: &str) -> Result<String, CommandError> {
+    json_events(output)?
+        .into_iter()
+        .find_map(|event| {
+            (event["tagName"] == "branchPushRevisionPushEnd")
+                .then(|| event["data"]["newRemoteRevision"].as_str())
+                .flatten()
+                .filter(|revision| {
+                    revision.len() == 64 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+                .map(str::to_ascii_lowercase)
+        })
+        .ok_or_else(parse_error)
+}
+
 fn json_events(output: &str) -> Result<Vec<Value>, CommandError> {
     output
         .lines()
-        .filter(|line| !line.trim().is_empty())
+        .filter(|line| line.trim_start().starts_with('{'))
         .map(|line| serde_json::from_str(line).map_err(|_| parse_error()))
         .collect()
 }
@@ -760,18 +1244,23 @@ fn value_string(value: &Value) -> Option<String> {
 }
 
 fn lore_error_message(output: &str) -> Option<String> {
-    output
+    let events = output
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .find_map(|event| {
-            if event.get("tagName")?.as_str()? != "log" {
-                return None;
-            }
-            event["data"]["message"]
-                .as_str()?
-                .lines()
-                .next()
-                .map(str::to_owned)
+        .collect::<Vec<_>>();
+    events
+        .iter()
+        .rev()
+        .find(|event| event.get("tagName").and_then(Value::as_str) == Some("complete"))
+        .and_then(|event| event["data"]["error"]["message"].as_str())
+        .and_then(first_line)
+        .or_else(|| {
+            events.iter().rev().find_map(|event| {
+                (event.get("tagName")?.as_str()? == "log")
+                    .then(|| event["data"]["message"].as_str())
+                    .flatten()
+                    .and_then(first_line)
+            })
         })
 }
 
@@ -999,6 +1488,154 @@ printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
         assert!(error.message.contains("has changed"));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn creates_and_pushes_a_missing_link_source_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("lore");
+        let pushed = root.path().join("pushed");
+        std::fs::write(
+            &binary,
+            format!(
+                r#"#!/bin/sh
+set -eu
+shift 7
+case "${{1:-}}:${{2:-}}" in
+  repository:clone)
+    mkdir -p "$6"
+    ;;
+  --repository:repository)
+    printf '%s\n' '{{"tagName":"branchListEntry","data":{{"id":"branch-id","name":"main","location":"remote","archived":false,"latest":"{old_revision}"}}}}'
+    ;;
+  clone:--revision)
+    [ "$3" = {old_revision} ]
+    mkdir -p "$6"
+    ;;
+  stage:--scan)
+    [ "$3" = -- ]
+    [ "$4" = Libraries/Shared ]
+    [ -d Libraries/Shared ]
+    ;;
+  commit:*)
+    [ "$2" = 'Create Lore link source folder Libraries/Shared from LoreHub' ]
+    ;;
+  push:)
+    touch '{pushed}'
+    printf '%s\n' '{{"tagName":"branchPushRevisionPushEnd","data":{{"newRemoteRevision":"{new_revision}"}}}}'
+    ;;
+  *) exit 99 ;;
+esac
+printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
+"#,
+                pushed = pushed.display(),
+                old_revision = "a".repeat(64),
+                new_revision = "b".repeat(64),
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let service =
+            RepositoryService::new(binary, "lores://server.test", "lores://server.test").unwrap();
+
+        assert!(
+            service
+                .ensure_source_directory_on(
+                    "source",
+                    "main",
+                    "Libraries/Shared",
+                    StorageBackend::DynamoDbS3,
+                    "test-token",
+                )
+                .await
+                .unwrap()
+        );
+        assert!(pushed.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reconciles_existing_source_links_before_adding_another() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("lore");
+        std::fs::write(
+            &binary,
+            format!(
+                r#"#!/bin/sh
+set -eu
+shift 7
+case "${{1:-}}:${{2:-}}" in
+  repository:clone)
+    mkdir -p "$6"
+    ;;
+  --repository:repository)
+    printf '%s\n' '{{"tagName":"branchListEntry","data":{{"id":"root-branch","name":"main","location":"remote","archived":false,"latest":"{root_revision}"}}}}'
+    ;;
+  clone:--revision)
+    [ "$3" = {root_revision} ]
+    mkdir -p "$6"
+    ;;
+  --repository:.)
+    [ "$3" = --remote ]
+    [ "$4 $5" = 'link list' ]
+    printf '%s\n' '{{"tagName":"linkEntry","data":{{"link":"{source_repository}","linkPath":"Existing","sourcePath":"Existing","branch":"source-branch","tracking":true,"revision":"{old_source_revision}"}}}}'
+    ;;
+  link:update)
+    [ "$3" = -- ]
+    [ "$4" = Existing ]
+    printf '%s\n' '{{"tagName":"linkChange","data":{{"revision":"{new_source_revision}"}}}}'
+    ;;
+  link:add)
+    [ "$3" = --pin ]
+    [ "$4" = {new_source_revision} ]
+    [ "$5" = -- ]
+    [ "$6" = New ]
+    [ "$8" = New ]
+    ;;
+  commit:*) ;;
+  push:)
+    printf '%s\n' '{{"tagName":"branchPushRevisionPushEnd","data":{{"newRemoteRevision":"{new_root_revision}"}}}}'
+    ;;
+  *) exit 99 ;;
+esac
+printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
+"#,
+                root_revision = "a".repeat(64),
+                new_root_revision = "b".repeat(64),
+                old_source_revision = "c".repeat(64),
+                new_source_revision = "d".repeat(64),
+                source_repository = "1".repeat(32),
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let service =
+            RepositoryService::new(binary, "lores://server.test", "lores://server.test").unwrap();
+
+        let revision = service
+            .add_link_on(
+                "root",
+                "main",
+                &"a".repeat(64),
+                "New",
+                "lores://server.test/source",
+                "New",
+                &"1".repeat(32),
+                "source-branch",
+                &"d".repeat(64),
+                false,
+                StorageBackend::DynamoDbS3,
+                "test-token",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(revision, "b".repeat(64));
+    }
+
     #[test]
     fn validates_names_and_server_urls() {
         for valid in ["engine", "project-2", "tools.core", "asset_store"] {
@@ -1048,7 +1685,8 @@ printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
     fn parses_lore_json_events() {
         let output = concat!(
             "{\"tagName\":\"repositoryListEntry\",\"data\":{\"id\":\"abc123\",\"name\":\"engine\"}}\n",
-            "{\"tagName\":\"complete\",\"data\":{\"status\":0}}\n"
+            "{\"tagName\":\"complete\",\"data\":{\"status\":0}}\n",
+            "No more repositories found.\n"
         );
         assert_eq!(
             parse_repositories(output, "lores://server:41337", StorageBackend::DynamoDbS3,)
@@ -1059,6 +1697,40 @@ printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
                 url: "lores://server:41337/engine".into(),
                 storage_backend: StorageBackend::DynamoDbS3,
             }]
+        );
+    }
+
+    #[test]
+    fn parses_repository_links_around_human_output() {
+        let output = format!(
+            concat!(
+                "{{\"tagName\":\"linkEntry\",\"data\":{{\"link\":\"urc-0194b726b34e72b0b45550b88a967076\",\"linkPath\":\"Dependencies/Source\",\"sourcePath\":\"Libraries/Core\",\"branch\":\"source-main-branch\",\"tracking\":true,\"revision\":\"{}\"}}}}\n",
+                "No more links found.\n"
+            ),
+            "A".repeat(64),
+        );
+        assert_eq!(
+            parse_links(&output).unwrap(),
+            vec![RepositoryLink {
+                path: "Dependencies/Source".into(),
+                source_repository_id: "0194b726b34e72b0b45550b88a967076".into(),
+                source_path: "Libraries/Core".into(),
+                source_branch_id: "source-main-branch".into(),
+                source_revision: "a".repeat(64),
+                tracking: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn reports_lore_completion_failure_reason() {
+        let output = concat!(
+            "{\"tagName\":\"log\",\"data\":{\"message\":\"link operation failed\"}}\n",
+            "{\"tagName\":\"complete\",\"data\":{\"status\":1,\"error\":{\"message\":\"Source branch 'missing' was not found\\ntrace details\"}}}\n"
+        );
+        assert_eq!(
+            lore_error_message(output).as_deref(),
+            Some("Source branch 'missing' was not found")
         );
     }
 

@@ -1,6 +1,6 @@
 //! Push notifications wake reconciliation; durable branch cursors cover reconnects.
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::Path,
     process::Stdio,
     time::Duration,
@@ -18,9 +18,12 @@ use uuid::Uuid;
 
 use super::{
     repositories::{RepositoryService, StorageBackend, validate_name},
+    repository_access,
     tokens::TokenIssuer,
 };
 use crate::ci::config::{NamedPipeline, PipelineFile, valid_relative_path};
+
+const LINK_UPDATE_BRANCH: &str = "main";
 
 #[derive(Clone, Debug, sqlx::FromRow)]
 struct WatchedRepository {
@@ -29,6 +32,26 @@ struct WatchedRepository {
     owner_subject: String,
     enabled_branches: Vec<String>,
     storage_backend: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RepositoryLink {
+    path: String,
+    source_resource_id: String,
+    source_branch_id: String,
+    source_revision: String,
+    tracking: bool,
+}
+
+#[derive(Clone, Debug, sqlx::FromRow)]
+struct PendingLinkUpdate {
+    root_resource_id: String,
+    root_name: String,
+    root_owner_subject: String,
+    root_storage_backend: String,
+    root_branch: String,
+    source_branch_id: String,
+    source_revision: String,
 }
 
 fn repository_key(repository: &WatchedRepository) -> String {
@@ -42,7 +65,8 @@ fn repository_key(repository: &WatchedRepository) -> String {
     )
 }
 
-/// Only repositories with named pipelines opt into automatic execution.
+/// Watch every owned repository: CI branch pushes and link-source pushes both
+/// need durable reconciliation after notification reconnects.
 pub async fn run(
     pool: PgPool,
     binary: String,
@@ -76,7 +100,6 @@ pub async fn run(
         for repository in repositories {
             let key = repository_key(&repository);
             if tasks.contains_key(&key)
-                || repository.enabled_branches.is_empty()
                 || validate_name(&repository.name).is_err()
                 || repository.owner_subject.parse::<Uuid>().is_err()
             {
@@ -109,12 +132,13 @@ pub async fn run(
                 }
             };
             let tokens = tokens.clone();
+            let repository_service = repository_service.clone();
             let stop = shutdown.clone();
             tasks.insert(key, tokio::spawn(async move {
                 loop {
                     tokio::select! {
                         _ = stop.cancelled() => break,
-                        result = watch(&pool, &binary, &url, &public_url, &tokens, &repository) => {
+                        result = watch(&pool, &binary, &url, &public_url, &repository_service, &tokens, &repository) => {
                             if let Err(error) = result {
                                 tracing::warn!(repository = %repository.name, %error, "push trigger reconnecting; cursor retained");
                             }
@@ -196,16 +220,94 @@ async fn json(mut command: Command) -> Result<(i64, Vec<Value>)> {
 fn parse_events(output: &str) -> Result<Vec<Value>> {
     output
         .lines()
-        .filter(|line| !line.trim().is_empty())
+        // Some Lore commands still print a human-readable summary after their
+        // JSON events. The completion event below remains mandatory, so it is
+        // safe to ignore those non-JSON lifecycle/summary lines here.
+        .filter(|line| line.trim_start().starts_with('{'))
         .map(|line| serde_json::from_str(line).context("invalid Lore JSON event"))
         .collect()
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct RemoteBranchHead {
     id: String,
     name: String,
     revision: String,
+}
+
+fn bounded_identifier<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
+    let value = value.as_str().with_context(|| format!("{field} missing"))?;
+    ensure!(
+        !value.is_empty() && value.len() <= 256 && !value.chars().any(char::is_control),
+        "invalid {field}"
+    );
+    Ok(value)
+}
+
+fn repository_resource_id(value: &Value) -> Result<String> {
+    let value = bounded_identifier(value, "link repository ID")?;
+    let repository_id = value.strip_prefix("urc-").unwrap_or(value);
+    ensure!(
+        repository_id.len() == 32 && repository_id.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "invalid link repository ID"
+    );
+    Ok(format!("urc-{}", repository_id.to_ascii_lowercase()))
+}
+
+fn repository_links(events: &[Value]) -> Result<Vec<RepositoryLink>> {
+    events
+        .iter()
+        .filter(|event| event["tagName"] == "linkEntry")
+        .map(|event| {
+            let data = &event["data"];
+            let path = data["linkPath"]
+                .as_str()
+                .filter(|path| valid_relative_path(path) && path.len() <= 4096)
+                .context("invalid link path")?;
+            let source_resource_id = repository_resource_id(&data["link"])?;
+            let source_branch_id = bounded_identifier(&data["branch"], "link branch ID")?;
+            let source_revision = data["revision"].as_str().context("link revision missing")?;
+            ensure!(valid_hash(source_revision), "invalid link revision");
+            let tracking = data["tracking"]
+                .as_bool()
+                .context("link tracking state missing")?;
+            Ok(RepositoryLink {
+                path: path.to_owned(),
+                source_resource_id,
+                source_branch_id: source_branch_id.to_owned(),
+                source_revision: source_revision.to_ascii_lowercase(),
+                tracking,
+            })
+        })
+        .collect()
+}
+
+fn link_change_revision(events: &[Value]) -> Result<Option<String>> {
+    let Some(revision) = events
+        .iter()
+        .rev()
+        .find(|event| event["tagName"] == "linkChange")
+        .and_then(|event| event["data"]["revision"].as_str())
+    else {
+        return Ok(None);
+    };
+    ensure!(valid_hash(revision), "invalid updated link revision");
+    if revision.bytes().all(|byte| byte == b'0') {
+        Ok(None)
+    } else {
+        Ok(Some(revision.to_ascii_lowercase()))
+    }
+}
+
+fn pushed_revision(events: &[Value]) -> Result<String> {
+    events
+        .iter()
+        .rev()
+        .find(|event| event["tagName"] == "branchPushRevisionPushEnd")
+        .and_then(|event| event["data"]["newRemoteRevision"].as_str())
+        .filter(|revision| valid_hash(revision))
+        .map(str::to_ascii_lowercase)
+        .context("Lore push revision missing")
 }
 
 fn remote_branch_heads(events: &[Value]) -> Result<Vec<RemoteBranchHead>> {
@@ -251,7 +353,16 @@ fn canonical_branch_policy(configured: &[String], branches: &[RemoteBranchHead])
 
 async fn success(command: Command) -> Result<Vec<Value>> {
     let (code, events) = json(command).await?;
-    ensure!(code == 0, "Lore trigger command failed with status {code}");
+    let message = events
+        .iter()
+        .rev()
+        .find(|event| event["tagName"] == "complete")
+        .and_then(|event| event["data"]["error"]["message"].as_str())
+        .unwrap_or("unknown Lore error");
+    ensure!(
+        code == 0,
+        "Lore trigger command failed with status {code}: {message}"
+    );
     Ok(events)
 }
 
@@ -260,14 +371,23 @@ async fn watch(
     binary: &str,
     url: &str,
     public_url: &str,
+    repository_service: &RepositoryService,
     tokens: &TokenIssuer,
     repository: &WatchedRepository,
 ) -> Result<()> {
     let workspace = tempfile::tempdir()?;
     let checkout = workspace.path().join("repository");
-    let token = tokens
-        .issue_worker("push-trigger", repository.resource_id.clone())?
-        .access_token;
+    // Diffing a root revision that updates links can traverse the linked
+    // repositories, so the watcher needs the owner's accessible repository
+    // set just like link indexing and updates do.
+    let token = owner_worker_token(
+        pool,
+        tokens,
+        "push-trigger",
+        &repository.owner_subject,
+        &repository.resource_id,
+    )
+    .await?;
     let mut clone = command(binary, &token, None);
     clone
         .args(["clone", "--", url])
@@ -297,7 +417,26 @@ async fn watch(
             }
         };
         if reconcile {
-            reconcile_repository(pool, binary, public_url, &token, &checkout, repository).await?;
+            let Some(remote_branches) =
+                reconcile_repository(pool, binary, public_url, &token, &checkout, repository)
+                    .await?
+            else {
+                continue;
+            };
+            if let Err(error) =
+                refresh_link_index(pool, binary, url, tokens, repository, &remote_branches).await
+            {
+                tracing::warn!(repository = %repository.name, %error, "cannot refresh repository link index");
+            }
+            propagate_link_updates(
+                pool,
+                binary,
+                repository_service,
+                tokens,
+                repository,
+                &remote_branches,
+            )
+            .await;
         }
     }
     child.kill().await.ok();
@@ -312,7 +451,7 @@ async fn reconcile_repository(
     token: &str,
     checkout: &Path,
     repository: &WatchedRepository,
-) -> Result<()> {
+) -> Result<Option<Vec<RemoteBranchHead>>> {
     let mut tx = pool.begin().await?;
     // Take the lock before reading remote heads, so two coordinators cannot
     // overwrite a newer cursor with a stale remote snapshot.
@@ -322,7 +461,7 @@ async fn reconcile_repository(
             .fetch_one(&mut *tx)
             .await?;
     if !locked {
-        return Ok(());
+        return Ok(None);
     }
     let mut enabled_branches: Vec<String> = sqlx::query_scalar(
         "SELECT branches FROM ci_repository_pipeline_branches WHERE resource_id=$1",
@@ -468,6 +607,414 @@ async fn reconcile_repository(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    Ok(Some(remote_branches))
+}
+
+fn link_branch_lock_key(resource_id: &str, branch: &str) -> String {
+    format!("repository-links:{resource_id}:{branch}")
+}
+
+pub(crate) async fn acquire_link_branch_lock(
+    tx: &mut Transaction<'_, Postgres>,
+    resource_id: &str,
+    branch: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
+        .bind(link_branch_lock_key(resource_id, branch))
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+async fn try_link_branch_lock(
+    tx: &mut Transaction<'_, Postgres>,
+    resource_id: &str,
+    branch: &str,
+) -> Result<bool> {
+    Ok(
+        sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1, 1))")
+            .bind(link_branch_lock_key(resource_id, branch))
+            .fetch_one(&mut **tx)
+            .await?,
+    )
+}
+
+async fn owner_worker_token(
+    pool: &PgPool,
+    tokens: &TokenIssuer,
+    worker_id: &str,
+    owner_subject: &str,
+    root_resource_id: &str,
+) -> Result<String> {
+    let resources = repository_access::resource_ids(pool, owner_subject).await?;
+    ensure!(
+        resources
+            .iter()
+            .any(|resource| resource == root_resource_id),
+        "repository owner no longer has access to the root repository"
+    );
+    Ok(tokens
+        .issue_worker_resources(worker_id, resources)?
+        .access_token)
+}
+
+async fn refresh_link_index(
+    pool: &PgPool,
+    binary: &str,
+    url: &str,
+    tokens: &TokenIssuer,
+    repository: &WatchedRepository,
+    remote_branches: &[RemoteBranchHead],
+) -> Result<()> {
+    let Some(branch) = remote_branches
+        .iter()
+        .find(|branch| branch.name == LINK_UPDATE_BRANCH)
+    else {
+        let mut tx = pool.begin().await?;
+        if try_link_branch_lock(&mut tx, &repository.resource_id, LINK_UPDATE_BRANCH).await? {
+            sqlx::query(
+                "DELETE FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+            )
+            .bind(&repository.resource_id)
+            .bind(LINK_UPDATE_BRANCH)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        return Ok(());
+    };
+
+    let indexed_revision: Option<String> = sqlx::query_scalar(
+        "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+    )
+    .bind(&repository.resource_id)
+    .bind(LINK_UPDATE_BRANCH)
+    .fetch_optional(pool)
+    .await?;
+    if indexed_revision.as_deref() == Some(branch.revision.as_str()) {
+        return Ok(());
+    }
+
+    let token = owner_worker_token(
+        pool,
+        tokens,
+        "link-index",
+        &repository.owner_subject,
+        &repository.resource_id,
+    )
+    .await?;
+    let workspace = tempfile::tempdir()?;
+    let checkout = workspace.path().join("repository");
+    let mut clone = command(binary, &token, None);
+    clone
+        .args(["clone", "--revision", branch.revision.as_str(), "--", url])
+        .arg(&checkout)
+        .current_dir(workspace.path());
+    success(clone).await?;
+    let mut list = command(binary, &token, Some(&checkout));
+    list.args(["link", "list"]);
+    let links = repository_links(&success(list).await?)?;
+
+    let mut tx = pool.begin().await?;
+    if !try_link_branch_lock(&mut tx, &repository.resource_id, LINK_UPDATE_BRANCH).await? {
+        return Ok(());
+    }
+    let indexed_revision: Option<String> = sqlx::query_scalar(
+        "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+    )
+    .bind(&repository.resource_id)
+    .bind(LINK_UPDATE_BRANCH)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if indexed_revision.as_deref() == Some(branch.revision.as_str()) {
+        tx.commit().await?;
+        return Ok(());
+    }
+    sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,$2,$3) ON CONFLICT(root_resource_id,root_branch) DO UPDATE SET root_revision=EXCLUDED.root_revision,updated_at=now()")
+        .bind(&repository.resource_id)
+        .bind(LINK_UPDATE_BRANCH)
+        .bind(&branch.revision)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "DELETE FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2",
+    )
+    .bind(&repository.resource_id)
+    .bind(LINK_UPDATE_BRANCH)
+    .execute(&mut *tx)
+    .await?;
+    for link in &links {
+        sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+            .bind(&repository.resource_id)
+            .bind(LINK_UPDATE_BRANCH)
+            .bind(&branch.revision)
+            .bind(&link.path)
+            .bind(&link.source_resource_id)
+            .bind(&link.source_branch_id)
+            .bind(&link.source_revision)
+            .bind(link.tracking)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    tracing::info!(
+        repository = %repository.name,
+        branch = LINK_UPDATE_BRANCH,
+        revision = %branch.revision,
+        links = links.len(),
+        "repository link index refreshed"
+    );
+    Ok(())
+}
+
+async fn dependency_reaches(pool: &PgPool, start: &str, target: &str) -> Result<bool> {
+    if start == target {
+        return Ok(true);
+    }
+    Ok(sqlx::query_scalar(
+        "WITH RECURSIVE upstream(resource_id) AS (SELECT source_resource_id FROM repository_link_dependencies WHERE root_resource_id=$1 UNION SELECT dependency.source_resource_id FROM repository_link_dependencies dependency JOIN upstream ON dependency.root_resource_id=upstream.resource_id) SELECT EXISTS(SELECT 1 FROM upstream WHERE resource_id=$2)",
+    )
+    .bind(start)
+    .bind(target)
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn propagate_link_updates(
+    pool: &PgPool,
+    binary: &str,
+    repository_service: &RepositoryService,
+    tokens: &TokenIssuer,
+    source: &WatchedRepository,
+    remote_branches: &[RemoteBranchHead],
+) {
+    let dependencies: Vec<PendingLinkUpdate> = match sqlx::query_as(
+        "SELECT dependency.root_resource_id, root.name AS root_name, root.owner_subject AS root_owner_subject, root.storage_backend AS root_storage_backend, dependency.root_branch, dependency.source_branch_id, dependency.source_revision FROM repository_link_dependencies dependency JOIN lore_resources root ON root.resource_id=dependency.root_resource_id WHERE dependency.source_resource_id=$1 AND root.owner_subject IS NOT NULL ORDER BY dependency.root_resource_id,dependency.root_branch,dependency.link_path",
+    )
+    .bind(&source.resource_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(dependencies) => dependencies,
+        Err(error) => {
+            tracing::warn!(repository = %source.name, %error, "cannot load dependent repository links");
+            return;
+        }
+    };
+    let heads: HashMap<_, _> = remote_branches
+        .iter()
+        .map(|branch| (branch.id.as_str(), branch.revision.as_str()))
+        .collect();
+    let mut grouped: BTreeMap<(String, String), Vec<(PendingLinkUpdate, String)>> = BTreeMap::new();
+    for dependency in dependencies {
+        let Some(revision) = heads.get(dependency.source_branch_id.as_str()) else {
+            continue;
+        };
+        if dependency.source_revision.eq_ignore_ascii_case(revision) {
+            continue;
+        }
+        grouped
+            .entry((
+                dependency.root_resource_id.clone(),
+                dependency.root_branch.clone(),
+            ))
+            .or_default()
+            .push((dependency, (*revision).to_owned()));
+    }
+
+    for ((root_resource_id, root_branch), updates) in grouped {
+        match dependency_reaches(pool, &source.resource_id, &root_resource_id).await {
+            Ok(true) => {
+                tracing::warn!(
+                    source = %source.name,
+                    root_resource = %root_resource_id,
+                    root_branch,
+                    "automatic link update skipped because it would propagate through a dependency cycle"
+                );
+                continue;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(source = %source.name, root_resource = %root_resource_id, %error, "cannot check repository link dependency cycle");
+                continue;
+            }
+        }
+        if let Err(error) =
+            update_root_links(pool, binary, repository_service, tokens, source, &updates).await
+        {
+            tracing::warn!(
+                source = %source.name,
+                root = %updates[0].0.root_name,
+                branch = %updates[0].0.root_branch,
+                %error,
+                "automatic repository link update failed"
+            );
+        }
+    }
+}
+
+async fn update_root_links(
+    pool: &PgPool,
+    binary: &str,
+    repository_service: &RepositoryService,
+    tokens: &TokenIssuer,
+    source: &WatchedRepository,
+    requested: &[(PendingLinkUpdate, String)],
+) -> Result<()> {
+    let first = requested
+        .first()
+        .context("missing repository link update")?;
+    let root = &first.0;
+    let token = owner_worker_token(
+        pool,
+        tokens,
+        "link-update",
+        &root.root_owner_subject,
+        &root.root_resource_id,
+    )
+    .await?;
+    let backend = StorageBackend::parse(&root.root_storage_backend)
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+
+    let mut tx = pool.begin().await?;
+    if !try_link_branch_lock(&mut tx, &root.root_resource_id, &root.root_branch).await? {
+        return Ok(());
+    }
+    let current: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT link_path,source_branch_id,source_revision FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2 AND source_resource_id=$3 ORDER BY link_path",
+    )
+    .bind(&root.root_resource_id)
+    .bind(&root.root_branch)
+    .bind(&source.resource_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let requested_heads: HashMap<&str, &str> = requested
+        .iter()
+        .map(|(dependency, revision)| (dependency.source_branch_id.as_str(), revision.as_str()))
+        .collect();
+    let pending: Vec<_> = current
+        .into_iter()
+        .filter_map(|(path, branch, revision)| {
+            requested_heads
+                .get(branch.as_str())
+                .filter(|desired| !revision.eq_ignore_ascii_case(desired))
+                .map(|desired| (path, branch, (*desired).to_owned()))
+        })
+        .collect();
+    if pending.is_empty() {
+        tx.commit().await?;
+        return Ok(());
+    }
+
+    let branches = repository_service
+        .branches_on(&root.root_name, backend, &token)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    let root_head = branches
+        .iter()
+        .find(|branch| branch.name == root.root_branch)
+        .with_context(|| format!("root branch '{}' was not found", root.root_branch))?;
+    let indexed_root_revision: Option<String> = sqlx::query_scalar(
+        "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+    )
+    .bind(&root.root_resource_id)
+    .bind(&root.root_branch)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if indexed_root_revision.as_deref() != Some(root_head.revision.as_str()) {
+        // The root moved after its dependency index was built. Drop the stale
+        // snapshot and let its watcher rebuild before applying source updates.
+        sqlx::query(
+            "DELETE FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+        )
+        .bind(&root.root_resource_id)
+        .bind(&root.root_branch)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(());
+    }
+    let url = repository_service
+        .command_repository_url_for(backend, &root.root_name)
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    let workspace = tempfile::tempdir()?;
+    let checkout = workspace.path().join("repository");
+    let mut clone = command(binary, &token, None);
+    clone
+        .args([
+            "clone",
+            "--revision",
+            root_head.revision.as_str(),
+            "--",
+            url.as_str(),
+        ])
+        .arg(&checkout)
+        .current_dir(workspace.path());
+    success(clone).await?;
+
+    let mut changed = false;
+    let mut applied = Vec::with_capacity(pending.len());
+    for (path, branch, desired_revision) in pending {
+        let mut update = command(binary, &token, Some(&checkout));
+        update.args(["link", "update", "--", path.as_str()]);
+        let events = success(update).await?;
+        let revision = match link_change_revision(&events)? {
+            Some(revision) => {
+                changed = true;
+                // Lore requires a clean working tree before updating another
+                // link. Commit each changed link independently, then push the
+                // resulting commit chain once after all updates succeed.
+                let message = format!("Update Lore link {path} from {}", source.name);
+                let mut commit = command(binary, &token, Some(&checkout));
+                commit.args(["commit", message.as_str()]);
+                success(commit).await?;
+                revision
+            }
+            None => desired_revision,
+        };
+        applied.push((path, branch, revision));
+    }
+
+    let pushed_root_revision = if changed {
+        let mut push = command(binary, &token, Some(&checkout));
+        // A concurrent user push must be re-indexed rather than auto-merged
+        // over potentially changed link metadata.
+        push.arg("push");
+        let revision = pushed_revision(&success(push).await?)?;
+        tracing::info!(
+            source = %source.name,
+            root = %root.root_name,
+            branch = %root.root_branch,
+            revision,
+            links = applied.len(),
+            "repository links updated and pushed"
+        );
+        Some(revision)
+    } else {
+        None
+    };
+
+    for (path, branch, revision) in applied {
+        let update = sqlx::query("UPDATE repository_link_dependencies SET source_revision=$5, root_revision=COALESCE($6,root_revision), updated_at=now() WHERE root_resource_id=$1 AND root_branch=$2 AND link_path=$3 AND source_resource_id=$4 AND source_branch_id=$7")
+            .bind(&root.root_resource_id)
+            .bind(&root.root_branch)
+            .bind(path)
+            .bind(&source.resource_id)
+            .bind(revision)
+            .bind(pushed_root_revision.as_deref())
+            .bind(branch);
+        update.execute(&mut *tx).await?;
+    }
+    if pushed_root_revision.is_some() {
+        sqlx::query(
+            "DELETE FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
+        )
+        .bind(&root.root_resource_id)
+        .bind(&root.root_branch)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -491,7 +1038,10 @@ async fn read_pipeline_config(
     ])
     .arg(&config_path);
     let (code, events) = json(read).await?;
-    if code == 3 {
+    // Lore CLI versions have reported a missing file as status 3 and 82.
+    // A repository without CI configuration is valid and must not prevent
+    // independent push work such as repository-link propagation.
+    if matches!(code, 3 | 82) {
         return Ok(None);
     }
     let message = events
@@ -695,6 +1245,102 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_repository_link_events_and_link_updates() {
+        let revision = "a".repeat(64);
+        let events = vec![serde_json::json!({
+            "tagName": "linkEntry",
+            "data": {
+                "link": "0194b726b34e72b0b45550b88a967076",
+                "linkNode": 7,
+                "linkPath": "Dependencies/Source",
+                "sourceNode": 1,
+                "sourcePath": "Libraries/Core",
+                "branch": "source-main-branch",
+                "tracking": true,
+                "revision": revision,
+                "flags": 0
+            }
+        })];
+        assert_eq!(
+            repository_links(&events).unwrap(),
+            [RepositoryLink {
+                path: "Dependencies/Source".into(),
+                source_resource_id: "urc-0194b726b34e72b0b45550b88a967076".into(),
+                source_branch_id: "source-main-branch".into(),
+                source_revision: "a".repeat(64),
+                tracking: true,
+            }]
+        );
+
+        let changed = [serde_json::json!({
+            "tagName": "linkChange",
+            "data": { "revision": "B".repeat(64) }
+        })];
+        assert_eq!(
+            link_change_revision(&changed).unwrap(),
+            Some("b".repeat(64))
+        );
+        let unchanged = [serde_json::json!({
+            "tagName": "linkChange",
+            "data": { "revision": "0".repeat(64) }
+        })];
+        assert_eq!(link_change_revision(&unchanged).unwrap(), None);
+    }
+
+    #[test]
+    fn rejects_unsafe_repository_link_events() {
+        let events = [serde_json::json!({
+            "tagName": "linkEntry",
+            "data": {
+                "link": "0194b726b34e72b0b45550b88a967076",
+                "linkPath": "../outside",
+                "branch": "main",
+                "tracking": false,
+                "revision": "a".repeat(64)
+            }
+        })];
+        assert!(repository_links(&events).is_err());
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+    async fn detects_transitive_repository_link_cycles(pool: PgPool) {
+        for (resource, name) in [("urc-a", "a"), ("urc-b", "b"), ("urc-c", "c")] {
+            sqlx::query("INSERT INTO lore_resources(resource_id,name) VALUES($1,$2)")
+                .bind(resource)
+                .bind(name)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let revision = "a".repeat(64);
+        for resource in ["urc-a", "urc-b"] {
+            sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,'main',$2)")
+                .bind(resource)
+                .bind(&revision)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        for (root, path, source) in [
+            ("urc-a", "Dependencies/B", "urc-b"),
+            ("urc-b", "Dependencies/C", "urc-c"),
+        ] {
+            sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,'main',$2,$3,$4,'main-id',$2,false)")
+                .bind(root)
+                .bind(&revision)
+                .bind(path)
+                .bind(source)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        assert!(dependency_reaches(&pool, "urc-a", "urc-c").await.unwrap());
+        assert!(!dependency_reaches(&pool, "urc-c", "urc-a").await.unwrap());
+        assert!(dependency_reaches(&pool, "urc-a", "urc-a").await.unwrap());
+    }
+
+    #[test]
     fn graph_snapshot_includes_job_dependencies() {
         let source = r#"
 [[pipelines]]
@@ -870,5 +1516,19 @@ printf '\n%s\n' '{"tagName":"complete","data":{"status":0}}'
         paths.sort();
         assert_eq!(paths, ["Client", "Client/a.rs", "Server/a.rs"]);
         assert!(changed_paths(&[serde_json::json!({"tagName":"revisionDiffFile","data":{"path":"../escape","fromPath":""}})]).is_err());
+    }
+
+    #[test]
+    fn parses_json_events_around_human_readable_lore_output() {
+        let events = parse_events(concat!(
+            "subscription started\n",
+            "{\"tagName\":\"complete\",\"data\":{\"status\":0}}\n",
+            "No links found in this repository\n"
+        ))
+        .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["tagName"], "complete");
+
+        assert!(parse_events("{not-json}\n").is_err());
     }
 }
