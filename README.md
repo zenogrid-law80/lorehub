@@ -221,7 +221,7 @@ job에는 `CI=true`, `LOREHUB=true`, `LORE_RUNNER=true`, `LORE_PIPELINE_ID`, `LO
 
 저장소 루트의 `.lore-ci.toml`에 `[[pipelines]]`를 사용하면 push 자동 CI에 참여합니다. 기존 루트 `stages`/`jobs` 형식은 수동 실행용으로 유지하며 두 형식은 혼합할 수 없습니다. 전체 예제는 [monorepo.lore-ci.toml](examples/monorepo.lore-ci.toml)입니다.
 
-Repository 화면의 **자동 CI Branch** 메뉴에서 hash 대신 remote branch 이름을 확인하고 `pipelines > changes` 감지 대상으로 사용할 branch를 선택합니다. 초기값은 `main`이며 여러 branch를 선택할 수 있습니다. 선택을 모두 해제하면 해당 repository의 자동 CI가 중지됩니다. 새로 선택한 branch는 현재 head를 기준점으로 저장하므로 설정 저장만으로 기존 변경분이 실행되지는 않으며, 이후 push부터 `changes` 규칙을 평가합니다. 제외한 branch의 cursor와 현재 routing graph는 제거하지만 기존 pipeline 실행 이력은 유지합니다.
+Repository 화면의 **자동 CI Branch** 메뉴에서 hash 대신 remote branch 이름을 확인하고 `pipelines > changes` 감지 대상으로 사용할 branch를 선택합니다. 초기값은 `main`이며 여러 branch를 선택할 수 있습니다. 선택을 모두 해제하면 해당 repository의 자동 CI가 중지됩니다. 새로 선택한 branch는 현재 head를 기준점으로 저장하므로 설정 저장만으로 기존 변경분이 실행되지는 않으며, 이후 push부터 `changes` 규칙을 평가합니다. 제외한 branch의 cursor와 현재 routing graph는 제거하지만 기존 pipeline 실행 이력은 유지합니다. `.lore-ci.toml` 확인과 편집은 별도의 **CI 설정** (`#ci-settings`) 화면에서 repository와 branch를 선택해 수행합니다. Repository 목록의 **CI 설정** 버튼을 사용하면 해당 repository가 자동으로 선택됩니다.
 
 ```toml
 [[pipelines]]
@@ -275,6 +275,12 @@ needs = ["data-table-generate"]
 Coordinator의 `serve`는 소유자가 등록된 Lore 저장소를 15초마다 확인하고 `lore notification subscribe`로 알림을 받습니다. 알림 수신 시 원격 branch head를 조회하며, 30초마다 추가 확인하고 4분마다 토큰·연결을 갱신합니다. 최초 실행은 기존 branch head를 기준점으로만 기록합니다. 이후 생성된 branch의 첫 push는 설정에 지정된 경로가 해당 revision에 존재하는지 확인해 실행합니다. 변경 비교, 요청 revision의 설정 읽기, 큐 생성이 성공한 경우에만 DB cursor를 갱신합니다. 실패하면 cursor를 유지해 다음 확인에서 재시도합니다. 연결 중단 중 여러 push가 쌓이면 마지막 처리 revision과 현재 head 사이의 최종 변경을 처리하며, 중간 push 각각을 재생하지 않습니다.
 
 같은 저장소·branch·revision·파이프라인은 한 번만 생성됩니다. 설정 파일만 바꿔도 실행하려면 각 `changes`에 `.lore-ci.toml`을 명시하세요. 이름이 있는 파이프라인은 현재 자동 push 경로로 실행하며, 기존 수동 생성 API는 루트 `stages`/`jobs` 형식용입니다. UI 목록과 실행 그래프는 hash 대신 저장소 revision마다 고정된 숫자 표시 번호를 보여줍니다. 원본 64자리 hash는 실행 검증에 계속 사용됩니다. 실행 상세의 그래프는 일치한 폴더 규칙 → 파이프라인과 실행 경로 → 대상 또는 배정된 Runner → stage 순서와 현재 상태를 보여줍니다. 큐에 대기하는 동안에도 trigger가 저장한 설정 snapshot으로 예정 stage를 표시합니다.
+
+### Lore link 자동 갱신
+
+Coordinator는 각 저장소 `main` branch의 `lore link list` 결과를 역방향 의존성으로 저장합니다. Link 저장소의 해당 branch가 push되면 이를 참조하는 root 저장소를 찾아 최신 root head를 다시 확인한 뒤 `lore link update`, `lore commit`, `lore push`를 순서대로 실행합니다. 같은 root branch의 여러 link 변경은 한 커밋으로 묶이며, root가 동시에 변경되면 자동 merge하지 않고 새 head의 link index가 생성된 후 재시도합니다.
+
+자동 갱신은 같은 LoreHub에서 root 소유자가 접근 가능한 저장소 link에 적용됩니다. 자기 참조나 순환 link는 연속 자동 커밋을 방지하기 위해 건너뜁니다. 성공한 root push는 일반 push와 동일하게 자동 CI 및 다른 root 저장소의 link 전파를 다시 일으킬 수 있습니다.
 
 적용 시 모든 Runner를 새 바이너리로 교체하고 coordinator를 재시작하세요. `lorehub migrate` 또는 새 프로세스 시작 시 push routing과 그래프용 migration이 적용됩니다. 이전 Runner의 OS를 무시한 claim도 DB에서 차단하지만, 새 설정을 실행하려면 Runner 업그레이드가 필요합니다. 설정은 반드시 실행 대상 Lore revision에 commit/push되어 있어야 합니다.
 
@@ -377,10 +383,16 @@ sudo sh deploy/restart-lorehub.sh       # API coordinator
 sudo sh deploy/restart-lorehub.sh all   # API + 실행 중인 systemd worker
 ```
 
-PostgreSQL, 두 Lore storage backend, TLS proxy, Compose Runner와 coordinator를 모두 빌드하고 시작하려면 전체 재시작 스크립트를 사용합니다. 인증서 최초 발급용 일회성 `certbot` 서비스는 포함하지 않고 자동 갱신 서비스만 시작합니다.
+PostgreSQL, 두 Lore storage backend, TLS proxy와 coordinator를 빌드하고 시작하려면 전체 재시작 스크립트를 사용합니다. Compose의 Linux runner는 이 스크립트에서 시작하거나 재시작하지 않습니다. 인증서 최초 발급용 일회성 `certbot` 서비스는 포함하지 않고 자동 갱신 서비스만 시작합니다.
 
 ```bash
 sh deploy/restart-all.sh
+```
+
+Compose runner를 별도로 갱신해야 할 때만 다음 명령을 사용합니다.
+
+```bash
+docker compose --profile runner up -d --build runner
 ```
 
 Linux에서는 `lorehub-api.service`와 실행 중인 `lorehub-worker@*.service`를 재시작하고, macOS에서는 `co.kr.zenogrid.lorehub.coordinator` LaunchDaemon을 kickstart합니다. LaunchDaemon을 설치하지 않고 `target/release/lorehub serve`를 직접 실행한 macOS 개발 환경도 기존 프로세스를 찾아 `deploy/macos/run-coordinator.sh`로 재시작합니다. macOS Runner LaunchDaemon은 별도로 관리합니다.

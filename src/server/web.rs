@@ -129,6 +129,11 @@ mod tests {
         assert!(INDEX.contains("id=\"runners-page\""));
         assert!(INDEX.contains("id=\"graphs-page\""));
         assert!(INDEX.contains("href=\"#graphs\""));
+        assert!(INDEX.contains("id=\"ci-settings-page\""));
+        assert!(INDEX.contains("href=\"#ci-settings\""));
+        assert!(INDEX.contains("id=\"repository-config-repository\""));
+        assert!(!INDEX.contains("id=\"repository-config-dialog\""));
+        assert!(SCRIPT.contains("loadCiSettings"));
         assert!(INDEX.contains("id=\"pipelines-heading\""));
         assert!(INDEX.contains("id=\"pipeline-repository-filter\""));
         assert!(INDEX.contains("id=\"pipeline-branch-filter\""));

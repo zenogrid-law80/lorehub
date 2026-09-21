@@ -13,19 +13,17 @@ command -v curl >/dev/null 2>&1 || {
     exit 1
 }
 
-echo "Building and starting LoreHub Docker services"
-compose_services="postgres dynamodb-local dynamodb-init lore-server lore-server-local reverse-proxy certbot-renew runner"
+echo "Building and starting LoreHub Docker services (excluding Compose Runner)"
+compose_services="postgres dynamodb-local dynamodb-init lore-server lore-server-local reverse-proxy certbot-renew"
 if ! docker compose \
     --profile repository \
     --profile tls \
-    --profile runner \
     up -d --build \
     $compose_services; then
     echo "Docker image build failed; retrying with available local images" >&2
     docker compose \
         --profile repository \
         --profile tls \
-        --profile runner \
         up -d \
         $compose_services
 fi
@@ -42,27 +40,8 @@ curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 2
 curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 2 \
     http://127.0.0.1:41340/health_check >/dev/null
 
-echo "Waiting for the Compose Runner"
-attempt=0
-while ! docker compose --profile runner ps --status running --services | grep -qx runner; do
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 12 ]; then
-        echo "Compose Runner did not reach the running state." >&2
-        docker compose logs --tail=50 runner >&2
-        exit 1
-    fi
-    sleep 2
-done
-sleep 3
-docker compose --profile runner ps --status running --services | grep -qx runner || {
-    echo "Compose Runner stopped after starting." >&2
-    docker compose logs --tail=50 runner >&2
-    exit 1
-}
-
 echo "LoreHub stack is running"
 docker compose \
     --profile repository \
     --profile tls \
-    --profile runner \
     ps
