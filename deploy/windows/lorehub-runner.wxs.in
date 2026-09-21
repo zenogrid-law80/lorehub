@@ -35,7 +35,8 @@
       ExeCommand="uninstall-windows-runner" />
 
     <InstallExecuteSequence>
-      <Custom Action="UnregisterRunner" Before="RemoveFiles">REMOVE~=&quot;ALL&quot;</Custom>
+      <RemoveExistingProducts After="InstallInitialize" />
+      <Custom Action="UnregisterRunner" Before="RemoveFiles">REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="ConfigureRunner" After="InstallFiles">NOT REMOVE</Custom>
     </InstallExecuteSequence>
   </Product>

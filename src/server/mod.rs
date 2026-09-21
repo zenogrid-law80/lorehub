@@ -8,6 +8,7 @@ use crate::ci::db;
 pub mod api;
 pub mod auth;
 pub mod authz;
+mod links;
 mod management;
 pub mod releases;
 pub mod repositories;

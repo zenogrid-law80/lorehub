@@ -218,20 +218,31 @@ impl Worker {
         } else {
             None
         };
+        let dependency_branch = (!pipeline.pipeline_needs.is_empty())
+            .then_some(pipeline.branch.as_deref())
+            .flatten();
+        let clone_source = dependency_branch.map_or(
+            lore::CloneSource::Revision(&pipeline.revision),
+            lore::CloneSource::Branch,
+        );
         let clone = executor::prepare(
             lore::clone_command(
                 &self.lore_bin,
                 &pipeline.repository_url,
-                &pipeline.revision,
+                clone_source,
                 &checkout,
                 sparse_view_path.as_deref(),
                 token.as_deref(),
             ),
             &root,
         );
+        let source_description = dependency_branch.map_or_else(
+            || "the requested Lore revision".to_owned(),
+            |branch| format!("latest Lore branch revision for {branch} after dependencies"),
+        );
         let clone_message = pipeline.sparse_view_name.as_deref().map_or_else(
-            || "Cloning the requested Lore revision\n".to_owned(),
-            |view| format!("Cloning the requested Lore revision with sparse view {view}\n"),
+            || format!("Cloning {source_description}\n"),
+            |view| format!("Cloning {source_description} with sparse view {view}\n"),
         );
         self.coordinator
             .log(pipeline.id, None, "system", &clone_message)

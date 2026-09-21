@@ -76,6 +76,32 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 
 executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. Runner에는 PostgreSQL 접속 정보가 없으며 Google OAuth 자격 증명도 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
 
+## 저장소 링크 관리
+
+**Source → Root** 방향으로 연결합니다. 실제 링크와 pin은 Lore revision이 기준이며, DB에는 동기화 정책, 마지막 성공·오류, 생성 작업 이력을 별도로 저장합니다.
+
+- 마지막으로 선택한 저장소·브랜치를 브라우저별로 기억하고, 저장된 선택이 없으면 링크가 감지된 저장소를 우선 선택합니다. 요약 목록은 watcher 인덱스 기준이며 다음 감지 주기까지 지연될 수 있습니다.
+- 기본 **자동 동기화**는 Source push 알림 및 30초 보정 주기로 변경을 감지해 Root에 commit·push합니다. `main`뿐 아니라 각 remote branch를 인덱싱합니다. 자동 CI branch 설정과 별개이며, 순환 의존성이나 접근 권한 문제로 실패하면 오류를 표시합니다.
+- **수동 동기화**에서는 사용자가 최신 revision으로 갱신할 때만 Root를 변경합니다. 정책 전환 자체는 Lore commit을 만들지 않습니다. 기존 링크는 정책이 없으면 자동 동기화를 유지합니다.
+- 없는 Source 폴더 생성은 기본 활성화됩니다. 폴더 생성·commit·push 후 Root 연결에 실패해도 Source commit은 되돌리지 않습니다. 생성 이력의 **Root 링크 재시도**로 최신 Root revision을 확인하고 연결을 마무리합니다.
+- 작업 ID로 중복 생성을 방지하고 검증 → Source 준비 → Root 링크 생성 → 완료 단계를 저장합니다. coordinator 중단으로 진행 중인 기록이 남으면 마지막 진행 기록으로부터 30분 후 재시도할 수 있습니다.
+- 고급 옵션인 **Disable linked branch creation**은 Lore 브랜치 생성 동작이며 자동 동기화 정책과 별개입니다.
+
+새 coordinator 시작 시 `0024_repository_link_management.sql`이 자동 적용됩니다. 기존 링크 정의를 변경하는 데이터 migration은 없습니다.
+
+추가 API(로그인 필요, POST는 CSRF 필요):
+
+| 경로 | 용도 |
+| --- | --- |
+| `GET /api/v1/repository-links/summary` | 접근 가능한 Root/branch별 링크 수 |
+| `POST /api/v1/repositories/{name}/links/policy` | `branch`, `path`, `expected_revision`, `auto_update` 변경 |
+| `GET /api/v1/repositories/{name}/link-operations?branch=main` | 최근 생성 작업 30건 |
+| `POST /api/v1/repositories/{name}/link-operations/{id}/retry` | 실패·부분 실패 작업 재시도 |
+
+기존 링크 생성 API에 `operation_id`(UUID), `create_source_directory`(기본 true), `auto_update`(기본 true)가 추가됩니다. 성공 응답의 `revision`, `source_path_created`는 유지하며 작업 상태·ID가 함께 반환됩니다. 실패·부분 실패는 HTTP 409와 저장된 오류, 중복 요청이 아직 실행 중이면 HTTP 202를 반환합니다. 권한·입력 검증 오류는 기존 4xx 응답을 사용합니다.
+
+UI 단독 검증은 `node tests/web-links-preview.mjs` 실행 후 `http://127.0.0.1:4179/#repository-links`에서 가능합니다. 이 fixture는 운영 DB나 Lore에 연결하지 않으며 생성 실패 → 재시도 흐름을 메모리에서 재현합니다.
+
 ## 실행
 
 필요한 구성은 Rust 1.88 이상, PostgreSQL 18, Lore CLI 및 접근 가능한 Lore 서버입니다. 워커는 Linux, Windows와 macOS에서 동작합니다. Lore CLI 호출 형식은 로컬 `lore 0.9.0+783` 도움말과 [공식 CLI 문서](https://epicgames.github.io/lore/reference/lore-cli-commands/)를 기준으로 구현했습니다.
@@ -260,7 +286,7 @@ script = ["docker build --tag \"my-server:${LORE_REVISION}\" ."]
 
 `runner_os`는 `windows`, `macos`, `linux` 중 하나입니다. `changes`는 저장소 루트 기준의 정확한 경로 또는 `디렉터리/**`를 받으며 대소문자를 구분합니다. 선행 `/`, `..`, 다른 glob 문법은 허용하지 않습니다. 삭제와 이동 전후 경로도 판단에 포함됩니다. 두 조건을 만족하면 두 파이프라인이 별도 큐에 들어가 각 OS에서 실행되며, 해당 OS의 Runner가 없으면 `queued`로 남습니다. 한 파이프라인 내부 stage/job 순서는 기존과 같습니다. `working_directory`는 checkout 내부 디렉터리여야 하며 외부를 가리키는 심볼릭 링크는 거부합니다.
 
-파이프라인 간 실행 순서는 `needs`로 지정합니다. 아래는 관련 필드만 표시한 예입니다. `server-windows-build`와 `server`는 같은 저장소·branch·revision의 `data-table-generate` 실행이 큐에 있거나 실행 중이면 기다리고, 성공한 후에만 Runner가 claim할 수 있습니다. 해당 선행 실행이 없으면 기존처럼 바로 실행하며, 선행 실행이 실패하거나 취소되면 후속 파이프라인도 실패 처리됩니다. 알 수 없는 파이프라인, 자기 자신, 중복 및 순환 의존성은 설정 검증에서 거부됩니다.
+파이프라인 간 실행 순서는 `needs`로 지정합니다. 아래는 관련 필드만 표시한 예입니다. `server-windows-build`와 `server`는 같은 저장소·branch·revision의 `data-table-generate` 실행이 큐에 있거나 실행 중이면 기다리고, 성공한 후에만 Runner가 claim할 수 있습니다. 의존성이 설정되고 branch를 아는 후속 파이프라인은 선행 파이프라인이 같은 branch에 게시한 결과를 포함하도록 실행 시작 시 최신 branch revision을 clone합니다. 원래 트리거 revision은 `LORE_REVISION`에 유지됩니다. 해당 선행 실행이 없으면 기존처럼 바로 실행하며, 선행 실행이 실패하거나 취소되면 후속 파이프라인도 실패 처리됩니다. 알 수 없는 파이프라인, 자기 자신, 중복 및 순환 의존성은 설정 검증에서 거부됩니다.
 
 ```toml
 [[pipelines]]

@@ -15,6 +15,243 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+#[cfg(unix)]
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn link_creation_recovers_partial_failure_without_recreating_source(pool: PgPool) {
+    use lorehub::server::tokens::TokenIssuer;
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let binary = root.path().join("lore");
+    let script = r#"#!/bin/sh
+set -eu
+shift 7
+case "${1:-}:${2:-}" in
+  repository:list)
+    printf '%s\n' '{"tagName":"repositoryListEntry","data":{"id":"11111111111111111111111111111111","name":"root"}}'
+    printf '%s\n' '{"tagName":"repositoryListEntry","data":{"id":"22222222222222222222222222222222","name":"source"}}'
+    ;;
+  repository:clone) mkdir -p "$6" ;;
+  --repository:repository)
+    printf '%s\n' '{"tagName":"branchListEntry","data":{"id":"main-id","name":"main","location":"remote","archived":false,"latest":"REV"}}'
+    ;;
+  clone:--revision)
+    mkdir -p "$6"
+    case "$5" in
+      */source)
+        touch "$6/.source-checkout"
+        if [ -f "WORK/source-push" ]; then mkdir -p "$6/Test"; fi
+        ;;
+    esac
+    ;;
+  --repository:.)
+    if [ -f "WORK/root-push" ]; then
+      printf '%s\n' '{"tagName":"linkEntry","data":{"link":"22222222222222222222222222222222","linkPath":"Test","sourcePath":"Test","branch":"main-id","tracking":true,"revision":"REV"}}'
+    fi
+    ;;
+  stage:--scan) [ -d Test ] ;;
+  commit:*) ;;
+  link:add)
+    if [ ! -f "WORK/allow-root" ]; then
+      printf '%s\n' '{"tagName":"complete","data":{"status":1,"error":{"message":"Failed to add link: Link divergence"}}}'
+      exit 1
+    fi
+    ;;
+  push:)
+    if [ -f .source-checkout ]; then printf 'push\n' >> "WORK/source-push"; else printf 'push\n' >> "WORK/root-push"; fi
+    printf '%s\n' '{"tagName":"branchPushRevisionPushEnd","data":{"newRemoteRevision":"REV"}}'
+    ;;
+  *) exit 99 ;;
+esac
+printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
+"#.replace("WORK", root.path().to_str().unwrap()).replace("REV", &"a".repeat(64));
+    std::fs::write(&binary, script).unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(binary, "lores://127.0.0.1:41337", "lores://127.0.0.1:41337")
+            .unwrap(),
+        Some(
+            TokenIssuer::from_files(
+                "tests/fixtures/test-private.pem",
+                "tests/fixtures/test-jwks.json",
+                "http://127.0.0.1:8080",
+                "zenogrid.co.kr",
+            )
+            .unwrap(),
+        ),
+    );
+    let owner = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    for id in [owner, outsider] {
+        sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec()).bind(id).bind(Sha256::digest(b"test-csrf").to_vec()).execute(&pool).await.unwrap();
+    }
+    sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+        .bind(outsider)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (id, name) in [
+        ("urc-11111111111111111111111111111111", "root"),
+        ("urc-22222222222222222222222222222222", "source"),
+    ] {
+        sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES($1,$2,$3)")
+            .bind(id)
+            .bind(name)
+            .bind(owner.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let id = Uuid::new_v4();
+    let input = json!({"operation_id":id,"branch":"main","expected_revision":"a".repeat(64),"path":"Test","source_repository":"source","source_branch":"main","source_path":"Test","auto_update":false});
+    let path = "/api/v1/repositories/root/links";
+    assert_eq!(
+        request(&app, Some(owner), "POST", path, input.clone(), false)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&app, Some(outsider), "POST", path, input.clone(), true)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let failed = request(&app, Some(owner), "POST", path, input.clone(), true).await;
+    assert_eq!(failed.0, StatusCode::CONFLICT, "{}", failed.1);
+    assert_eq!(failed.1["status"], "partial");
+    assert_eq!(failed.1["stage"], "root");
+    assert_eq!(failed.1["source_path_created"], true);
+    assert!(
+        failed.1["error"]
+            .as_str()
+            .unwrap()
+            .contains("Link divergence")
+    );
+    // Replaying the accepted create does not run it again.
+    assert_eq!(
+        request(&app, Some(owner), "POST", path, input.clone(), true)
+            .await
+            .1["id"],
+        id.to_string()
+    );
+    let mut different = input.clone();
+    different["path"] = json!("Different");
+    assert_eq!(
+        request(&app, Some(owner), "POST", path, different, true)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let retry = format!("/api/v1/repositories/root/link-operations/{id}/retry");
+    assert_eq!(
+        request(&app, Some(outsider), "POST", &retry, Value::Null, true)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    std::fs::write(root.path().join("allow-root"), "").unwrap();
+    let succeeded = request(&app, Some(owner), "POST", &retry, Value::Null, true).await;
+    assert_eq!(succeeded.0, StatusCode::OK, "{}", succeeded.1);
+    assert_eq!(succeeded.1["status"], "succeeded");
+    assert_eq!(succeeded.1["revision"], "a".repeat(64));
+    assert_eq!(succeeded.1["source_path_created"], true);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("source-push")).unwrap(),
+        "push\n"
+    );
+    assert_eq!(
+        request(&app, Some(owner), "POST", &retry, Value::Null, true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("root-push")).unwrap(),
+        "push\n"
+    );
+    let links = request(
+        &app,
+        Some(owner),
+        "GET",
+        "/api/v1/repositories/root/links?branch=main",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(links.0, StatusCode::OK, "{}", links.1);
+    assert_eq!(links.1["links"][0]["auto_update"], false);
+    assert_eq!(links.1["links"][0]["source_branch_name"], "main");
+    assert_eq!(links.1["links"][0]["status"], "current");
+    let policy_path = "/api/v1/repositories/root/links/policy";
+    let mut policy = json!({"branch":"main","path":"Test","expected_revision":"b".repeat(64),"auto_update":true});
+    assert_eq!(
+        request(&app, Some(owner), "POST", policy_path, policy.clone(), true)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    policy["expected_revision"] = json!("a".repeat(64));
+    assert_eq!(
+        request(&app, Some(owner), "POST", policy_path, policy, true)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("root-push")).unwrap(),
+        "push\n",
+        "policy changes must not push Lore"
+    );
+    sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES('urc-11111111111111111111111111111111','main',$1)").bind("a".repeat(64)).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES('urc-11111111111111111111111111111111','main',$1,'Test','urc-22222222222222222222222222222222','main-id',$1,true)").bind("a".repeat(64)).execute(&pool).await.unwrap();
+    let summary = request(
+        &app,
+        Some(owner),
+        "GET",
+        "/api/v1/repository-links/summary",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(summary.1[0]["count"], 1);
+    let hidden = request(
+        &app,
+        Some(outsider),
+        "GET",
+        "/api/v1/repository-links/summary",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(hidden.1, json!([]));
+    let history = request(
+        &app,
+        Some(owner),
+        "GET",
+        "/api/v1/repositories/root/link-operations?branch=main",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(history.1.as_array().unwrap().len(), 1);
+    assert_eq!(history.1[0]["status"], "succeeded");
+}
+
 async fn request(
     app: &Router,
     user: Option<Uuid>,

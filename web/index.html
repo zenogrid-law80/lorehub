@@ -112,7 +112,7 @@
         </nav>
         <div class="sidebar-spacer"></div>
         <div class="sidebar-status"><span class="pulse"></span><span>Coordinator online</span></div>
-        <p class="sidebar-version">LoreHub v0.2.18</p>
+        <p class="sidebar-version">LoreHub v0.2.20</p>
       </aside>
 
       <div class="content-shell">
@@ -381,7 +381,7 @@
               <div>
                 <p class="breadcrumb">Zenogrid <span>/</span> Lore dependencies</p>
                 <h1>Repository links</h1>
-                <p>저장소 branch가 참조하는 다른 Lore 저장소의 경로와 pin을 관리합니다.</p>
+                <p>Source changes flow into Root. Manage sync policies and recover unfinished links.</p>
               </div>
               <button id="new-repository-link-button" class="button button--primary" type="button" disabled>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
@@ -390,8 +390,8 @@
             </div>
             <section class="pipeline-panel repository-link-panel">
               <div class="repository-link-toolbar">
-                <label class="field"><span>Repository</span><select id="repository-link-repository" required disabled></select></label>
-                <label class="field"><span>Branch</span><select id="repository-link-branch" required disabled></select></label>
+                <label class="field"><span>Root repository</span><select id="repository-link-repository" required disabled></select></label>
+                <label class="field"><span>Root branch</span><select id="repository-link-branch" required disabled></select></label>
                 <div class="repository-config-revision"><span>Revision</span><code id="repository-link-revision">—</code></div>
               </div>
               <div class="panel-header repository-link-list-header">
@@ -408,6 +408,10 @@
                 <button class="button button--secondary js-open-repository-link" type="button">Add link</button>
               </div>
               <div class="panel-footer"><span>변경 사항은 새 Lore revision으로 commit 후 push됩니다.</span><span id="repository-link-last-updated">업데이트 대기 중</span></div>
+            </section>
+            <section class="pipeline-panel repository-link-history">
+              <div class="panel-header"><div><h2>Link creation history</h2><p>Source commits are preserved when Root creation fails. Retry to finish the link.</p></div></div>
+              <div id="repository-link-operations" aria-live="polite"></div>
             </section>
           </section>
 
@@ -530,12 +534,23 @@
           <div><p class="eyebrow">LORE DEPENDENCY</p><h2>Add repository link</h2></div>
           <button class="repository-link-modal-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
         </div>
-        <p class="modal-intro"><strong id="repository-link-root-name"></strong>의 선택한 branch에 다른 저장소 경로를 연결합니다.</p>
-        <label class="field"><span>Link path</span><input id="repository-link-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Dependencies/Shared"><small>현재 저장소 안에 생성될 상대 경로</small></label>
-        <label class="field"><span>Source repository</span><select id="repository-link-source-repository" required></select></label>
-        <label class="field"><span>Source branch</span><select id="repository-link-source-branch" required disabled></select></label>
-        <label class="field"><span>Source path</span><input id="repository-link-source-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Libraries/Shared"><small>Source 저장소의 상대 경로이며 전체 root는 <code>.</code>을 사용합니다.</small></label>
-        <label class="repository-link-checkbox"><input id="repository-link-disable-branching" type="checkbox"><span>Disable linked branch creation</span></label>
+        <fieldset class="repository-link-group"><legend>Source · read from</legend>
+          <label class="field"><span>Source repository</span><select id="repository-link-source-repository" required></select></label>
+          <label class="field"><span>Source branch</span><select id="repository-link-source-branch" required disabled></select></label>
+          <label class="field"><span>Source path</span><input id="repository-link-source-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Libraries/Shared"><small>Source 저장소의 상대 경로이며 전체 root는 <code>.</code>을 사용합니다.</small></label>
+          <label class="repository-link-checkbox"><input id="repository-link-create-source" type="checkbox" checked><span>Create missing Source folder, commit and push</span></label>
+        </fieldset>
+        <fieldset class="repository-link-group"><legend>Root · link into</legend>
+          <p id="repository-link-root-name"></p>
+          <label class="field"><span>Link path</span><input id="repository-link-path" type="text" required maxlength="4096" spellcheck="false" autocomplete="off" placeholder="Dependencies/Shared"><small>현재 저장소 안에 생성될 상대 경로</small></label>
+        </fieldset>
+        <p id="repository-link-preview" class="repository-link-preview" aria-live="polite"></p>
+        <label class="field"><span>Sync policy</span><select id="repository-link-auto-update"><option value="true">Automatic sync</option><option value="false">Manual sync</option></select><small>Automatic sync commits and pushes Source updates to this Root branch.</small></label>
+        <details class="repository-link-advanced"><summary>Advanced Lore options</summary>
+          <label class="repository-link-checkbox"><input id="repository-link-disable-branching" type="checkbox"><span>Disable linked branch creation</span></label>
+          <p>This controls Lore branching, not automatic synchronization.</p>
+        </details>
+        <p id="repository-link-progress" role="status" hidden></p>
         <div id="repository-link-form-error" class="repository-link-form-error" role="alert" hidden><strong>Link creation failed</strong><span></span></div>
         <div class="modal-actions"><button class="button button--ghost repository-link-modal-cancel" type="button">Cancel</button><button id="create-repository-link-button" class="button button--primary" type="submit"><span>Add link</span><span class="button-spinner" hidden></span></button></div>
       </form>

@@ -23,8 +23,6 @@ use super::{
 };
 use crate::ci::config::{NamedPipeline, PipelineFile, valid_relative_path};
 
-const LINK_UPDATE_BRANCH: &str = "main";
-
 #[derive(Clone, Debug, sqlx::FromRow)]
 struct WatchedRepository {
     resource_id: String,
@@ -666,17 +664,51 @@ async fn refresh_link_index(
     repository: &WatchedRepository,
     remote_branches: &[RemoteBranchHead],
 ) -> Result<()> {
+    let mut branches: Vec<String> = sqlx::query_scalar(
+        "SELECT root_branch FROM repository_link_snapshots WHERE root_resource_id=$1",
+    )
+    .bind(&repository.resource_id)
+    .fetch_all(pool)
+    .await?;
+    branches.extend(remote_branches.iter().map(|b| b.name.clone()));
+    branches.sort();
+    branches.dedup();
+    for name in branches {
+        refresh_link_branch_index(
+            pool,
+            binary,
+            url,
+            tokens,
+            repository,
+            remote_branches,
+            &name,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn refresh_link_branch_index(
+    pool: &PgPool,
+    binary: &str,
+    url: &str,
+    tokens: &TokenIssuer,
+    repository: &WatchedRepository,
+    remote_branches: &[RemoteBranchHead],
+    branch_name: &str,
+) -> Result<()> {
     let Some(branch) = remote_branches
         .iter()
-        .find(|branch| branch.name == LINK_UPDATE_BRANCH)
+        .find(|branch| branch.name == branch_name)
     else {
         let mut tx = pool.begin().await?;
-        if try_link_branch_lock(&mut tx, &repository.resource_id, LINK_UPDATE_BRANCH).await? {
+        if try_link_branch_lock(&mut tx, &repository.resource_id, branch_name).await? {
             sqlx::query(
                 "DELETE FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
             )
             .bind(&repository.resource_id)
-            .bind(LINK_UPDATE_BRANCH)
+            .bind(branch_name)
             .execute(&mut *tx)
             .await?;
         }
@@ -688,7 +720,7 @@ async fn refresh_link_index(
         "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
     )
     .bind(&repository.resource_id)
-    .bind(LINK_UPDATE_BRANCH)
+    .bind(branch_name)
     .fetch_optional(pool)
     .await?;
     if indexed_revision.as_deref() == Some(branch.revision.as_str()) {
@@ -716,14 +748,14 @@ async fn refresh_link_index(
     let links = repository_links(&success(list).await?)?;
 
     let mut tx = pool.begin().await?;
-    if !try_link_branch_lock(&mut tx, &repository.resource_id, LINK_UPDATE_BRANCH).await? {
+    if !try_link_branch_lock(&mut tx, &repository.resource_id, branch_name).await? {
         return Ok(());
     }
     let indexed_revision: Option<String> = sqlx::query_scalar(
         "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
     )
     .bind(&repository.resource_id)
-    .bind(LINK_UPDATE_BRANCH)
+    .bind(branch_name)
     .fetch_optional(&mut *tx)
     .await?;
     if indexed_revision.as_deref() == Some(branch.revision.as_str()) {
@@ -732,7 +764,7 @@ async fn refresh_link_index(
     }
     sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,$2,$3) ON CONFLICT(root_resource_id,root_branch) DO UPDATE SET root_revision=EXCLUDED.root_revision,updated_at=now()")
         .bind(&repository.resource_id)
-        .bind(LINK_UPDATE_BRANCH)
+        .bind(branch_name)
         .bind(&branch.revision)
         .execute(&mut *tx)
         .await?;
@@ -740,13 +772,13 @@ async fn refresh_link_index(
         "DELETE FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2",
     )
     .bind(&repository.resource_id)
-    .bind(LINK_UPDATE_BRANCH)
+    .bind(branch_name)
     .execute(&mut *tx)
     .await?;
     for link in &links {
         sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
             .bind(&repository.resource_id)
-            .bind(LINK_UPDATE_BRANCH)
+            .bind(branch_name)
             .bind(&branch.revision)
             .bind(&link.path)
             .bind(&link.source_resource_id)
@@ -759,7 +791,7 @@ async fn refresh_link_index(
     tx.commit().await?;
     tracing::info!(
         repository = %repository.name,
-        branch = LINK_UPDATE_BRANCH,
+        branch = branch_name,
         revision = %branch.revision,
         links = links.len(),
         "repository link index refreshed"
@@ -789,7 +821,7 @@ async fn propagate_link_updates(
     remote_branches: &[RemoteBranchHead],
 ) {
     let dependencies: Vec<PendingLinkUpdate> = match sqlx::query_as(
-        "SELECT dependency.root_resource_id, root.name AS root_name, root.owner_subject AS root_owner_subject, root.storage_backend AS root_storage_backend, dependency.root_branch, dependency.source_branch_id, dependency.source_revision FROM repository_link_dependencies dependency JOIN lore_resources root ON root.resource_id=dependency.root_resource_id WHERE dependency.source_resource_id=$1 AND root.owner_subject IS NOT NULL ORDER BY dependency.root_resource_id,dependency.root_branch,dependency.link_path",
+        "SELECT dependency.root_resource_id, root.name AS root_name, root.owner_subject AS root_owner_subject, root.storage_backend AS root_storage_backend, dependency.root_branch, dependency.source_branch_id, dependency.source_revision FROM repository_link_dependencies dependency JOIN lore_resources root ON root.resource_id=dependency.root_resource_id LEFT JOIN repository_link_policies policy ON policy.root_resource_id=dependency.root_resource_id AND policy.root_branch=dependency.root_branch AND policy.link_path=dependency.link_path WHERE dependency.source_resource_id=$1 AND root.owner_subject IS NOT NULL AND COALESCE(policy.auto_update,true) ORDER BY dependency.root_resource_id,dependency.root_branch,dependency.link_path",
     )
     .bind(&source.resource_id)
     .fetch_all(pool)
@@ -825,6 +857,14 @@ async fn propagate_link_updates(
     for ((root_resource_id, root_branch), updates) in grouped {
         match dependency_reaches(pool, &source.resource_id, &root_resource_id).await {
             Ok(true) => {
+                record_link_failure(
+                    pool,
+                    &root_resource_id,
+                    &root_branch,
+                    &source.resource_id,
+                    "Automatic sync blocked by a repository dependency cycle",
+                )
+                .await;
                 tracing::warn!(
                     source = %source.name,
                     root_resource = %root_resource_id,
@@ -842,6 +882,14 @@ async fn propagate_link_updates(
         if let Err(error) =
             update_root_links(pool, binary, repository_service, tokens, source, &updates).await
         {
+            record_link_failure(
+                pool,
+                &root_resource_id,
+                &root_branch,
+                &source.resource_id,
+                &error.to_string(),
+            )
+            .await;
             tracing::warn!(
                 source = %source.name,
                 root = %updates[0].0.root_name,
@@ -850,6 +898,13 @@ async fn propagate_link_updates(
                 "automatic repository link update failed"
             );
         }
+    }
+}
+
+async fn record_link_failure(pool: &PgPool, root: &str, branch: &str, source: &str, error: &str) {
+    if let Err(db_error) = sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_error) SELECT root_resource_id,root_branch,link_path,$4 FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2 AND source_resource_id=$3 ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET last_error=$4,updated_at=now() WHERE repository_link_policies.auto_update")
+        .bind(root).bind(branch).bind(source).bind(error).execute(pool).await {
+        tracing::warn!(%db_error, "cannot persist link sync failure");
     }
 }
 
@@ -881,7 +936,7 @@ async fn update_root_links(
         return Ok(());
     }
     let current: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT link_path,source_branch_id,source_revision FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2 AND source_resource_id=$3 ORDER BY link_path",
+        "SELECT dependency.link_path,source_branch_id,source_revision FROM repository_link_dependencies dependency LEFT JOIN repository_link_policies policy ON policy.root_resource_id=dependency.root_resource_id AND policy.root_branch=dependency.root_branch AND policy.link_path=dependency.link_path WHERE dependency.root_resource_id=$1 AND dependency.root_branch=$2 AND source_resource_id=$3 AND COALESCE(policy.auto_update,true) ORDER BY dependency.link_path",
     )
     .bind(&root.root_resource_id)
     .bind(&root.root_branch)
@@ -995,6 +1050,8 @@ async fn update_root_links(
     };
 
     for (path, branch, revision) in applied {
+        sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_success_at) VALUES($1,$2,$3,now()) ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET last_success_at=now(),last_error=NULL,updated_at=now()")
+            .bind(&root.root_resource_id).bind(&root.root_branch).bind(&path).execute(&mut *tx).await?;
         let update = sqlx::query("UPDATE repository_link_dependencies SET source_revision=$5, root_revision=COALESCE($6,root_revision), updated_at=now() WHERE root_resource_id=$1 AND root_branch=$2 AND link_path=$3 AND source_resource_id=$4 AND source_branch_id=$7")
             .bind(&root.root_resource_id)
             .bind(&root.root_branch)
@@ -1243,6 +1300,114 @@ pub async fn enqueue(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[sqlx::test]
+    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+    async fn manual_link_policy_survives_reindex_and_blocks_automatic_updates(pool: PgPool) {
+        let owner = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO users(id,google_sub,email) VALUES($1,'link-owner','link@example.test')",
+        )
+        .bind(owner)
+        .execute(&pool)
+        .await
+        .unwrap();
+        for (resource, name) in [("urc-root", "root"), ("urc-source", "source")] {
+            sqlx::query(
+                "INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES($1,$2,$3)",
+            )
+            .bind(resource)
+            .bind(name)
+            .bind(owner.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let mut tx = pool.begin().await.unwrap();
+        super::super::links::save_policy(&mut tx, "urc-root", "release", "Test", false)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        // Re-indexing does not reset user policy, including on non-main branches.
+        for _ in 0..2 {
+            sqlx::query("DELETE FROM repository_link_snapshots WHERE root_resource_id='urc-root'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES('urc-root','release',$1)").bind("a".repeat(64)).execute(&pool).await.unwrap();
+            sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES('urc-root','release',$1,'Test','urc-source','main-id',$1,true)").bind("a".repeat(64)).execute(&pool).await.unwrap();
+        }
+        let tokens = TokenIssuer::from_files(
+            "tests/fixtures/test-private.pem",
+            "tests/fixtures/test-jwks.json",
+            "http://localhost:8080",
+            "zenogrid.co.kr",
+        )
+        .unwrap();
+        let service = RepositoryService::new(
+            "/nonexistent/link-test-lore",
+            "lores://localhost:41337",
+            "lores://localhost:41337",
+        )
+        .unwrap();
+        let source = WatchedRepository {
+            resource_id: "urc-source".into(),
+            name: "source".into(),
+            owner_subject: owner.to_string(),
+            enabled_branches: vec![],
+            storage_backend: "dynamodb_s3".into(),
+        };
+        let requested = [(
+            PendingLinkUpdate {
+                root_resource_id: "urc-root".into(),
+                root_name: "root".into(),
+                root_owner_subject: owner.to_string(),
+                root_storage_backend: "dynamodb_s3".into(),
+                root_branch: "release".into(),
+                source_branch_id: "main-id".into(),
+                source_revision: "a".repeat(64),
+            },
+            "b".repeat(64),
+        )];
+        // If manual mode is ignored, this would try to execute the nonexistent binary.
+        update_root_links(
+            &pool,
+            "/nonexistent/link-test-lore",
+            &service,
+            &tokens,
+            &source,
+            &requested,
+        )
+        .await
+        .unwrap();
+        record_link_failure(&pool, "urc-root", "release", "urc-source", "test failure").await;
+        let row: (bool,Option<String>) = sqlx::query_as("SELECT auto_update,last_error FROM repository_link_policies WHERE root_resource_id='urc-root'").fetch_one(&pool).await.unwrap();
+        assert_eq!(row, (false, None));
+        sqlx::query("UPDATE repository_link_policies SET auto_update=true")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            update_root_links(
+                &pool,
+                "/nonexistent/link-test-lore",
+                &service,
+                &tokens,
+                &source,
+                &requested
+            )
+            .await
+            .is_err()
+        );
+        record_link_failure(&pool, "urc-root", "release", "urc-source", "test failure").await;
+        let error: Option<String> = sqlx::query_scalar(
+            "SELECT last_error FROM repository_link_policies WHERE root_resource_id='urc-root'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(error.as_deref(), Some("test failure"));
+    }
 
     #[test]
     fn parses_repository_link_events_and_link_updates() {

@@ -26,27 +26,38 @@ Get-Content $environmentFile | ForEach-Object {
     }
 }
 
+$retryIntervalSeconds = 60
+if ($env:LOREHUB_RETRY_INTERVAL_SECONDS) {
+    $parsedRetryInterval = 0
+    if (-not [int]::TryParse($env:LOREHUB_RETRY_INTERVAL_SECONDS, [ref]$parsedRetryInterval) -or $parsedRetryInterval -lt 5) {
+        throw "LOREHUB_RETRY_INTERVAL_SECONDS must be an integer of at least 5 seconds"
+    }
+    $retryIntervalSeconds = $parsedRetryInterval
+}
+
 while ($true) {
     & $binary worker --work-dir (Join-Path $dataDirectory "work")
     $runnerExitCode = $LASTEXITCODE
-    if ($runnerExitCode -ne 75) {
-        exit $runnerExitCode
+    if ($runnerExitCode -eq 75) {
+        $stagedBinary = "$binary.update"
+        if (-not (Test-Path $stagedBinary)) {
+            throw "Runner requested an update restart, but the staged binary is missing: $stagedBinary"
+        }
+        if (Test-Path $previousBinary) {
+            Remove-Item -Force $previousBinary
+        }
+        Move-Item $binary $previousBinary
+        try {
+            Move-Item $stagedBinary $binary
+        }
+        catch {
+            Move-Item $previousBinary $binary
+            throw
+        }
+        Remove-Item -Force $previousBinary
+        continue
     }
 
-    $stagedBinary = "$binary.update"
-    if (-not (Test-Path $stagedBinary)) {
-        throw "Runner requested an update restart, but the staged binary is missing: $stagedBinary"
-    }
-    if (Test-Path $previousBinary) {
-        Remove-Item -Force $previousBinary
-    }
-    Move-Item $binary $previousBinary
-    try {
-        Move-Item $stagedBinary $binary
-    }
-    catch {
-        Move-Item $previousBinary $binary
-        throw
-    }
-    Remove-Item -Force $previousBinary
+    Write-Warning "LoreHub Runner exited with code $runnerExitCode. Retrying in $retryIntervalSeconds seconds."
+    Start-Sleep -Seconds $retryIntervalSeconds
 }

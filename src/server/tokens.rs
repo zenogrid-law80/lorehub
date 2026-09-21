@@ -12,7 +12,7 @@ use url::Url;
 
 use super::auth::User;
 
-const USER_TOKEN_SECONDS: u64 = 60 * 60;
+const USER_TOKEN_SECONDS: u64 = 30 * 24 * 60 * 60;
 const WORKER_TOKEN_SECONDS: u64 = 5 * 60;
 
 #[derive(Clone)]
@@ -297,6 +297,12 @@ impl TokenIssuer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_tokens_expire_after_thirty_days_and_worker_tokens_remain_short_lived() {
+        assert_eq!(USER_TOKEN_SECONDS, 30 * 24 * 60 * 60);
+        assert_eq!(WORKER_TOKEN_SECONDS, 5 * 60);
+    }
 
     #[test]
     fn issuer_requires_https_except_on_loopback() {

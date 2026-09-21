@@ -395,7 +395,7 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
 .repository-link-list-header { border-top: 0; }
 .repository-link-list { display: grid; }
 .repository-link-message { display: block; padding: 44px 22px; color: var(--muted); font-size: 11px; text-align: center; }
-.repository-link-card { display: grid; grid-template-columns: minmax(220px, 1.3fr) minmax(130px, .7fr) minmax(130px, .65fr) auto auto; align-items: center; gap: 18px; min-height: 92px; padding: 17px 22px; border-bottom: 1px solid var(--line); }
+.repository-link-card { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(125px, .45fr) minmax(115px, .4fr) auto; align-items: center; gap: 14px; min-height: 92px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
 .repository-link-card:last-child { border-bottom: 0; }
 .repository-link-card:hover { background: #fcfbfd; }
 .repository-link-identity, .repository-link-detail { min-width: 0; display: grid; gap: 6px; }
@@ -407,7 +407,28 @@ details[open] > summary .graph-tree-marker { transform: rotate(90deg); }
 .repository-link-badge { display: inline-flex; align-items: center; width: fit-content; padding: 5px 8px; border-radius: 999px; font-size: 8px; font-weight: 780; white-space: nowrap; }
 .repository-link-badge--tracking { color: var(--green); background: var(--green-soft); }
 .repository-link-badge--fixed { color: var(--amber); background: var(--amber-soft); }
-.repository-link-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.repository-link-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.repository-link-target { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; line-height: 1.6; }
+.repository-link-technical { grid-column: 1 / -1; min-width: 0; color: var(--muted); font-size: 11px; }
+.repository-link-technical summary, .repository-link-advanced summary { cursor: pointer; padding: 4px 0; }
+.repository-link-technical .repository-link-source { display: block; white-space: normal; overflow-wrap: anywhere; line-height: 1.8; font-size: 11px; }
+.repository-link-inline-error { display: block; grid-column: 1 / -1; padding: 10px 12px; border-radius: 7px; color: var(--red); background: var(--red-soft); font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.repository-link-badge--current { color: var(--green); background: var(--green-soft); }
+.repository-link-badge--outdated { color: var(--amber); background: var(--amber-soft); }
+.repository-link-badge--failed { color: var(--red); background: var(--red-soft); }
+.repository-link-badge--unknown { color: var(--muted); background: var(--purple-soft); }
+.repository-link-history { margin-top: 22px; }
+.repository-link-operation { display: grid; gap: 8px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.repository-link-operation > button { justify-self: start; }
+.repository-link-steps { display: flex; flex-wrap: wrap; gap: 8px 24px; list-style: decimal inside; padding: 0; margin: 8px 0; color: var(--muted); font-size: 12px; }
+.repository-link-steps .is-complete { color: var(--green); }
+.repository-link-steps .is-active { color: var(--purple); font-weight: 750; }
+.repository-link-group { min-width: 0; padding: 12px 16px 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; }
+.repository-link-group legend { padding: 0 7px; color: var(--purple); font-size: 12px; font-weight: 750; }
+.repository-link-preview { padding: 12px; border-radius: 8px; color: var(--ink); background: var(--purple-soft); font-size: 12px; overflow-wrap: anywhere; line-height: 1.6; }
+.repository-link-advanced { color: var(--muted); font-size: 12px; line-height: 1.6; }
+#repository-link-progress { color: var(--purple); font-size: 12px; }
+#new-repository-link-dialog { max-height: 90vh; overflow-y: auto; }
 .repository-link-checkbox { display: flex; align-items: center; gap: 9px; margin-top: 16px; color: var(--ink); font-size: 11px; font-weight: 700; cursor: pointer; }
 .repository-link-checkbox input { width: 16px; height: 16px; accent-color: var(--purple); }
 .repository-link-form-error { display: grid; gap: 4px; margin-top: 16px; padding: 11px 13px; border: 1px solid #efc8cc; border-radius: 8px; color: #842b34; background: var(--red-soft); font-size: 10px; line-height: 1.5; }

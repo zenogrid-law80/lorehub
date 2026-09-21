@@ -92,7 +92,23 @@ pub fn router_with_releases(
         )
         .route(
             "/api/v1/repositories/{name}/links",
-            get(repository_links).post(add_repository_link),
+            get(repository_links).post(super::links::create),
+        )
+        .route(
+            "/api/v1/repository-links/summary",
+            get(super::links::summary),
+        )
+        .route(
+            "/api/v1/repositories/{name}/link-operations",
+            get(super::links::operations),
+        )
+        .route(
+            "/api/v1/repositories/{name}/link-operations/{id}/retry",
+            post(super::links::retry),
+        )
+        .route(
+            "/api/v1/repositories/{name}/links/policy",
+            post(super::links::policy),
         )
         .route(
             "/api/v1/repositories/{name}/links/update",
@@ -633,7 +649,10 @@ fn token_issuer(state: &AppState) -> Result<&TokenIssuer, ApiError> {
     })
 }
 
-async fn user_access_token(state: &AppState, session: &AuthSession) -> Result<String, ApiError> {
+pub(super) async fn user_access_token(
+    state: &AppState,
+    session: &AuthSession,
+) -> Result<String, ApiError> {
     let resources =
         super::repository_access::resource_ids(&state.pool, &session.user.id.to_string()).await?;
     token_issuer(state)?
@@ -760,7 +779,7 @@ async fn repository_links(
     Path(name): Path<String>,
     Query(query): Query<RepositoryLinksQuery>,
 ) -> Result<Response, ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
+    let resource_id = require_repository_access(&state.pool, &name, &session).await?;
     let access_token = user_access_token(&state, &session).await?;
     let backend = state
         .repositories
@@ -772,19 +791,27 @@ async fn repository_links(
         .await?;
     let mut headers = HeaderMap::new();
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    let links =
+        super::links::describe(&state, &session, &resource_id, links, &access_token).await?;
     Ok((headers, Json(links)).into_response())
 }
 
-#[derive(Deserialize)]
-struct AddRepositoryLink {
-    branch: String,
-    expected_revision: String,
-    path: String,
-    source_repository: String,
-    source_path: String,
-    source_branch: String,
+#[derive(Clone, Deserialize, Serialize, PartialEq)]
+pub(super) struct AddRepositoryLink {
+    pub branch: String,
+    pub expected_revision: String,
+    pub path: String,
+    pub source_repository: String,
+    pub source_path: String,
+    pub source_branch: String,
     #[serde(default)]
-    disable_branching: bool,
+    pub disable_branching: bool,
+    #[serde(default = "super::links::enabled")]
+    pub create_source_directory: bool,
+    #[serde(default = "super::links::enabled")]
+    pub auto_update: bool,
+    #[serde(default = "Uuid::new_v4")]
+    pub operation_id: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -800,26 +827,28 @@ struct RepositoryLinkChange {
 }
 
 #[derive(Serialize)]
-struct RepositoryLinkAddition {
-    revision: String,
-    source_path_created: bool,
+pub(super) struct RepositoryLinkAddition {
+    pub revision: String,
+    pub source_path_created: bool,
 }
 
-async fn add_repository_link(
-    State(state): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path(name): Path<String>,
-    Json(input): Json<AddRepositoryLink>,
-) -> Result<Json<RepositoryLinkAddition>, ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
-    require_repository_access(&state.pool, &input.source_repository, &session).await?;
+pub(super) async fn add_repository_link(
+    state: &AppState,
+    session: &AuthSession,
+    name: String,
+    input: AddRepositoryLink,
+    source_ready: bool,
+    retry: bool,
+) -> Result<RepositoryLinkAddition, ApiError> {
+    require_repository_access(&state.pool, &name, session).await?;
+    require_repository_access(&state.pool, &input.source_repository, session).await?;
     if name.eq_ignore_ascii_case(&input.source_repository) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "a repository cannot link to itself".into(),
         ));
     }
-    let access_token = user_access_token(&state, &session).await?;
+    let access_token = user_access_token(state, session).await?;
     let repositories = state.repositories.list(&access_token).await?;
     let root_repository = repositories
         .iter()
@@ -848,16 +877,68 @@ async fn add_repository_link(
     let root_resource_id = format!("urc-{}", root_resource_id.to_ascii_lowercase());
     let mut link_tx = state.pool.begin().await?;
     triggers::acquire_link_branch_lock(&mut link_tx, &root_resource_id, &input.branch).await?;
+    let existing = state
+        .repositories
+        .links_on(&name, &input.branch, root_backend, &access_token)
+        .await?;
+    if let Some(link) = existing.links.iter().find(|link| link.path == input.path) {
+        let source_branch = state
+            .repositories
+            .branches_on(&input.source_repository, source_backend, &access_token)
+            .await?;
+        if source_ready
+            && link.source_repository_id.trim_start_matches("urc-")
+                == source_repository.id.trim_start_matches("urc-")
+            && link.source_path == input.source_path
+            && source_branch.iter().any(|branch| {
+                branch.name == input.source_branch && branch.id == link.source_branch_id
+            })
+        {
+            super::links::save_policy(
+                &mut link_tx,
+                &root_resource_id,
+                &input.branch,
+                &input.path,
+                input.auto_update,
+            )
+            .await?;
+            link_tx.commit().await?;
+            return Ok(RepositoryLinkAddition {
+                revision: existing.revision,
+                source_path_created: false,
+            });
+        }
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "target path already has a link; inspect it before retrying".into(),
+        ));
+    }
+    if !retry && existing.revision != input.expected_revision {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "root branch changed; refresh before creating the link".into(),
+        ));
+    }
+    super::links::stage(&state.pool, input.operation_id, "source", false, false).await?;
     let source_path_created = state
         .repositories
-        .ensure_source_directory_on(
+        .prepare_source_directory_on(
             &input.source_repository,
             &input.source_branch,
             &input.source_path,
             source_backend,
             &access_token,
+            input.create_source_directory && !source_ready,
         )
         .await?;
+    super::links::stage(
+        &state.pool,
+        input.operation_id,
+        "root",
+        true,
+        source_path_created,
+    )
+    .await?;
     let source_branch = state
         .repositories
         .branches_on(&input.source_repository, source_backend, &access_token)
@@ -877,7 +958,7 @@ async fn add_repository_link(
     // interprets it as a revision, producing `revision not found: main`. Pin the full source
     // revision instead. Lore still records the source branch ID discovered from the repository,
     // so automatic updates can continue following that branch.
-    let mut expected_revision = input.expected_revision.clone();
+    let mut expected_revision = existing.revision;
     let mut stale_revision_retries = 0;
     let revision = loop {
         match state
@@ -932,11 +1013,19 @@ async fn add_repository_link(
             }
         }
     };
+    super::links::save_policy(
+        &mut link_tx,
+        &root_resource_id,
+        &input.branch,
+        &input.path,
+        input.auto_update,
+    )
+    .await?;
     link_tx.commit().await?;
-    Ok(Json(RepositoryLinkAddition {
+    Ok(RepositoryLinkAddition {
         revision,
         source_path_created,
-    }))
+    })
 }
 
 async fn update_repository_link(
@@ -945,7 +1034,9 @@ async fn update_repository_link(
     Path(name): Path<String>,
     Json(input): Json<ChangeRepositoryLink>,
 ) -> Result<Json<RepositoryLinkChange>, ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
+    let resource = require_repository_access(&state.pool, &name, &session).await?;
+    let mut tx = state.pool.begin().await?;
+    super::triggers::acquire_link_branch_lock(&mut tx, &resource, &input.branch).await?;
     let access_token = user_access_token(&state, &session).await?;
     let backend = state
         .repositories
@@ -961,7 +1052,19 @@ async fn update_repository_link(
             backend,
             &access_token,
         )
-        .await?;
+        .await;
+    let revision = match revision {
+        Ok(revision) => revision,
+        Err(error) => {
+            sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_error) VALUES($1,$2,$3,$4) ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET last_error=$4,updated_at=now()")
+                .bind(&resource).bind(&input.branch).bind(&input.path).bind(&error.message).execute(&mut *tx).await?;
+            tx.commit().await?;
+            return Err(error.into());
+        }
+    };
+    sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_success_at) VALUES($1,$2,$3,now()) ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET last_success_at=now(),last_error=NULL,updated_at=now()")
+        .bind(&resource).bind(&input.branch).bind(&input.path).execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(RepositoryLinkChange { revision }))
 }
 
@@ -971,7 +1074,9 @@ async fn remove_repository_link(
     Path(name): Path<String>,
     Json(input): Json<ChangeRepositoryLink>,
 ) -> Result<Json<RepositoryLinkChange>, ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
+    let resource = require_repository_access(&state.pool, &name, &session).await?;
+    let mut tx = state.pool.begin().await?;
+    super::triggers::acquire_link_branch_lock(&mut tx, &resource, &input.branch).await?;
     let access_token = user_access_token(&state, &session).await?;
     let backend = state
         .repositories
@@ -988,6 +1093,9 @@ async fn remove_repository_link(
             &access_token,
         )
         .await?;
+    sqlx::query("DELETE FROM repository_link_policies WHERE root_resource_id=$1 AND root_branch=$2 AND link_path=$3")
+        .bind(&resource).bind(&input.branch).bind(&input.path).execute(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(RepositoryLinkChange { revision }))
 }
 
@@ -1324,7 +1432,7 @@ async fn update_repository_pipeline_branches(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn require_repository_access(
+pub(super) async fn require_repository_access(
     pool: &PgPool,
     repository_name: &str,
     session: &AuthSession,

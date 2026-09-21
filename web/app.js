@@ -197,6 +197,34 @@ function tc(key, count, values = {}) {
   return t(resolved, { count, ...values });
 }
 
+const LINK_LABELS = {
+  "Source changes flow into Root. Manage sync policies and recover unfinished links.": ["Source 변경을 Root에 반영합니다. 동기화 정책과 미완료 링크를 관리하세요.", "将 Source 更改同步到 Root，管理同步策略并恢复未完成的链接。"],
+  "Root repository": ["Root 저장소", "Root 仓库"], "Root branch": ["Root 브랜치", "Root 分支"],
+  "Source · read from": ["Source · 가져올 원본", "Source · 读取来源"], "Root · link into": ["Root · 연결할 대상", "Root · 链接目标"],
+  "Link creation history": ["링크 생성 이력", "链接创建历史"],
+  "Source commits are preserved when Root creation fails. Retry to finish the link.": ["Root 연결 실패 시 Source commit은 유지됩니다. 재시도로 연결을 완료하세요.", "Root 创建失败时保留 Source 提交。重试以完成链接。"],
+  "Create missing Source folder, commit and push": ["없는 Source 폴더를 생성하고 commit · push", "创建缺失的 Source 文件夹并提交、推送"],
+  "Sync policy": ["동기화 정책", "同步策略"], "Automatic sync": ["자동 동기화", "自动同步"], "Manual sync": ["수동 동기화", "手动同步"],
+  "Automatic sync commits and pushes Source updates to this Root branch.": ["자동 동기화는 Source 변경을 이 Root 브랜치에 commit · push합니다.", "自动同步会将 Source 更新提交并推送到此 Root 分支。"],
+  "Advanced Lore options": ["고급 Lore 옵션", "高级 Lore 选项"],
+  "This controls Lore branching, not automatic synchronization.": ["Lore의 브랜치 생성 옵션이며 자동 동기화 설정과는 별개입니다.", "此选项控制 Lore 分支创建，与自动同步无关。"],
+  "Up to date": ["최신", "已是最新"], "Update available": ["업데이트 있음", "有可用更新"], "Sync failed": ["동기화 실패", "同步失败"],
+  "Source unavailable": ["Source 확인 불가", "无法访问 Source"], "Last successful sync": ["마지막 성공", "上次成功同步"],
+  "No sync recorded": ["기록 없음", "暂无记录"], "Technical details": ["기술 정보", "技术详情"], "Latest Source revision": ["Source 최신 revision", "Source 最新 revision"],
+  "Enable automatic sync": ["자동 동기화 켜기", "启用自动同步"], "Switch to manual sync": ["수동 동기화로 전환", "切换为手动同步"],
+  "Sync policy saved": ["동기화 정책을 저장했습니다.", "同步策略已保存"], "No creation history": ["생성 이력이 없습니다.", "暂无创建历史"],
+  "Validate": ["검증", "验证"], "Prepare Source": ["Source 준비", "准备 Source"], "Create Root link": ["Root 링크 생성", "创建 Root 链接"], "Complete": ["완료", "完成"],
+  "In progress": ["진행 중", "进行中"], "Creation failed": ["생성 실패", "创建失败"], "Source ready · Root incomplete": ["Source 준비 완료 · Root 미완료", "Source 已就绪 · Root 未完成"],
+  "Retry Root link": ["Root 링크 재시도", "重试 Root 链接"], "Retry creation": ["생성 재시도", "重试创建"],
+  "Retry checks the latest Root revision and preserves existing Source commits. Continue?": ["최신 Root revision을 확인하고 Source commit을 유지한 채 재시도합니다. 계속할까요?", "将检查最新 Root revision 并保留现有 Source 提交后重试。是否继续？"],
+  "Request interrupted. Refresh the creation history before retrying.": ["요청이 중단되었습니다. 생성 이력을 새로고침하여 상태를 확인하세요.", "请求中断。请刷新创建历史后再重试。"],
+  "Source folder committed and pushed": ["Source 폴더 commit · push 완료", "Source 文件夹已提交并推送"],
+  "Source verified": ["Source 확인 완료", "Source 已验证"], "Refresh to check progress": ["새로고침으로 진행 상황 확인", "刷新以查看进度"]
+};
+for (const [key, [ko, zh]] of Object.entries(LINK_LABELS)) {
+  I18N.en[key] = key; I18N.ko[key] = ko; I18N["zh-CN"][key] = zh;
+}
+
 const state = {
   locale: initialLocale(),
   theme: initialTheme(),
@@ -235,6 +263,10 @@ const state = {
   repositoryLinksError: "",
   repositoryLinksRequest: 0,
   repositoryLinksBusy: false,
+  repositoryLinkOperations: [],
+  repositoryLinkOperationsError: "",
+  repositoryLinkOperationsRequest: 0,
+  repositoryLinkDraft: null,
   runnerToRemove: null,
   filter: "all",
   pipelineRepositoryFilter: "",
@@ -284,6 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "new-repository-link-dialog", "repository-link-form", "repository-link-root-name",
     "repository-link-path", "repository-link-source-repository", "repository-link-source-branch",
     "repository-link-source-path", "repository-link-disable-branching", "repository-link-form-error", "create-repository-link-button",
+    "repository-link-create-source", "repository-link-auto-update", "repository-link-preview", "repository-link-progress", "repository-link-operations",
     "create-lore-token-button", "lore-token-dialog", "lore-access-token", "copy-lore-token-button",
     "runners-page", "runner-table-body", "runner-empty-state", "runner-count", "nav-runner-count",
     "runner-stat-total", "runner-stat-online", "runner-stat-offline", "runner-last-updated",
@@ -370,6 +403,7 @@ function applyLocale(rerender) {
   document.title = t("document.title");
   for (const select of document.querySelectorAll(".language-select")) select.value = state.locale;
   for (const option of elements["theme-select"].options) option.textContent = t(`theme.${option.value}`);
+  for (const option of elements["repository-link-auto-update"].options) option.textContent = t(option.value === "true" ? "Automatic sync" : "Manual sync");
   for (const entry of localizedTextNodes) entry.node.nodeValue = `${entry.leading}${t(entry.key)}${entry.trailing}`;
   for (const entry of localizedAttributes) entry.element.setAttribute(entry.attribute, t(entry.key));
   managementLocale();
@@ -418,6 +452,8 @@ function bindEvents() {
   elements["repository-link-branch"].addEventListener("change", () => void loadRepositoryLinks());
   elements["repository-link-source-repository"].addEventListener("change", () => void loadRepositoryLinkSourceBranches());
   elements["repository-link-list"].addEventListener("click", repositoryLinkAction);
+  elements["repository-link-operations"].addEventListener("click", retryRepositoryLink);
+  elements["repository-link-form"].addEventListener("input", renderRepositoryLinkPreview);
   window.addEventListener("resize", () => {
     if (state.section !== "ci-settings" || state.repositoryConfigMode !== "visual") return;
     const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
@@ -1233,16 +1269,20 @@ function openRepositoryLinks(repository) {
 }
 
 async function loadRepositoryLinksPage(preferredName, notify = false) {
+  const saved = repositoryLinkPreference();
+  preferredName ||= saved?.name;
   const previousName = state.repositoryLinksName;
   const previousBranch = state.repositoryLinksBranch;
   const request = ++state.repositoryLinksRequest;
   state.repositoryLinksStatus = "loading";
   state.repositoryLinksError = "";
+  state.repositoryLinkOperations = [];
+  state.repositoryLinkOperationsError = "";
   renderRepositoryLinks();
   await loadRepositories(false);
   if (state.section !== "repository-links" || request !== state.repositoryLinksRequest) return;
 
-  const candidates = await prioritizeRepositoryLinkRepositories(Boolean(preferredName));
+  const candidates = await prioritizeRepositoryLinkRepositories();
   if (state.section !== "repository-links" || request !== state.repositoryLinksRequest) return;
 
   const repositorySelect = elements["repository-link-repository"];
@@ -1278,6 +1318,7 @@ async function loadRepositoryLinksPage(preferredName, notify = false) {
     }
     const preferredBranch = previousName === repository.name && branches.some(item => item.name === previousBranch)
       ? previousBranch
+      : saved?.name === repository.name && branches.some(item => item.name === saved.branch) ? saved.branch
       : candidate.hasLinks && branches.some(item => item.name === candidate.branch) ? candidate.branch
       : branches.some(item => item.name === "main") ? "main" : branches[0].name;
     branchSelect.value = preferredBranch;
@@ -1297,34 +1338,27 @@ async function loadRepositoryLinksPage(preferredName, notify = false) {
   }
 }
 
-async function prioritizeRepositoryLinkRepositories(keepCurrentOrder) {
-  if (keepCurrentOrder) return state.repositories.map(repository => ({ repository }));
-  const candidates = await Promise.all(state.repositories.map(async (repository, index) => {
-    try {
-      const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
-      const defaultBranch = branches.find(item => item.name === "main") ?? branches[0];
-      if (!defaultBranch) return { repository, branches, branch: null, links: null, hasLinks: false, index };
-      const orderedBranches = [defaultBranch, ...branches.filter(branch => branch !== defaultBranch)];
-      let defaultLinks = null;
-      for (const branch of orderedBranches) {
-        const links = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/links?branch=${encodeURIComponent(branch.name)}`);
-        if (branch === defaultBranch) defaultLinks = links;
-        if ((links.links ?? []).length > 0) {
-          return { repository, branches, branch: branch.name, links, hasLinks: true, index };
-        }
-      }
-      return { repository, branches, branch: defaultBranch.name, links: defaultLinks, hasLinks: false, index };
-    } catch (_) {
-      return { repository, branches: null, branch: null, links: null, hasLinks: false, index };
-    }
-  }));
-  return candidates.sort((left, right) => Number(right.hasLinks) - Number(left.hasLinks) || left.index - right.index);
+function repositoryLinkPreference(value) {
+  const key = `lorehub_links_${state.user?.id ?? "anonymous"}`;
+  try {
+    if (value) window.localStorage.setItem(key, JSON.stringify(value));
+    return JSON.parse(window.localStorage.getItem(key) || "null");
+  } catch (_) { return null; }
 }
 
+async function prioritizeRepositoryLinkRepositories() {
+  let summary = [];
+  try { summary = await api("/api/v1/repository-links/summary"); } catch (_) { /* Keep the page usable if the index is unavailable. */ }
+  return state.repositories.map((repository, index) => {
+    const branches = summary.filter(row => repositoryIdentifier(row.resource_id) === repositoryIdentifier(repository.id) && row.count > 0);
+    return { repository, index, hasLinks: branches.length > 0, branch: (branches.find(row => row.branch === "main") ?? branches[0])?.branch };
+  }).sort((left, right) => Number(right.hasLinks) - Number(left.hasLinks) || left.index - right.index);
+}
 function applyRepositoryLinks(result) {
   state.repositoryLinksRevision = result.revision;
   state.repositoryLinks = result.links ?? [];
   state.repositoryLinksStatus = "ready";
+  repositoryLinkPreference({ name: state.repositoryLinksName, branch: state.repositoryLinksBranch });
   state.updatedAt.repositoryLinks = new Date();
   renderRepositoryLinks();
   renderUpdatedLabels();
@@ -1339,10 +1373,15 @@ async function loadRepositoryLinks() {
   state.repositoryLinksError = "";
   state.repositoryLinksRevision = null;
   state.repositoryLinks = [];
+  state.repositoryLinkOperations = [];
+  state.repositoryLinkOperationsError = "";
   const request = ++state.repositoryLinksRequest;
   renderRepositoryLinks();
   try {
-    const result = await api(`/api/v1/repositories/${encodeURIComponent(name)}/links?branch=${encodeURIComponent(branch)}`);
+    const [result] = await Promise.all([
+      api(`/api/v1/repositories/${encodeURIComponent(name)}/links?branch=${encodeURIComponent(branch)}`),
+      loadRepositoryLinkOperations(name, branch),
+    ]);
     if (request !== state.repositoryLinksRequest || state.repositoryLinksName !== name || elements["repository-link-branch"].value !== branch) return;
     applyRepositoryLinks(result);
   } catch (error) {
@@ -1359,6 +1398,7 @@ function repositoryIdentifier(value) {
 }
 
 function renderRepositoryLinks() {
+  renderRepositoryLinkOperations();
   const ready = state.repositoryLinksStatus === "ready";
   const list = elements["repository-link-list"];
   elements["repository-link-repository"].disabled = state.repositoryLinksBusy || state.repositoryLinksStatus === "loading" || state.repositoryLinksStatus === "no-repositories";
@@ -1387,25 +1427,37 @@ function renderRepositoryLinks() {
     card.className = "repository-link-card";
     card.dataset.path = link.path;
     const identity = document.createElement("div"); identity.className = "repository-link-identity";
-    identity.append(textNode(link.path, "repository-link-path"), textNode(`${source?.name ?? t("dynamic.sourceUnavailable", { id: link.source_repository_id.slice(0, 12) })}:${link.source_path}`, "repository-link-source"));
+    identity.append(textNode(`${source?.name ?? t("Source unavailable")} / ${link.source_branch_name ?? "?"} / ${link.source_path}`, "repository-link-path"));
+    identity.append(textNode(`→ ${state.repositoryLinksName} / ${state.repositoryLinksBranch} / ${link.path}`, "repository-link-target"));
     const branch = document.createElement("div"); branch.className = "repository-link-detail";
-    branch.append(textNode(t("Source branch"), "repository-link-detail-label"), textNode(link.source_branch_id, "repository-link-detail-value"));
+    branch.append(textNode(t("Last successful sync"), "repository-link-detail-label"), textNode(link.last_success_at ? new Date(link.last_success_at).toLocaleString(state.locale) : t("No sync recorded"), "repository-link-detail-value"));
     const revision = document.createElement("div"); revision.className = "repository-link-detail";
-    revision.append(textNode(t("dynamic.pinnedRevision"), "repository-link-detail-label"), textNode(link.source_revision.slice(0, 12), "repository-link-detail-value repository-link-monospace"));
-    const mode = textNode(t(link.tracking ? "dynamic.tracking" : "dynamic.fixed"), `repository-link-badge repository-link-badge--${link.tracking ? "tracking" : "fixed"}`);
+    revision.append(textNode(t("Sync policy"), "repository-link-detail-label"), textNode(t(link.auto_update ? "Automatic sync" : "Manual sync"), "repository-link-detail-value"));
+    const status = ["current", "outdated", "failed", "unknown"].includes(link.status) ? link.status : "unknown";
+    const labels = { current: "Up to date", outdated: "Update available", failed: "Sync failed", unknown: "Source unavailable" };
+    const mode = textNode(t(labels[status]), `repository-link-badge repository-link-badge--${status}`);
     const actions = document.createElement("div"); actions.className = "repository-link-actions";
-    actions.append(repositoryButton("update", t("dynamic.updateLink")), repositoryButton("remove", t("dynamic.removeLink"), "button--danger"));
+    actions.append(repositoryButton("update", t("dynamic.updateLink")), repositoryButton("policy", t(link.auto_update ? "Switch to manual sync" : "Enable automatic sync")), repositoryButton("remove", t("dynamic.removeLink"), "button--danger"));
     for (const button of actions.querySelectorAll("button")) button.disabled = state.repositoryLinksBusy;
     card.append(identity, branch, revision, mode, actions);
+    const details = document.createElement("details"); details.className = "repository-link-technical";
+    const summary = document.createElement("summary"); summary.textContent = t("Technical details"); details.append(summary);
+    for (const [label, value] of [["Source repository", link.source_repository_id], ["Source branch", link.source_branch_id], ["dynamic.pinnedRevision", link.source_revision], ["Latest Source revision", link.latest_revision ?? "—"], ["Lore", t(link.tracking ? "dynamic.tracking" : "dynamic.fixed")]]) {
+      details.append(textNode(`${t(label)}: ${value}`, "repository-link-source"));
+    }
+    card.append(details);
+    if (link.last_error) card.append(textNode(link.last_error, "repository-link-inline-error"));
     list.append(card);
   }
 }
 
 function openNewRepositoryLink() {
-  if (state.repositoryLinksStatus !== "ready" || !state.repositoryLinksRevision) return;
+  if (state.repositoryLinksBusy || state.repositoryLinksStatus !== "ready" || !state.repositoryLinksRevision) return;
   const sources = state.repositories.filter(repository => repository.name !== state.repositoryLinksName);
   elements["repository-link-form"].reset();
+  state.repositoryLinkDraft = null;
   setRepositoryLinkFormError();
+  elements["repository-link-progress"].hidden = true;
   elements["repository-link-root-name"].textContent = `${state.repositoryLinksName} / ${state.repositoryLinksBranch}`;
   elements["repository-link-source-repository"].replaceChildren();
   for (const repository of sources) elements["repository-link-source-repository"].add(new Option(repository.name, repository.name));
@@ -1414,6 +1466,7 @@ function openNewRepositoryLink() {
   if (!sources.length) elements["repository-link-source-repository"].add(new Option(t("dynamic.noSourceRepositories"), ""));
   elements["new-repository-link-dialog"].showModal();
   void loadRepositoryLinkSourceBranches();
+  renderRepositoryLinkPreview();
   window.setTimeout(() => elements["repository-link-path"].focus(), 0);
 }
 
@@ -1433,45 +1486,170 @@ async function loadRepositoryLinkSourceBranches() {
       select.disabled = false;
     }
     elements["create-repository-link-button"].disabled = branches.length === 0;
+    renderRepositoryLinkPreview();
   } catch (error) {
     toast(error.message, "error");
   }
 }
 
+function renderRepositoryLinkPreview() {
+  const source = elements["repository-link-source-repository"].value;
+  const branch = elements["repository-link-source-branch"].value;
+  elements["repository-link-preview"].textContent = `${source} / ${branch || "?"} / ${elements["repository-link-source-path"].value || "."} → ${state.repositoryLinksName} / ${state.repositoryLinksBranch} / ${elements["repository-link-path"].value || "…"}`;
+}
+
+async function loadRepositoryLinkOperations(name = state.repositoryLinksName, branch = state.repositoryLinksBranch) {
+  if (!name || !branch) return;
+  const request = ++state.repositoryLinkOperationsRequest;
+  try {
+    const records = await api(`/api/v1/repositories/${encodeURIComponent(name)}/link-operations?branch=${encodeURIComponent(branch)}`);
+    if (request !== state.repositoryLinkOperationsRequest || state.repositoryLinksName !== name || state.repositoryLinksBranch !== branch) return;
+    state.repositoryLinkOperations = records;
+    state.repositoryLinkOperationsError = "";
+  } catch (error) {
+    if (request !== state.repositoryLinkOperationsRequest || state.repositoryLinksName !== name || state.repositoryLinksBranch !== branch) return;
+    state.repositoryLinkOperationsError = error.message;
+  }
+  renderRepositoryLinkOperations();
+}
+
+function renderRepositoryLinkOperations() {
+  const list = elements["repository-link-operations"];
+  if (!list) return;
+  list.replaceChildren();
+  if (state.repositoryLinkOperationsError) list.append(textNode(state.repositoryLinkOperationsError, "repository-link-inline-error"));
+  if (!state.repositoryLinkOperations.length) {
+    list.append(textNode(t(state.repositoryLinksStatus === "loading" ? "dynamic.loading" : "No creation history"), "repository-link-message"));
+    return;
+  }
+  const stages = ["validating", "source", "root", "complete"];
+  const labels = ["Validate", "Prepare Source", "Create Root link", "Complete"];
+  for (const operation of state.repositoryLinkOperations) {
+    let request;
+    try { request = JSON.parse(operation.request); } catch (_) { request = {}; }
+    const card = document.createElement("article"); card.className = "repository-link-operation"; card.dataset.operation = operation.id;
+    card.append(textNode(`${request.source_repository ?? "?"} / ${request.source_path ?? "?"} → ${request.path ?? "?"}`, "repository-link-path"));
+    const status = operation.status === "succeeded" ? "Complete" : operation.status === "partial" ? "Source ready · Root incomplete" : operation.status === "failed" ? "Creation failed" : "In progress";
+    card.append(textNode(`${t(status)} · ${new Date(operation.updated_at).toLocaleString(state.locale)}`, "repository-link-target"));
+    const steps = document.createElement("ol"); steps.className = "repository-link-steps";
+    const active = stages.indexOf(operation.stage);
+    labels.forEach((label, index) => {
+      const step = document.createElement("li");
+      step.textContent = t(label);
+      step.className = index < active || operation.status === "succeeded" ? "is-complete" : index === active ? "is-active" : "";
+      if (index === active && operation.status !== "succeeded") step.setAttribute("aria-current", "step");
+      steps.append(step);
+    });
+    card.append(steps);
+    if (operation.source_ready) card.append(textNode(t(operation.source_path_created ? "Source folder committed and pushed" : "Source verified"), "repository-link-target"));
+    if (operation.error) card.append(textNode(operation.error, "repository-link-inline-error"));
+    const stale = operation.status === "running" && Date.now() - new Date(operation.updated_at).getTime() > 30 * 60 * 1000;
+    if (["failed", "partial"].includes(operation.status) || stale) {
+      const retry = repositoryButton("retry", t(operation.source_ready ? "Retry Root link" : "Retry creation"));
+      retry.disabled = state.repositoryLinksBusy;
+      card.append(retry);
+    } else if (operation.status === "running") {
+      card.append(textNode(t("Refresh to check progress"), "repository-link-target"));
+    }
+    list.append(card);
+  }
+}
+
+// Poll only durable progress, not expensive Lore checkouts, while a request is active.
+function pollRepositoryLinkOperation(name, branch, id) {
+  let polling = false;
+  const timer = window.setInterval(async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      await loadRepositoryLinkOperations(name, branch);
+      const operation = state.repositoryLinkOperations.find(item => item.id === id);
+      if (operation && elements["new-repository-link-dialog"].open) {
+        const labels = { validating: "Validate", source: "Prepare Source", root: "Create Root link", complete: "Complete" };
+        elements["repository-link-progress"].textContent = t(labels[operation.stage] ?? "In progress");
+      }
+    } finally { polling = false; }
+  }, 2000);
+  return () => window.clearInterval(timer);
+}
+
 async function createRepositoryLink(event) {
   event.preventDefault();
+  if (state.repositoryLinksBusy) return;
   setRepositoryLinkFormError();
+  const name = state.repositoryLinksName;
+  const branch = state.repositoryLinksBranch;
+  const input = {
+    branch, expected_revision: state.repositoryLinksRevision,
+    path: elements["repository-link-path"].value.trim(),
+    source_repository: elements["repository-link-source-repository"].value,
+    source_branch: elements["repository-link-source-branch"].value,
+    source_path: elements["repository-link-source-path"].value.trim(),
+    disable_branching: elements["repository-link-disable-branching"].checked,
+    create_source_directory: elements["repository-link-create-source"].checked,
+    auto_update: elements["repository-link-auto-update"].value === "true",
+  };
+  // A lost response must not turn a second submit into a second operation.
+  const signature = JSON.stringify({ name, ...input });
+  const id = state.repositoryLinkDraft?.signature === signature ? state.repositoryLinkDraft.id : crypto.randomUUID();
+  state.repositoryLinkDraft = { signature, id };
+  input.operation_id = id;
+  const controls = [...elements["repository-link-form"].querySelectorAll("input, select, button")];
+  const disabled = controls.map(control => control.disabled);
+  controls.forEach(control => { control.disabled = true; });
+  elements["repository-link-progress"].hidden = false;
+  elements["repository-link-progress"].textContent = t("Validate");
   const button = elements["create-repository-link-button"];
-  button.disabled = true;
   button.querySelector("span:first-child").textContent = t("dynamic.saving");
   button.querySelector(".button-spinner").hidden = false;
   state.repositoryLinksBusy = true;
+  renderRepositoryLinks();
+  const stop = pollRepositoryLinkOperation(name, branch, id);
   try {
-    const result = await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryLinksName)}/links`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({
-        branch: state.repositoryLinksBranch,
-        expected_revision: state.repositoryLinksRevision,
-        path: elements["repository-link-path"].value.trim(),
-        source_repository: elements["repository-link-source-repository"].value,
-        source_branch: elements["repository-link-source-branch"].value,
-        source_path: elements["repository-link-source-path"].value.trim(),
-        disable_branching: elements["repository-link-disable-branching"].checked,
-      }),
+    const result = await api(`/api/v1/repositories/${encodeURIComponent(name)}/links`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify(input),
     });
     elements["new-repository-link-dialog"].close();
-    toast(t(result.source_path_created ? "dynamic.linkAddedWithSourceFolder" : "dynamic.linkAdded"), "success");
-    await loadRepositoryLinks();
+    toast(result.status === "succeeded" ? t(result.source_path_created ? "dynamic.linkAddedWithSourceFolder" : "dynamic.linkAdded") : result.error || t("In progress"), result.status === "succeeded" ? "success" : "error");
+    if (state.repositoryLinksName === name && state.repositoryLinksBranch === branch) await loadRepositoryLinks();
   } catch (error) {
     setRepositoryLinkFormError(error.message);
-    toast(error.message, "error");
+    await loadRepositoryLinkOperations(name, branch);
+    // If accepted by the server, recover via its operation instead of a second create.
+    if (state.repositoryLinkOperations.some(item => item.id === id)) elements["new-repository-link-dialog"].close();
+    toast(error.message || t("Request interrupted. Refresh the creation history before retrying."), "error");
   } finally {
+    stop();
     state.repositoryLinksBusy = false;
-    button.disabled = false;
+    controls.forEach((control, index) => { control.disabled = disabled[index]; });
     button.querySelector("span:first-child").textContent = t("Add link");
     button.querySelector(".button-spinner").hidden = true;
+    elements["repository-link-progress"].hidden = true;
     renderRepositoryLinks();
+  }
+}
+
+async function retryRepositoryLink(event) {
+  const button = event.target.closest('button[data-action="retry"]');
+  const card = event.target.closest("[data-operation]");
+  if (!button || !card || state.repositoryLinksBusy) return;
+  if (!window.confirm(t("Retry checks the latest Root revision and preserves existing Source commits. Continue?"))) return;
+  const name = state.repositoryLinksName;
+  const branch = state.repositoryLinksBranch;
+  state.repositoryLinksBusy = true;
+  renderRepositoryLinks();
+  const stop = pollRepositoryLinkOperation(name, branch, card.dataset.operation);
+  try {
+    const result = await api(`/api/v1/repositories/${encodeURIComponent(name)}/link-operations/${encodeURIComponent(card.dataset.operation)}/retry`, {
+      method: "POST", headers: { "X-CSRF-Token": csrfToken() },
+    });
+    toast(result.status === "succeeded" ? t("dynamic.linkAdded") : result.error || t("In progress"), result.status === "succeeded" ? "success" : "error");
+    if (state.repositoryLinksName === name && state.repositoryLinksBranch === branch) await loadRepositoryLinks();
+  } catch (error) {
+    toast(error.message, "error");
+    await loadRepositoryLinkOperations(name, branch);
+  } finally {
+    stop(); state.repositoryLinksBusy = false; renderRepositoryLinks();
   }
 }
 
@@ -1486,6 +1664,7 @@ async function repositoryLinkAction(event) {
   const card = event.target.closest("[data-path]");
   if (!button || !card || state.repositoryLinksBusy || !state.repositoryLinksRevision) return;
   const action = button.dataset.action;
+  const link = state.repositoryLinks.find(item => item.path === card.dataset.path);
   if (action === "remove" && !window.confirm(t("dynamic.removeLinkConfirm", { path: card.dataset.path }))) return;
   state.repositoryLinksBusy = true;
   renderRepositoryLinks();
@@ -1493,9 +1672,9 @@ async function repositoryLinkAction(event) {
     await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryLinksName)}/links/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({ branch: state.repositoryLinksBranch, expected_revision: state.repositoryLinksRevision, path: card.dataset.path }),
+      body: JSON.stringify({ branch: state.repositoryLinksBranch, expected_revision: state.repositoryLinksRevision, path: card.dataset.path, ...(action === "policy" ? { auto_update: !link.auto_update } : {}) }),
     });
-    toast(t(action === "update" ? "dynamic.linkUpdated" : "dynamic.linkRemoved"), "success");
+    toast(t(action === "policy" ? "Sync policy saved" : action === "update" ? "dynamic.linkUpdated" : "dynamic.linkRemoved"), "success");
     await loadRepositoryLinks();
   } catch (error) {
     toast(error.message, "error");
@@ -2808,6 +2987,10 @@ async function logout() {
 
 async function refreshActiveViews() {
   if (document.hidden || isManagement()) return;
+  if (state.section === "repository-links") {
+    if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) await loadRepositoryLinkOperations();
+    return;
+  }
   if (state.section === "runners") {
     await loadRunners(false);
     return;

@@ -451,14 +451,31 @@ impl RepositoryService {
         storage_backend: StorageBackend,
         access_token: &str,
     ) -> Result<bool, CommandError> {
+        self.prepare_source_directory_on(
+            name,
+            branch,
+            source_path,
+            storage_backend,
+            access_token,
+            true,
+        )
+        .await
+    }
+
+    pub async fn prepare_source_directory_on(
+        &self,
+        name: &str,
+        branch: &str,
+        source_path: &str,
+        storage_backend: StorageBackend,
+        access_token: &str,
+        create_missing: bool,
+    ) -> Result<bool, CommandError> {
         validate_name(name).map_err(|error| CommandError {
             message: error.to_string(),
         })?;
         validate_branch(branch)?;
         validate_link_source_path(source_path)?;
-        if source_path == "." {
-            return Ok(false);
-        }
         let current = self
             .branches_on(name, storage_backend, access_token)
             .await?
@@ -467,6 +484,9 @@ impl RepositoryService {
             .ok_or_else(|| CommandError {
                 message: format!("source branch '{branch}' was not found"),
             })?;
+        if source_path == "." {
+            return Ok(false);
+        }
         let (_workspace, repository) = self
             .checkout(name, &current.revision, storage_backend, access_token)
             .await?;
@@ -492,6 +512,13 @@ impl RepositoryService {
         }
         if exists {
             return Ok(false);
+        }
+        if !create_missing {
+            return Err(CommandError {
+                message: format!(
+                    "source folder '{source_path}' does not exist; enable automatic folder creation or create it first"
+                ),
+            });
         }
         tokio::fs::create_dir_all(repository.join(source_path))
             .await
@@ -1539,6 +1566,22 @@ printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
         let service =
             RepositoryService::new(binary, "lores://server.test", "lores://server.test").unwrap();
 
+        let error = service
+            .prepare_source_directory_on(
+                "source",
+                "main",
+                "Libraries/Shared",
+                StorageBackend::DynamoDbS3,
+                "test-token",
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("does not exist"));
+        assert!(
+            !pushed.exists(),
+            "disabled folder creation must not commit or push"
+        );
         assert!(
             service
                 .ensure_source_directory_on(
