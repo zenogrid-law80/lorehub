@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use super::{
     CoordinatorClient,
+    client::retryable,
     executor::{self, Execution},
     update::{SelfUpdater, UpdateCheck},
 };
@@ -53,7 +54,23 @@ impl Worker {
         ensure!(version.status.success(), "Lore CLI is unavailable");
         let name = runner_name(self.id);
         let docker_available = detect_docker().await;
-        self.coordinator.register(&name, docker_available).await?;
+        let mut retry_delay = Duration::from_secs(2);
+        loop {
+            let registration = tokio::select! {
+                _ = shutdown.cancelled() => return Ok(WorkerExit::Stopped),
+                result = self.coordinator.register(&name, docker_available) => result,
+            };
+            match registration {
+                Ok(()) => break,
+                Err(error) if !once && retryable(&error) => {
+                    tracing::warn!(%error, "runner registration unavailable; waiting to reconnect");
+                    if !wait_to_reconnect(&shutdown, &mut retry_delay).await {
+                        return Ok(WorkerExit::Stopped);
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
         let presence_stop = CancellationToken::new();
         let presence = tokio::spawn({
             let coordinator = self.coordinator.clone();
@@ -77,6 +94,8 @@ impl Worker {
         tracing::info!(worker_id = %self.id, runner_name = %name, os = std::env::consts::OS, arch = std::env::consts::ARCH, docker_available, "worker started");
         let mut next_update_check = tokio::time::Instant::now();
         let mut worker_exit = WorkerExit::Stopped;
+        let mut claim_request = Uuid::new_v4();
+        retry_delay = Duration::from_secs(2);
         let outcome: Result<()> = async {
             loop {
                 if shutdown.is_cancelled() {
@@ -102,8 +121,29 @@ impl Worker {
                         }
                     }
                 }
-                if let Some(pipeline) = self.coordinator.claim().await? {
-                    self.execute_claimed(pipeline, &shutdown).await?;
+                let claim = tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    result = self.coordinator.claim_with_request(claim_request) => result,
+                };
+                let pipeline = match claim {
+                    Ok(pipeline) => pipeline,
+                    Err(error) if !once && retryable(&error) => {
+                        tracing::warn!(%error, %claim_request, "work polling unavailable; waiting to reconnect");
+                        if !wait_to_reconnect(&shutdown, &mut retry_delay).await { break; }
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+                claim_request = Uuid::new_v4();
+                retry_delay = Duration::from_secs(2);
+                if let Some(pipeline) = pipeline {
+                    let id = pipeline.id;
+                    if let Err(error) = self.execute_claimed(pipeline, &shutdown).await {
+                        if once || !retryable(&error) { return Err(error); }
+                        // Never execute a pipeline again to retry its completion report.
+                        // New claims remain blocked while its lease is still active.
+                        tracing::warn!(pipeline_id = %id, %error, "completion report not acknowledged; continuing work polling");
+                    }
                     if once {
                         break;
                     }
@@ -348,6 +388,15 @@ impl Worker {
         Ok(Some(
             self.coordinator.worker_access_token(pipeline.id).await?,
         ))
+    }
+}
+
+async fn wait_to_reconnect(shutdown: &CancellationToken, delay: &mut Duration) -> bool {
+    let wait = *delay + Duration::from_millis(u64::from(rand::random::<u8>()));
+    *delay = (*delay * 2).min(Duration::from_secs(30));
+    tokio::select! {
+        _ = shutdown.cancelled() => false,
+        _ = tokio::time::sleep(wait) => true,
     }
 }
 

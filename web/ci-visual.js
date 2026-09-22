@@ -1,8 +1,13 @@
 /* CI graph and read-only analysis. Loaded after app.js, before DOMContentLoaded. */
-const ciVisual = { scope: "overview", key: null, result: null, status: "idle", error: "", timer: null, controller: null, request: 0 };
+const ciVisual = { scope: "overview", panels: { list: true, inspector: true }, key: null, result: null, status: "idle", error: "", timer: null, controller: null, request: 0 };
 const ciElement = id => document.getElementById(id);
+let ciWorkspace = null;
 
 Object.assign(I18N.ko, {
+  "Search pipelines": "파이프라인 검색", "Name, category, OS": "이름, 카테고리, OS", "Clear pipeline search": "파이프라인 검색 지우기", "No matching pipelines": "일치하는 파이프라인이 없습니다.",
+  "ci.listMatches": "파이프라인 {total}개 중 {count}개 표시",
+  "Expand workspace": "집중 모드", "Exit focus mode": "집중 모드 종료",
+  "Hide pipeline list": "목록 접기", "Show pipeline list": "목록 펼치기", "Hide settings": "설정 접기", "Show settings": "설정 펼치기",
   "Configuration check": "설정 검사", "Preview changed paths": "변경 경로 미리보기",
   "Changed files · one repository-relative path per line": "변경 파일 · 저장소 기준 상대 경로를 한 줄에 하나씩 입력",
   "Path matching only. Actual runs also depend on branch policy and Runner availability. Dependencies do not automatically trigger unmatched pipelines.": "경로 일치 여부만 검사합니다. 실제 실행은 branch 정책과 Runner 상태에도 영향을 받습니다. 의존성이 있어도 경로가 맞지 않는 파이프라인은 자동 실행되지 않습니다.",
@@ -19,6 +24,7 @@ Object.assign(I18N.ko, {
   "ci.line": "{line}행", "ci.openIssue": "오류 위치로 이동", "ci.inspectorError": "이 항목의 오류", "ci.noNeeds": "선행 파이프라인 없음",
 });
 Object.assign(I18N.en, {
+  "ci.listMatches": "Showing {count} of {total} pipelines",
   "ci.checking": "Checking…", "ci.valid": "Valid configuration", "ci.invalid": "1 error · first issue shown", "ci.unavailable": "Check failed · retry",
   "ci.enterPaths": "Enter changed file paths to see matching pipelines and rules.", "ci.previewInvalid": "Fix the configuration error to preview paths.",
   "ci.manual": "Manual pipeline · no automatic path trigger", "ci.matched": "Path match", "ci.dependency": "Dependency only · not triggered", "ci.unmatched": "No path match",
@@ -29,6 +35,10 @@ Object.assign(I18N.en, {
   "ci.line": "Line {line}", "ci.openIssue": "Go to error", "ci.inspectorError": "Issue in this item", "ci.noNeeds": "No prerequisite pipelines",
 });
 Object.assign(I18N["zh-CN"], {
+  "Search pipelines": "搜索流水线", "Name, category, OS": "名称、分类、系统", "Clear pipeline search": "清除流水线搜索", "No matching pipelines": "没有匹配的流水线",
+  "ci.listMatches": "显示 {total} 条流水线中的 {count} 条",
+  "Expand workspace": "专注模式", "Exit focus mode": "退出专注模式",
+  "Hide pipeline list": "收起流水线列表", "Show pipeline list": "展开流水线列表", "Hide settings": "收起设置", "Show settings": "展开设置",
   "Configuration check": "配置检查", "Preview changed paths": "预览变更路径", "Changed files · one repository-relative path per line": "变更文件 · 每行一个仓库相对路径",
   "Path matching only. Actual runs also depend on branch policy and Runner availability. Dependencies do not automatically trigger unmatched pipelines.": "仅检查路径匹配。实际运行还取决于分支策略和 Runner 状态。依赖关系不会自动触发路径不匹配的流水线。",
   "All pipelines": "所有流水线", "Stages & jobs": "阶段与任务", "Graph view": "图表视图",
@@ -41,14 +51,106 @@ Object.assign(I18N["zh-CN"], {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  ciElement("ci-list-search").addEventListener("input", filterCiPipelineList);
+  ciElement("ci-list-clear").addEventListener("click", clearCiPipelineSearch);
+  ciElement("ci-list-search").addEventListener("keydown", event => {
+    if (event.isComposing) return;
+    // Searching inside the editor form must never submit an unsaved draft.
+    if (event.key === "Enter") event.preventDefault();
+    if (event.key === "Escape" && event.target.value) {
+      event.preventDefault(); event.stopPropagation(); clearCiPipelineSearch();
+    }
+  });
+  ciElement("ci-workspace-toggle").addEventListener("click", toggleCiWorkspace);
+  ciElement("ci-workspace-dialog").addEventListener("cancel", event => { event.preventDefault(); closeCiWorkspace(); });
+  ciElement("ci-workspace-dialog").addEventListener("close", () => {
+    if (!ciElement("ci-workspace-dialog").open) restoreCiWorkspace();
+  });
+  for (const panel of ["list", "inspector"]) ciElement(`ci-toggle-${panel}`).addEventListener("click", () => setCiPanelExpanded(panel, !ciVisual.panels[panel]));
   ciElement("repository-config-form").addEventListener("input", scheduleCiAnalysis);
   ciElement("ci-path-preview").addEventListener("toggle", () => window.requestAnimationFrame(redrawCiEdges));
   for (const scope of ["overview", "detail"]) ciElement(`ci-${scope}-button`).addEventListener("click", () => {
     ciVisual.scope = scope;
     if (scope === "overview") state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: state.repositoryConfigSelection?.pipelineIndex ?? 0 };
     renderRepositoryConfigVisual();
+    window.requestAnimationFrame(() => revealCiSelection(false));
   });
 });
+
+function clearCiPipelineSearch() {
+  ciElement("ci-list-search").value = "";
+  filterCiPipelineList();
+  ciElement("ci-list-search").focus({ preventScroll: true });
+}
+
+function filterCiPipelineList() {
+  const input = ciElement("ci-list-search"), terms = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const model = state.repositoryConfigEditing ? state.repositoryConfigDraft : state.repositoryConfigModel;
+  const entries = ciPipelineEntries(model);
+  let count = 0;
+  for (const button of ciElement("repository-config-pipeline-list").children) {
+    const entry = entries[Number(button.dataset.pipelineIndex)];
+    const pipeline = entry.pipeline;
+    const text = [pipeline.name, pipeline.category, pipeline.runner_os, entry.legacy ? t("Manual") : ""].join(" ").toLowerCase();
+    button.hidden = !terms.every(term => text.includes(term));
+    button.title = [pipeline.name, pipeline.category, pipeline.runner_os].filter(Boolean).join(" · ");
+    if (!button.hidden) count += 1;
+  }
+  ciElement("repository-config-pipeline-count").textContent = terms.length ? `${count}/${entries.length}` : String(entries.length);
+  ciElement("ci-list-status").textContent = t("ci.listMatches", { count, total: entries.length });
+  ciElement("ci-list-empty").hidden = !terms.length || count > 0;
+  ciElement("ci-list-clear").hidden = !input.value;
+}
+
+function toggleCiWorkspace() {
+  if (ciWorkspace) { closeCiWorkspace(); return; }
+  const form = ciElement("repository-config-form"), viewport = ciElement("ci-graph-viewport");
+  const placeholder = document.createComment("CI workspace position");
+  const notifications = ciElement("toast-region"), notificationPlaceholder = document.createComment("Notification position");
+  ciWorkspace = { placeholder, notificationPlaceholder, x: window.scrollX, y: window.scrollY };
+  const left = viewport.scrollLeft, top = viewport.scrollTop;
+  form.before(placeholder);
+  notifications.before(notificationPlaceholder);
+  const dialog = ciElement("ci-workspace-dialog");
+  dialog.append(form, notifications);
+  dialog.showModal();
+  updateCiWorkspaceControl();
+  ciElement("ci-workspace-toggle").focus({ preventScroll: true });
+  viewport.scrollLeft = left; viewport.scrollTop = top;
+  const visual = ciElement("repository-config-visual");
+  if (!visual.hidden) {
+    const header = form.querySelector(".repository-config-page-header");
+    dialog.scrollTop = Math.max(0, visual.getBoundingClientRect().top - dialog.getBoundingClientRect().top - header.offsetHeight - 16);
+  }
+  window.requestAnimationFrame(redrawCiEdges);
+}
+
+function updateCiWorkspaceControl() {
+  const button = ciElement("ci-workspace-toggle");
+  button.textContent = t(ciWorkspace ? "Exit focus mode" : "Expand workspace");
+  button.setAttribute("aria-expanded", String(Boolean(ciWorkspace)));
+}
+
+function closeCiWorkspace(restoreFocus = true) {
+  ciElement("ci-workspace-dialog").close();
+  restoreCiWorkspace(restoreFocus);
+}
+
+function restoreCiWorkspace(restoreFocus = true) {
+  if (!ciWorkspace) return;
+  const { placeholder, notificationPlaceholder, x, y } = ciWorkspace;
+  const viewport = ciElement("ci-graph-viewport"), left = viewport.scrollLeft, top = viewport.scrollTop;
+  placeholder.replaceWith(ciElement("repository-config-form"));
+  notificationPlaceholder.replaceWith(ciElement("toast-region"));
+  ciWorkspace = null;
+  updateCiWorkspaceControl();
+  viewport.scrollLeft = left; viewport.scrollTop = top;
+  if (restoreFocus) {
+    ciElement("ci-workspace-toggle").focus({ preventScroll: true });
+    window.scrollTo(x, y);
+  }
+  window.requestAnimationFrame(redrawCiEdges);
+}
 
 function ciFieldKey(label) {
   const fields = { Name: "name", Category: "category", Stage: "stage", "Runner OS": "runner_os", "Working directory": "working_directory", "Change paths": "changes", "Sparse View": "sparse_view", "Timeout (seconds)": "timeout_seconds", Script: "script" };
@@ -141,8 +243,27 @@ function setCiSavingState() {
 }
 
 function updateCiGraphScope() {
+  updateCiPanels();
   for (const scope of ["overview", "detail"]) ciElement(`ci-${scope}-button`).setAttribute("aria-pressed", String(ciVisual.scope === scope));
   ciElement("ci-graph-legend").textContent = t(ciVisual.scope === "overview" ? "ci.pipelineLegend" : "ci.jobLegend");
+}
+
+function updateCiPanels() {
+  for (const [panel, expanded] of Object.entries(ciVisual.panels)) {
+    const button = ciElement(`ci-toggle-${panel}`);
+    ciElement(button.getAttribute("aria-controls")).hidden = !expanded;
+    ciElement("repository-config-visual").classList.toggle(`ci-${panel}-collapsed`, !expanded);
+    button.setAttribute("aria-expanded", String(expanded));
+    button.textContent = t(panel === "list"
+      ? expanded ? "Hide pipeline list" : "Show pipeline list"
+      : expanded ? "Hide settings" : "Show settings");
+  }
+}
+
+function setCiPanelExpanded(panel, expanded) {
+  ciVisual.panels[panel] = expanded;
+  updateCiPanels();
+  window.requestAnimationFrame(redrawCiEdges);
 }
 
 function renderCiOverview(entries) {
@@ -336,7 +457,9 @@ function focusCiDiagnostic(issue) {
     : issue.stage_index !== null ? { type: "stage", pipelineIndex, stageIndex: issue.stage_index }
       : { type: "pipeline", pipelineIndex };
   ciVisual.scope = issue.job_index !== null || issue.stage_index !== null ? "detail" : "overview";
+  ciVisual.panels.inspector = true;
   renderRepositoryConfigVisual();
+  revealCiSelection(false);
   const target = elements["repository-config-inspector"].querySelector(".ci-has-error")
     ?? elements["repository-config-stage-graph"].querySelector(".ci-has-error") ?? elements["repository-config-inspector"];
   target.scrollIntoView({ block: "nearest", inline: "nearest" });

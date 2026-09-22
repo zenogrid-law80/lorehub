@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/v1/operations", get(super::operations::overview))
         .route("/api/v1/accounts", get(accounts))
         .route("/api/v1/accounts/me", post(update_profile))
         .route("/api/v1/accounts/{id}/role", post(update_account_role))

@@ -378,6 +378,164 @@ async fn request(
 }
 
 #[sqlx::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn runner_maintenance_requires_current_admin_and_csrf(pool: PgPool) {
+    use lorehub::ci::{config::SubmitPipeline, db};
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(
+            "/usr/bin/false",
+            "lores://127.0.0.1:41337",
+            "lores://127.0.0.1:41337",
+        )
+        .unwrap(),
+        None,
+    );
+    let admin = Uuid::new_v4();
+    let user = Uuid::new_v4();
+    for (id, role) in [(admin, "admin"), (user, "user")] {
+        sqlx::query("INSERT INTO users(id,google_sub,email,role) VALUES($1,$2,$3,$4)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .bind(role)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec()).bind(id)
+            .bind(Sha256::digest(b"test-csrf").to_vec()).execute(&pool).await.unwrap();
+    }
+    let worker = Uuid::new_v4();
+    db::register_runner(&pool, worker, "maintenance", "linux", "test", "test", false)
+        .await
+        .unwrap();
+    let path = format!("/api/v1/runners/{worker}/drain");
+    for (subject, csrf, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(user), true, StatusCode::FORBIDDEN),
+        (Some(admin), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            request(&app, subject, "POST", &path, json!({"draining":true}), csrf)
+                .await
+                .0,
+            expected
+        );
+        assert!(!db::list_runners(&pool).await.unwrap()[0].draining);
+    }
+    for invalid in [
+        json!({}),
+        json!({"draining":"true"}),
+        json!({"draining":true,"unexpected":true}),
+    ] {
+        assert_eq!(
+            request(&app, Some(admin), "POST", &path, invalid, true)
+                .await
+                .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    let pipeline = db::submit(
+        &pool,
+        &SubmitPipeline {
+            repository_url: "lores://127.0.0.1:41337/private".into(),
+            revision: "a".repeat(64),
+            branch: None,
+            pipeline_name: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db::claim(&pool, worker).await.unwrap().unwrap().id,
+        pipeline.id
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            request(
+                &app,
+                Some(admin),
+                "POST",
+                &path,
+                json!({"draining":true}),
+                true
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    let listed = request(
+        &app,
+        Some(user),
+        "GET",
+        "/api/v1/runners",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(listed.0, StatusCode::OK);
+    assert_eq!(listed.1[0]["draining"], true);
+    assert_eq!(listed.1[0]["busy"], true);
+    assert_eq!(listed.1[0]["diagnostic"], "draining");
+    assert!(listed.1[0]["last_claim_at"].is_string());
+    assert!(listed.1[0]["observed_at"].is_string());
+    assert!(listed.1[0]["current_pipeline_id"].is_null());
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            &format!("/api/v1/runners/{}/drain", Uuid::new_v4()),
+            json!({"draining":true}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            &path,
+            json!({"draining":false}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert!(!db::list_runners(&pool).await.unwrap()[0].draining);
+    sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+        .bind(admin)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            Some(admin),
+            "POST",
+            &path,
+            json!({"draining":true}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert!(!db::list_runners(&pool).await.unwrap()[0].draining);
+}
+
+#[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
 async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool: PgPool) {
     use lorehub::server::tokens::TokenIssuer;
@@ -582,8 +740,8 @@ async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool
             false
         )
         .await
-        .1,
-        json!([])
+        .0,
+        StatusCode::FORBIDDEN
     );
     let token = request(
         &app,
@@ -610,8 +768,8 @@ async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool
     assert_eq!(
         request(&app, Some(admin), "GET", &group_path, Value::Null, false)
             .await
-            .1[0]["can_manage"],
-        false
+            .0,
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(
@@ -889,11 +1047,21 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     )
     .await;
     assert_eq!(repository_access.0, StatusCode::OK);
+    // Administrators see all repositories, sorted by name, not ownership.
     assert_eq!(
-        repository_access.1["repositories"][0]["resource_id"],
-        "urc-owned"
+        repository_access.1["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
     );
-    assert_eq!(repository_access.1["repositories"][0]["group_ids"][0], id);
+    let owned = repository_access.1["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|repository| repository["resource_id"] == "urc-owned")
+        .unwrap();
+    assert_eq!(owned["group_ids"], json!([id]));
     assert_eq!(repository_access.1["groups"][0]["id"], id);
     let member_grants: Vec<String> = sqlx::query_scalar("SELECT access.resource_id FROM repository_account_group_access access JOIN account_group_members members USING(group_id) WHERE members.user_id=$1 ORDER BY access.resource_id")
         .bind(member).fetch_all(&pool).await.unwrap();
@@ -922,9 +1090,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         Value::Null,
         false,
     )
-    .await
-    .1;
-    assert_eq!(groups.as_array().unwrap().len(), 1);
+    .await;
+    assert_eq!(groups.0, StatusCode::FORBIDDEN);
     let administrator_groups = request(
         &app,
         Some(other_admin),
@@ -937,7 +1104,7 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     .1;
     assert_eq!(administrator_groups.as_array().unwrap().len(), 1);
     assert_eq!(administrator_groups[0]["id"], id);
-    assert!(
+    assert_eq!(
         request(
             &app,
             Some(outsider),
@@ -947,10 +1114,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
             false
         )
         .await
-        .1
-        .as_array()
-        .unwrap()
-        .is_empty()
+        .0,
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(&app, Some(member), "POST", &group_path, input.clone(), true)
@@ -1053,11 +1218,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
             false
         )
         .await
-        .1
-        .as_array()
-        .unwrap()
-        .len(),
-        0
+        .0,
+        StatusCode::FORBIDDEN
     );
     let administrator_views = request(
         &app,
@@ -1119,11 +1281,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         Value::Null,
         false,
     )
-    .await
-    .1;
-    assert_eq!(views[0]["rules"], view["rules"]);
-    assert_eq!(views[0]["can_manage"], false);
-    assert_eq!(views[0]["view_id"], view_id);
+    .await;
+    assert_eq!(views.0, StatusCode::FORBIDDEN);
     let administrator_group_views = request(
         &app,
         Some(other_admin),
@@ -1134,6 +1293,7 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
     )
     .await;
     assert_eq!(administrator_group_views.0, StatusCode::OK);
+    assert_eq!(administrator_group_views.1[0]["rules"], view["rules"]);
     assert_eq!(administrator_group_views.1[0]["view_id"], view_id);
     assert_eq!(administrator_group_views.1[0]["can_manage"], false);
     assert_eq!(
@@ -1146,8 +1306,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
             false
         )
         .await
-        .1[0]["name"],
-        "Backend"
+        .0,
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(
@@ -1166,7 +1326,7 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         request(&app, Some(member), "DELETE", &view_path, Value::Null, true)
             .await
             .0,
-        StatusCode::NOT_FOUND
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(
@@ -1335,5 +1495,219 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
             .await
             .unwrap(),
         2
+    );
+}
+
+#[sqlx::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn operations_requires_live_admin_and_excludes_unregistered_execution_data(pool: PgPool) {
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(
+            "/usr/bin/false",
+            "lores://127.0.0.1:41337",
+            "lores://127.0.0.1:41337",
+        )
+        .unwrap(),
+        None,
+    );
+    let admin = Uuid::new_v4();
+    let user = Uuid::new_v4();
+    for (id, role) in [(admin, "admin"), (user, "user")] {
+        sqlx::query("INSERT INTO users(id,google_sub,email,role) VALUES($1,$2,$3,$4)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .bind(role)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec()).bind(id).bind(Sha256::digest(b"test-csrf").to_vec()).execute(&pool).await.unwrap();
+    }
+    let path = "/api/v1/operations";
+    for (user, expected) in [
+        (None, StatusCode::UNAUTHORIZED),
+        (Some(user), StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            request(&app, user, "GET", path, Value::Null, false).await.0,
+            expected
+        );
+    }
+    sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject,created_at) VALUES('ops','ops',$1,now()-interval '1 day')")
+        .bind(user.to_string()).execute(&pool).await.unwrap();
+    let (status, empty) = request(&app, Some(admin), "GET", path, Value::Null, false).await;
+    assert_eq!(status, StatusCode::OK, "{empty}");
+    assert_eq!(empty["queue"]["queued"], 0);
+    assert!(empty["queue"]["oldest_wait_seconds"].is_null());
+    assert_eq!(empty["repositories"][0]["state"], "unknown");
+    for (name, os, seen, stopped) in [
+        ("linux", "linux", 0, false),
+        ("macos", "macos", 0, false),
+        ("offline", "windows", 60, false),
+        ("stopped", "linux", 0, true),
+    ] {
+        sqlx::query("INSERT INTO runners(id,name,os,arch,version,last_seen,stopped_at) VALUES($1,$2,$3,'test','test',now()-make_interval(secs=>$4),CASE WHEN $5 THEN now() END)")
+            .bind(Uuid::new_v4()).bind(name).bind(os).bind(f64::from(seen)).bind(stopped).execute(&pool).await.unwrap();
+    }
+    for (name, status, os) in [
+        ("upstream", "running", "linux"),
+        ("dependency", "queued", "linux"),
+        ("ready", "queued", "macos"),
+        ("busy", "queued", "linux"),
+        ("no_runner", "queued", "windows"),
+        ("canceling", "queued", "linux"),
+    ] {
+        let id = Uuid::new_v4();
+        sqlx::query("INSERT INTO pipelines(id,repository_url,revision,pipeline_name,status,runner_os,created_at) VALUES($1,'lores://127.0.0.1:41337/ops','rev',$2,$3,$4,now()-interval '5 minutes')")
+            .bind(id).bind(name).bind(status).bind(os).execute(&pool).await.unwrap();
+    }
+    sqlx::query("UPDATE pipelines SET worker_id=(SELECT id FROM runners WHERE name='linux'),lease_until=now()-interval '1 minute' WHERE pipeline_name='upstream'").execute(&pool).await.unwrap();
+    sqlx::query(
+        "UPDATE pipelines SET pipeline_needs=ARRAY['upstream'] WHERE pipeline_name='dependency'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    // Missing upstreams do not block claim(), so diagnostics must not invent one.
+    sqlx::query("UPDATE pipelines SET pipeline_needs=ARRAY['missing'] WHERE pipeline_name='ready'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE pipelines SET cancel_requested=true WHERE pipeline_name='canceling'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for url in ["lores://elsewhere/ops", "lores://127.0.0.1:41337/deleted"] {
+        sqlx::query("INSERT INTO pipelines(id,repository_url,revision) VALUES($1,$2,'hidden')")
+            .bind(Uuid::new_v4())
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    for (name, age, error) in [
+        ("fresh", 0, None),
+        ("failed", 0, Some("watch_failed")),
+        ("stale", 180, None),
+    ] {
+        sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES($1,$1,$2)")
+            .bind(name)
+            .bind(user.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO ci_repository_watch_health(resource_id,checked_at,last_success_at,error_code) VALUES($1,now()-make_interval(secs=>$2),now()-interval '1 hour',$3)")
+            .bind(name).bind(f64::from(age)).bind(error).execute(&pool).await.unwrap();
+    }
+    let (status, snapshot) = request(&app, Some(admin), "GET", path, Value::Null, false).await;
+    assert_eq!(status, StatusCode::OK, "{snapshot}");
+    for (name, expected) in [
+        ("ops", "unknown"),
+        ("fresh", "ok"),
+        ("failed", "error"),
+        ("stale", "stale"),
+    ] {
+        let repo = snapshot["repositories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == name)
+            .unwrap();
+        assert_eq!(repo["state"], expected);
+    }
+    assert_eq!(snapshot["queue"]["queued"], 5);
+    assert_eq!(snapshot["queue"]["running"], 1);
+    assert_eq!(snapshot["queue"]["expired_leases"], 1);
+    assert!(snapshot["queue"]["oldest_wait_seconds"].as_f64().unwrap() >= 300.0);
+    let waiting = snapshot["waiting"].as_array().unwrap();
+    assert_eq!(waiting.len(), 5);
+    for (name, expected) in [
+        ("dependency", "dependencies"),
+        ("ready", "ready"),
+        ("busy", "busy"),
+        ("no_runner", "no_runner"),
+        ("canceling", "canceling"),
+    ] {
+        assert_eq!(
+            waiting.iter().find(|p| p["pipeline_name"] == name).unwrap()["reason"],
+            expected
+        );
+    }
+    let linux = snapshot["runners"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["os"] == "linux")
+        .unwrap();
+    assert_eq!(linux["online"], 1);
+    assert_eq!(linux["idle"], 0);
+    assert_eq!(linux["stopped"], 1);
+    assert!(snapshot["storage"]["database_bytes"].as_i64().unwrap() > 0);
+    // Maintenance is separate from connectivity and never counts as idle.
+    sqlx::query("UPDATE runners SET draining=true WHERE os='macos'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let paused = request(&app, Some(admin), "GET", path, Value::Null, false)
+        .await
+        .1;
+    let macos = paused["runners"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["os"] == "macos")
+        .unwrap();
+    assert_eq!(macos["online"], 1);
+    assert_eq!(macos["idle"], 0);
+    assert_eq!(macos["draining"], 1);
+    assert_eq!(
+        paused["waiting"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["pipeline_name"] == "ready")
+            .unwrap()["reason"],
+        "draining"
+    );
+    sqlx::query("UPDATE runners SET draining=false WHERE os='macos'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let resumed = request(&app, Some(admin), "GET", path, Value::Null, false)
+        .await
+        .1;
+    assert_eq!(
+        resumed["waiting"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["pipeline_name"] == "ready")
+            .unwrap()["reason"],
+        "ready"
+    );
+    // Responses are bounded while totals include every accessible queued run.
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision) SELECT gen_random_uuid(),'lores://127.0.0.1:41337/ops','bulk' FROM generate_series(1,110)").execute(&pool).await.unwrap();
+    let snapshot = request(&app, Some(admin), "GET", path, Value::Null, false)
+        .await
+        .1;
+    assert_eq!(snapshot["queue"]["queued"], 115);
+    assert_eq!(snapshot["waiting"].as_array().unwrap().len(), 100);
+    sqlx::query("UPDATE users SET role='user' WHERE id=$1")
+        .bind(admin)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(&app, Some(admin), "GET", path, Value::Null, false)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
     );
 }

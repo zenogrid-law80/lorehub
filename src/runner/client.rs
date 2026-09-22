@@ -1,7 +1,36 @@
-use anyhow::{Context, Result, bail};
+use std::{fmt, time::Duration};
+
+use anyhow::{Context, Result};
 use reqwest::{Client, Method, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
+
+#[derive(Debug)]
+struct CoordinatorError {
+    status: reqwest::StatusCode,
+    message: String,
+}
+
+impl fmt::Display for CoordinatorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "coordinator request failed ({}): {}",
+            self.status, self.message
+        )
+    }
+}
+
+impl std::error::Error for CoordinatorError {}
+
+pub(crate) fn retryable(error: &anyhow::Error) -> bool {
+    if let Some(error) = error.downcast_ref::<CoordinatorError>() {
+        return matches!(error.status.as_u16(), 408 | 429 | 500 | 502 | 503 | 504);
+    }
+    error.downcast_ref::<reqwest::Error>().is_some_and(|error| {
+        error.is_connect() || error.is_timeout() || error.is_body() || error.is_request()
+    })
+}
 
 use crate::{
     ci::{
@@ -104,7 +133,7 @@ impl CoordinatorClient {
             return Ok(response);
         }
         let message = response.text().await.unwrap_or_default();
-        bail!("coordinator request failed ({status}): {message}")
+        Err(CoordinatorError { status, message }.into())
     }
 
     async fn post_empty(&self, path: &str) -> Result<()> {
@@ -117,9 +146,20 @@ impl CoordinatorClient {
         path: &str,
         body: &B,
     ) -> Result<R> {
+        self.post_json_once(path, body, Duration::from_secs(30))
+            .await
+    }
+
+    async fn post_json_once<B: Serialize + ?Sized, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+        timeout: Duration,
+    ) -> Result<R> {
         Self::checked(
             self.request(Method::POST, path)
                 .await?
+                .timeout(timeout)
                 .json(body)
                 .send()
                 .await?,
@@ -130,9 +170,33 @@ impl CoordinatorClient {
         .context("decode coordinator response")
     }
 
+    // Opt-in only: append-only logs and job creation must never be replayed.
+    async fn post_retryable<B: Serialize + ?Sized, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<R> {
+        for attempt in 0..4 {
+            match self
+                .post_json_once(path, body, Duration::from_secs(5))
+                .await
+            {
+                Ok(response) => return Ok(response),
+                Err(error) if attempt < 3 && retryable(&error) => {
+                    let delay =
+                        Duration::from_millis((250 << attempt) + u64::from(rand::random::<u8>()));
+                    tracing::warn!(%path, attempt = attempt + 1, %error, "retrying coordinator request");
+                    tokio::time::sleep(delay).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        unreachable!("the last attempt returns")
+    }
+
     pub async fn register(&self, name: &str, docker_available: bool) -> Result<()> {
         let _: serde_json::Value = self
-            .post_json(
+            .post_retryable(
                 "api/v1/runner/register",
                 &RegisterRequest {
                     name,
@@ -158,8 +222,17 @@ impl CoordinatorClient {
     }
 
     pub async fn claim(&self) -> Result<Option<Pipeline>> {
-        self.post_json("api/v1/runner/claim", &serde_json::json!({}))
-            .await
+        self.claim_with_request(Uuid::new_v4()).await
+    }
+
+    pub(crate) async fn claim_with_request(&self, request: Uuid) -> Result<Option<Pipeline>> {
+        // A distinct route makes an older coordinator fail with 404 instead of
+        // silently ignoring the identity and assigning another job on retry.
+        self.post_retryable(
+            &format!("api/v1/runner/claim/{request}"),
+            &serde_json::json!({}),
+        )
+        .await
     }
 
     pub async fn heartbeat(&self, pipeline: Uuid) -> Result<bool> {
@@ -174,7 +247,7 @@ impl CoordinatorClient {
 
     pub async fn finish(&self, pipeline: Uuid, status: &str, error: Option<&str>) -> Result<()> {
         let _: serde_json::Value = self
-            .post_json(
+            .post_retryable(
                 &format!("api/v1/runner/pipelines/{pipeline}/finish"),
                 &FinishRequest { status, error },
             )

@@ -59,7 +59,7 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 - Google Workspace OIDC 로그인과 `@zenogrid.co.kr` 조직 제한
 - 일반 사용자·관리자 계정 등급과 관리자 전용 등급 변경
 - 관리자의 전체 계정 그룹·Sparse View 열람과 소유자 전용 수정·삭제
-- 반응형 CI 대시보드, 상태·repository·branch·pipeline 필터와 검색, repository·branch 트리별 workspace 공용 pipeline graph, pipeline/job 상세와 실시간 로그
+- 반응형 CI 대시보드, 상태·repository·branch·pipeline 필터와 검색, 접근 가능한 repository·branch 트리별 pipeline graph, pipeline/job 상세와 실시간 로그
 - 운영체제 설정을 따르는 시스템 테마와 라이트·다크 테마 선택
 - runner 전체·online·offline 대수, 운영체제·아키텍처·버전·현재 작업 관리 화면
 - 현재 Lore 서버의 repository 목록·검색·생성·URL 복사·삭제 관리, branch별 `.lore-ci.toml` 조회와 Visual/TOML 그래프 편집 화면, branch 기반 수동 파이프라인 실행
@@ -72,6 +72,7 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 - job 상태, 종료 코드, stdout/stderr와 cursor 기반 로그 조회
 - job 타임아웃, 취소 시 프로세스 그룹 종료, 작업 디렉터리 정리
 - 5초 heartbeat / 30초 lease, 만료된 워커의 작업 실패 처리
+- Runner 등록·작업 수신·완료 보고의 제한된 재시도와 요청 ID 기반 작업 배정 중복 방지
 - 바이너리에 포함된 DB migration, 설정 검증 CLI, SIGINT/SIGTERM 처리
 
 executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. Runner에는 PostgreSQL 접속 정보가 없으며 Google OAuth 자격 증명도 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
@@ -107,6 +108,20 @@ executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor*
 - **이전 실행 비교:** 같은 저장소·branch·파이프라인에서 이번 실행 제출 전에 완료된 직전 실행을 기준으로 삼습니다. OS·작업 디렉터리·Sparse View·작업 구성이 다르거나 스냅샷이 없으면 증감을 계산하지 않습니다. 조건이 맞아도 같은 단계/이름의 양쪽 성공 완료 작업만 비교하며, Revision·Runner 차이를 별도로 안내합니다. 소스·스크립트·부하가 다를 수 있으므로 참고용 시간 비교이지 성능 저하 판정은 아닙니다.
 
 분석 API는 `GET /api/v1/pipelines/{id}/insights`이며, 인증된 기존 실행 조회와 동일한 접근 범위를 사용합니다. 여러 조회는 읽기 전용 repeatable-read transaction 안에서 일관된 스냅샷으로 처리합니다. 추가 회귀 테스트: `node --test tests/execution-analysis.test.mjs`.
+
+### 실행 정보 조회 권한
+
+목록·실행 이력·그래프·상세·작업 로그·실행 분석은 모두 현재 저장소 접근 권한을 따릅니다. 저장소 소유자, 해당 저장소에 접근 권한을 부여받은 계정 그룹의 소유자·구성원, 관리자가 조회할 수 있습니다. 그룹별 Sparse View 프리셋만 저장하는 것은 접근 권한 부여가 아닙니다. 그룹 구성원 제거·저장소 접근 권한 회수·관리자 해제는 기존 로그인 세션의 다음 조회부터 반영됩니다.
+
+목록과 페이지 커서는 권한 필터를 적용한 실행만 대상으로 합니다. 접근할 수 없는 실행의 상세·로그·분석·취소는 없는 실행과 동일한 `404`를 반환하고, 접근할 수 없는 이력 커서는 알 수 없는 커서와 동일한 `400`을 반환합니다. 취소에는 저장소 접근 권한과 함께 기존 실행 요청자 또는 관리자 조건도 필요합니다. 분석의 선행·후행·이전 실행과 그래프의 최근 실행도 같은 조회 범위로 제한됩니다. Runner 목록은 조직에 공유하되 접근할 수 없는 현재 실행 ID는 표시하지 않습니다.
+
+기존 실행에는 저장소 resource ID가 없으므로 **설정된 공개 서버 URL·storage backend·저장소 이름이 정확히 일치하고, 현재 저장소 등록 이후에 생성된 실행**만 연결합니다. 삭제된 저장소, 비활성화된 backend, 다른 서버 URL, 같은 이름으로 재생성되기 전의 실행은 관리자에게도 노출하지 않습니다. 공개 URL을 변경했거나 저장소를 나중에 재등록한 경우 과거 이력이 숨겨질 수 있으며, 이름만으로 자동 재연결하지 않습니다. DB migration은 추가하지 않습니다.
+
+권한 회귀 테스트는 테스트용 PostgreSQL에서 실행합니다.
+
+```sh
+sh scripts/with-test-postgres.sh cargo test --locked --no-default-features --test pipeline_access -- --ignored
+```
 
 ## 저장소 링크 관리
 
@@ -240,7 +255,7 @@ lore \
 unset LORE_ACCESS_TOKEN
 ```
 
-현재 Lore CLI의 repository service는 identity token을, repository 데이터 작업은 access token을 사용하므로 두 옵션에 같은 LoreHub JWT를 전달합니다. token은 `zenogrid.co.kr` audience와 현재 사용자가 접근 가능한 repository의 resource ID만 포함하며 만료 후 다시 발급해야 합니다. 일반 사용자는 본인 소유 리포지토리에만 접근할 수 있고, 관리자는 모든 리포지토리의 목록·조회·삭제와 파이프라인 생성·실행을 사용할 수 있습니다. 웹과 CLI 권한 검사는 DB의 현재 역할을 확인하므로 관리자 해제 후에는 기존 토큰으로도 다른 사용자 리포지토리에 접근할 수 없습니다. 역할 변경 후 CLI에서 새로 허용된 리포지토리를 보려면 토큰을 다시 발급하거나 로그인하세요. 웹 관리 API의 생성 작업에만 일회성 wildcard JWT를 내부에서 사용하고, 권한 서비스가 생성한 resource를 해당 Google 사용자에게 귀속시킵니다.
+현재 Lore CLI의 repository service는 identity token을, repository 데이터 작업은 access token을 사용하므로 두 옵션에 같은 LoreHub JWT를 전달합니다. token은 `zenogrid.co.kr` audience와 현재 사용자가 접근 가능한 repository의 resource ID만 포함하며 만료 후 다시 발급해야 합니다. 일반 사용자는 본인 소유 리포지토리와 계정 그룹을 통해 명시적으로 접근 권한을 부여받은 리포지토리에 접근할 수 있고, 관리자는 모든 리포지토리의 목록·조회·삭제와 파이프라인 생성·실행을 사용할 수 있습니다. 웹과 CLI 권한 검사는 DB의 현재 역할을 확인하므로 관리자 해제 후에는 기존 토큰으로도 다른 사용자 리포지토리에 접근할 수 없습니다. 역할 변경 후 CLI에서 새로 허용된 리포지토리를 보려면 토큰을 다시 발급하거나 로그인하세요. 웹 관리 API의 생성 작업에만 일회성 wildcard JWT를 내부에서 사용하고, 권한 서비스가 생성한 resource를 해당 Google 사용자에게 귀속시킵니다.
 
 Lore 서버는 environment endpoint의 `auth_url`도 LoreHub로 공지하므로 QUIC 저장소 데이터 요청에 access token이 전달됩니다. 워커는 clone 직전에 5분짜리 JWT를 자동 발급해 `--identity-token`과 `--access-token`으로 넘깁니다. 따라서 OS 계정에 Lore 자격 증명을 별도로 저장할 필요가 없습니다. 워커에도 coordinator와 같은 `LOREHUB_PUBLIC_URL`, `LORE_JWT_PRIVATE_KEY`, `LORE_JWT_JWKS` 설정이 필요합니다. `LORE_BIN`은 `lore`처럼 PATH에서 찾는 이름 또는 절대 경로를 지정하세요. 워커의 PATH에는 빌드에 필요한 Rust 등의 도구가 있어야 합니다.
 
@@ -381,10 +396,10 @@ cargo run --locked -- validate examples/monorepo.lore-ci.toml
 | POST | `/api/v1/repositories/{name}/delete` | repository 삭제: 204; CSRF 필요 |
 | POST | `/api/v1/lore-token` | 로그인 사용자용 1시간 Lore JWT 발급; CSRF 필요 |
 | POST | `/api/v1/pipelines` | 파이프라인 생성: 201 |
-| GET | `/api/v1/pipelines` | 최근 100건. 기존 API 호환용 |
+| GET | `/api/v1/pipelines` | 접근 가능한 저장소의 최근 100건. 기존 API 호환용 |
 | GET | `/api/v1/pipeline-history?limit=100&before={pipeline_id}` | 최신순 실행 이력. 응답의 `next_before`를 다음 페이지의 `before`로 전달하며 최대 500건 |
 | GET | `/api/v1/pipelines/{id}` | 파이프라인과 job 상태 |
-| POST | `/api/v1/pipelines/{id}/cancel` | 실행 요청자 또는 관리자만 대기 작업을 취소하거나 실행 중 작업의 취소를 요청 |
+| POST | `/api/v1/pipelines/{id}/cancel` | 저장소 접근 권한이 있는 실행 요청자 또는 관리자만 취소 요청 |
 | GET | `/api/v1/pipelines/{id}/logs?after=0&limit=100` | id 순서의 로그, 최대 500개 |
 
 웹 UI에서는 repository와 branch를 선택하며 `main`이 있으면 기본으로 선택합니다. 서버가 branch의 최신 **64자리 revision hash**를 확인한 뒤 불변 revision으로 실행합니다. `repository_url`은 `LORE_SERVER_PUBLIC_URL`(미설정 시 `LORE_SERVER_URL`)과 등록된 repository 이름에 정확히 일치해야 하므로, 다른 Lore 서버를 실행 대상으로 지정할 수 없습니다. API에서 `branch`를 생략하면 기존처럼 Lore CLI의 `lore revision info` 등에서 얻은 전체 hash로 직접 요청할 수 있습니다.
@@ -415,20 +430,124 @@ const response = await fetch("/api/v1/pipelines", {
 
 ## 검증
 
-```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test --lib
+GitHub PR·push와 Lore push는 같은 검증 스크립트를 실행합니다. 로컬에서도 다음 명령으로 동일하게 검사할 수 있습니다.
+
+```sh
+RUSTUP_TOOLCHAIN=1.96 sh scripts/check.sh
 ```
 
-실제 PostgreSQL을 사용하는 통합 테스트는 명시적으로 실행합니다. SQLx가 테스트마다 별도 DB를 만들고 정리하므로 `CREATEDB` 권한이 있는 **테스트용 인스턴스**를 지정하세요.
+필수 도구는 Rust 1.96(`rustfmt`, `clippy` 포함), Node.js 24 이상, Protobuf의 `protoc`, PostgreSQL 서버·백업 도구(`initdb`, `pg_ctl`, `pg_config`, `pg_dump`, `pg_restore`, `psql`)입니다. Linux/macOS의 일반 사용자 계정에서 실행합니다. `pg_config`가 있으면 서버 도구 경로를 자동으로 찾습니다. Rust 도구는 `rustup toolchain install 1.96 --profile minimal --component rustfmt --component clippy`로 준비할 수 있습니다.
 
-```bash
-DATABASE_URL=postgres://lorehub:lorehub@127.0.0.1:5432/lorehub \
-  cargo test --test integration -- --ignored
+스크립트는 다음 검사를 순서대로 실행하며 하나라도 실패하면 실패 종료 코드를 반환합니다.
+
+1. Rust 포맷과 모든 target의 Clippy 검사(`-D warnings`).
+2. `tests/*.test.mjs`의 JavaScript 회귀 테스트.
+3. 실제 LoreHub 검증기로 루트 `.lore-ci.toml` 검증.
+4. 임시 PostgreSQL에서 Rust 단위·통합·문서 테스트 전체 실행. `--include-ignored`로 DB가 필요한 테스트도 포함합니다.
+
+`scripts/with-test-postgres.sh`는 실행마다 전용 임시 클러스터와 Unix socket을 만들고, 완료·실패·종료 신호 시 서버와 파일을 정리합니다. TCP 포트는 열지 않고 기존 `DATABASE_URL`과 PostgreSQL 연결 환경변수는 사용하지 않습니다. 병렬 실행도 서로 다른 클러스터를 사용합니다. 강제 종료(`SIGKILL`)나 호스트 장애처럼 정리 코드를 실행할 수 없는 경우에는 `/tmp/lorehub-ci.*`가 남을 수 있습니다.
+
+특정 DB 테스트만 실행할 때도 같은 래퍼를 사용할 수 있습니다.
+
+```sh
+sh scripts/with-test-postgres.sh cargo test --locked --no-default-features --test pipeline_access -- --ignored
 ```
 
-통합 테스트는 원자적 claim, lease fencing, 취소 경쟁, 로그인 세션·CSRF·입력 검증·로그 cursor, stage 실행·실패 전파·정리, 타임아웃의 자식 프로세스 종료, 출력 제한을 검사합니다. 단위 테스트는 허용 도메인 판단을 검사합니다. 워커 테스트는 명령 인자를 검증하는 Lore CLI fixture를 사용하고 실제 shell과 PostgreSQL을 실행합니다. 실제 Google OAuth client 및 Lore 서버와의 end-to-end 검증은 별도로 필요합니다.
+`Cargo.lock`을 버전 관리하고 `--locked`로 의존성을 고정합니다. CI에서는 배포용 Runner 설치 파일이 없어도 검사할 수 있도록 `--no-default-features`를 사용합니다. 설치 패키지 포함 release 빌드는 별도 배포 검증 대상입니다.
+
+### 자동 실행 경로
+
+- **GitHub:** `.github/workflows/ci.yml`이 모든 branch의 push와 PR, 수동 실행을 지원합니다. Ubuntu에서 Rust 1.96, Node.js 24, PostgreSQL·Protobuf 도구를 준비하고 공통 스크립트를 호출합니다. 같은 ref의 오래된 실행은 취소됩니다. 병합을 차단하는 필수 검사 설정은 GitHub branch protection에서 `Format, lint, and all tests`를 지정해야 합니다.
+- **Lore:** 루트 `.lore-ci.toml`의 `verify` 파이프라인은 소스·웹·migration·proto·테스트·스크립트·예제·배포·GitHub 설정 폴더와 루트 설정·문서 파일 변경 시 Linux Runner에서 공통 스크립트를 실행합니다. Lore가 지원하는 정확한 경로 및 `directory/**` 규칙을 사용하므로 새로운 최상위 폴더나 파일을 추가하면 `changes`에도 포함하세요. Runner 계정에 위 도구를 미리 설치하고, LoreHub의 저장소 자동 CI branch 설정에 검증할 branch를 포함해야 합니다. 검증 파이프라인은 30분 제한이며 자동 배포는 하지 않습니다. 현재 배포용 Compose Runner 이미지에는 검증 도구 전체가 포함되어 있지 않으므로 준비된 Linux Runner가 필요합니다.
+
+통합 테스트는 원자적 claim, lease fencing, 취소 경쟁, 로그인 세션·CSRF·입력 검증·로그 cursor, 저장소별 실행 조회 권한, 그룹·관리자 정책, stage 실행·실패 전파·정리, 타임아웃의 자식 프로세스 종료, 출력 제한, 로그 보존·일괄 삭제·롤백, 실제 백업 파일의 격리 복원과 손상 파일 거부를 검사합니다. 워커 테스트는 명령 인자를 검증하는 Lore CLI fixture를 사용하고 실제 shell과 PostgreSQL을 실행합니다. 실제 Google OAuth·Lore 서버 연결과 브라우저 전체 사용자 흐름 검증은 별도로 필요합니다.
+
+## 저장소 중심 탐색
+
+저장소 카드의 **실행 이력**, **파이프라인 그래프**, **CI 설정**, **저장소 링크**에서 해당 저장소로 바로 이동합니다. 화면 상단의 저장소 탐색 메뉴와 왼쪽 메뉴로 이 네 화면을 오갈 때 선택 범위가 유지됩니다. **전체 저장소 보기**로 범위를 해제할 수 있습니다. 선택은 URL의 `repository` query에 저장되어 새로고침과 브라우저 뒤로 가기에도 유지됩니다. 다른 전역 화면으로 이동하면 저장소 범위를 해제합니다.
+
+실행 이력과 그래프 API는 전체 저장소 URL을 정확히 비교합니다. 실행 이력은 권한·저장소·branch·파이프라인 이름·상태·검색 조건을 모두 적용한 뒤 최신 100건을 가져옵니다. 따라서 최근 100건에 없는 과거 실행도 검색할 수 있습니다. **더 보기**로 과거 이력을 불러온 동안에는 자동 갱신이 목록을 초기화하지 않습니다. 새로고침 버튼이나 화면 재진입으로 최신 목록을 다시 불러옵니다.
+
+Branch와 파이프라인 필터에는 **정확한 이름**을 입력합니다. 입력 후보는 현재 불러온 이력에서 제시하지만 후보에 없는 값도 검색할 수 있습니다. **실패** 상태 필터로 실패한 실행만 볼 수 있습니다. 상단 검색은 실행 ID·저장소 URL·표시 branch·revision·상태·파이프라인 이름·Runner OS·Sparse View 이름에서 대소문자를 구분하지 않는 부분 문자열을 찾습니다. `%`·`_`도 문자 그대로 처리하며 로그 본문은 검색하지 않습니다. 입력이 멈춘 뒤 250ms에 조회하고, 조건이 바뀌면 이전 페이지 cursor를 초기화합니다. 실행 이력 화면의 조건은 URL에 저장되어 새로고침·북마크로 복원됩니다. 다른 화면으로 이동하면 저장소 범위만 유지합니다. 목록 건수와 개요 통계는 현재 불러온 실행 기준이며 전체 검색 결과 수는 아닙니다.
+
+`GET /api/v1/pipeline-history`와 `GET /api/v1/pipeline-graphs`는 선택적인 `repository_url` query를 지원하며 기존 저장소 접근 권한을 그대로 적용합니다. 이력 API는 `branch`, `pipeline_name`, `status`, `q`도 지원합니다. `status`는 `all`·`active`(대기/실행 중)·`finished`(성공/실패/취소)와 개별 상태를 받습니다. Branch·이름은 512자, 검색어는 256자까지이며 제어문자는 거부합니다. DB 쿼리는 5초 제한을 적용합니다. 다른 저장소 또는 접근 권한이 사라진 실행의 cursor는 거부하지만 cursor 실행의 상태 변경은 다음 페이지 조회를 막지 않습니다. 검색 조건이나 저장소가 바뀌기 전에 시작된 응답은 현재 목록을 덮어쓰지 않습니다. CI 편집 중 다른 범위로 이동할 때는 작성 중인 변경을 버릴지 확인합니다.
+
+배포 시 저장소별 이력 조회 인덱스 migration `0027_repository_history.sql`을 적용합니다.
+
+## 실행 상세 링크
+
+실행 상세를 열면 주소에 `run`이 추가됩니다. 저장소·branch·검색 조건을 포함한 현재 주소로 새로고침하거나 북마크하면 해당 실행 상세를 다시 엽니다. 상세에서 **실행 링크 복사** 또는 **실행 링크 열기**를 사용하면 관리자 메뉴나 검색 조건을 제외한 공통 주소(`#pipelines?run=<실행 ID>`)를 얻습니다. 링크에는 인증 정보가 포함되지 않으며, 받는 사람에게 해당 저장소 접근 권한이 있어야 합니다.
+
+목록에서 연 상세는 브라우저 뒤로 가기로 닫고 앞으로 가기로 다시 열 수 있습니다. 이때 이미 불러온 과거 이력과 필터는 유지합니다. 상세 안에서 연 관련 실행은 같은 상세 방문 기록을 교체하므로 뒤로 가기는 원래 목록으로 돌아갑니다. 공유 주소로 바로 진입하거나 새로고침한 상세를 닫으면 현재 페이지에 머무릅니다. 새로고침 후 목록은 첫 페이지부터 다시 불러오며 로그 읽기 위치는 저장하지 않습니다.
+
+로그인이 필요한 링크는 로그인 버튼을 누를 때 같은 탭의 sessionStorage에 복귀 주소를 최대 10분간 저장하고, 로그인 완료 후 한 번만 복원합니다. 다른 주소로 진입하면 그 주소를 우선합니다. 브라우저가 탭 저장소를 차단하는 경우 로그인 후 실행 링크를 다시 여세요. 실제 Google OAuth 연결은 별도 배포 환경 검증 대상입니다.
+
+## 실행 상세의 대용량 로그
+
+실행 상세는 상태·그래프·작업 목록을 먼저 표시한 뒤 전체 실행 로그의 첫 500건을 가져옵니다. 로그가 한 페이지를 채우면 **로그 500건 더 보기**로 다음 부분을 읽습니다. 첫 화면에서 전체 로그를 자동으로 내려받지 않습니다. 마지막 페이지까지 읽은 뒤에는 **새 출력 따라가기**가 켜져 있을 때 주기적으로 새 출력을 확인합니다.
+
+로그를 위로 스크롤하거나 **새 출력 따라가기**를 끄면 전체 실행 로그의 자동 조회와 스크롤을 멈춥니다. 실행 상태·작업 정보는 계속 갱신되며 그래프에서 선택한 작업의 로그는 별도 영역입니다. **처음부터 보기**는 첫 페이지를 다시 읽습니다. 화면에는 최대 2,000개 로그 레코드와 본문 512,000 UTF-16 코드 단위만 보관합니다. 상한을 넘으면 먼저 읽은 부분을 화면에서 제거하고 안내하며, DB 로그는 삭제하지 않습니다.
+
+로그 조회 실패 시 같은 cursor에서 재시도합니다. 상세를 닫거나 다른 실행으로 이동한 뒤의 응답은 반영하지 않습니다. 보존 정책에 따른 로그 정리를 감지하면 캐시를 비우고 남은 로그부터 다시 읽습니다. 상세 조회 실패 또는 로그 접근 권한 상실 시 이전 실행 내용을 지우고 재시도 버튼을 표시합니다.
+
+## 운영 상태 진단
+
+관리자 메뉴의 **운영 상태**(`#operations`)에서 대기 작업, Runner 가용성, 저장소 확인 결과와 PostgreSQL 사용량을 함께 확인합니다. `GET /api/v1/operations`는 로그인한 관리자만 사용할 수 있고, 계정 강등은 기존 세션에도 즉시 적용됩니다. 실행 요약과 목록에는 기존 저장소 접근 범위에 포함되는 실행만 반영합니다. Runner와 물리 DB 용량은 전체 서비스 기준입니다.
+
+- **대기 작업:** 대기·실행 중 건수, 가장 긴 대기 시간, lease가 만료된 실행 수를 표시합니다. 가장 오래 대기한 100건을 취소 처리, 선행 실행 결과 대기, 대상 OS Runner 없음, 대상 Runner 모두 실행 중, 수행 요청 가능한 상태로 구분합니다. 선행 실행은 실제 claim과 같이 동일 저장소·branch·revision·이름의 가장 최근 실행을 확인하며, 없는 선행 실행을 임의로 대기 원인으로 만들지 않습니다. 실행 이름을 누르면 상세로 이동합니다.
+- **Runner:** OS별 연결·유휴·배정 중지·연결 끊김·종료 수입니다. 연결 기준은 기존 heartbeat 기준인 15초이며, 실행 중인 작업이 없고 배정이 허용된 Runner만 유휴로 집계합니다. 배정 중지 수에는 오프라인 Runner도 포함됩니다. 가용성은 관측 시점의 정보이므로 수행 시작을 보장하지 않습니다.
+- **저장소:** watcher가 CI 확인과 링크 목록 확인을 마친 시각을 저장합니다. revision 변경이 없어도 성공 관측을 갱신합니다. 정상·실패·2분 초과 확인 지연·아직 관측되지 않음을 구분하며, 최근 성공과 연속 실패 수를 함께 보여줍니다. 확인 지연은 실제 revision 차이나 동기화 손실을 의미하지 않습니다. 긴 clone·검사나 coordinator 중단도 지연으로 나타날 수 있습니다. 오류·지연을 우선하여 최대 100개 저장소를 표시합니다.
+- **링크 갱신 오류:** 현재 존재하는 링크에 저장된 최근 오류 개수입니다. watcher 확인이 성공해도 링크 갱신 오류는 별도로 남을 수 있습니다. 저장소 링크 화면에서 해당 작업과 정책을 확인하세요.
+- **용량:** PostgreSQL 전체 DB, 실행·job 테이블, 로그 테이블의 물리 크기입니다. 인덱스·TOAST를 포함하며, 전체 DB 값에 다른 항목이 포함되어 있으므로 합산하지 않습니다. 디스크 여유 공간, Lore local 데이터와 S3 용량은 측정하지 않습니다.
+
+화면이 열려 있을 때 30초마다 갱신하고 마지막 관측 시각을 표시합니다. 갱신 실패 시 이전 데이터를 정상 상태처럼 남겨두지 않으며 다시 시도할 수 있습니다. 자동 알림·재시도 실행·정리 기능은 포함하지 않습니다. DB 조회는 읽기 전용 일관된 snapshot과 쿼리별 5초 제한을 사용합니다.
+
+배포 시 migration `0026_repository_watch_health.sql`이 필요합니다. watcher 오류는 `watch_failed`, `link_index_failed`, `backend_unavailable` 등 고정된 종류만 저장하며, 명령 인자·토큰·Lore 원문 출력은 진단 API에 포함하지 않습니다. 상세 원인은 해당 저장소의 coordinator 로그에서 확인합니다. 새 설치에서 관측 기록이 없으면 첫 확인이 끝날 때까지 정상으로 표시하지 않습니다.
+
+## 로그 보존과 PostgreSQL 복구
+
+### 완료된 실행의 로그 정리
+
+`lorehub prune-logs`는 DB에 직접 접근할 수 있는 운영자용 명령입니다. 기본 동작은 **삭제 없는 미리보기**이며, HTTP API에는 삭제 기능을 노출하지 않습니다. 먼저 새 바이너리의 `lorehub migrate` 또는 coordinator 시작으로 migration `0025_log_retention.sql`을 적용합니다. 정리 명령 자체는 migration을 실행하지 않습니다.
+
+```sh
+# DATABASE_URL은 대상 PostgreSQL로 설정되어 있어야 합니다.
+# 30일은 예시이며 운영 정책에 맞춰 선택합니다.
+lorehub prune-logs --keep-days 30
+
+# 미리보기 확인과 백업 후, 최대 1,000행만 삭제합니다.
+lorehub prune-logs --keep-days 30 --batch-size 1000 --apply
+```
+
+`--keep-days`(1~36,500일)는 `LOREHUB_LOG_RETENTION_DAYS` 환경변수로도 지정할 수 있습니다. 환경변수를 설정하는 것만으로 자동 정리가 시작되지는 않습니다. `--apply`를 명시한 호출만 삭제하며 기본 1,000행, 최대 10,000행을 한 트랜잭션으로 처리합니다. 대량 정리는 결과를 확인하며 같은 명령을 반복합니다. 내장 스케줄러는 없습니다.
+
+JSON 결과의 `cutoff`는 DB 시각 기준 보존 경계, `eligible`은 호출 시점의 전체 삭제 대상 실행 수·로그 행 수·본문 바이트, `deleted`는 이번 호출에서 실제 삭제한 양입니다. 미리보기와 실제 실행 사이에는 대상이 달라질 수 있습니다. `content_bytes`는 UTF-8 본문 크기이며 디스크 회수량이 아닙니다. 삭제된 공간은 PostgreSQL vacuum 이후 재사용될 수 있으며 파일 크기가 즉시 줄어들지는 않습니다.
+
+- `succeeded`·`failed`·`canceled` 상태이면서 `finished_at`이 경계보다 이전인 실행만 대상입니다. 로그 작성 시각이 아니라 **실행 종료 시각**부터 보존 기간을 셉니다. 진행 중·대기 중·종료 시각이 없는 실행은 보존합니다.
+- 실행, job, 그래프, revision 번호, 의존 관계와 push 중복 방지 기록은 유지합니다. 실행 상세에는 일부 또는 전체 로그가 정리되었다는 안내가 표시됩니다. 삭제한 로그를 다시 보려면 백업이 필요합니다.
+- 동시 정리 호출은 잠금으로 차단하고, 다른 트랜잭션이 잠근 로그 행은 건너뜁니다. 따라서 삭제 건수가 0이어도 `eligible`이 남아 있으면 다음에 다시 확인합니다. statement 30초·lock 5초 제한을 적용하며 실패한 배치는 전체 롤백됩니다. 미리보기 집계도 30초 제한을 적용합니다.
+
+### 백업 생성과 격리 복원 점검
+
+PostgreSQL 서버와 호환되는 `pg_dump`·`pg_restore`·`psql` 및 `initdb`·`pg_ctl`이 필요합니다. 백업 URL은 libpq가 지원하는 PostgreSQL URL을 사용합니다. 복원 점검은 Linux/macOS의 일반 사용자로 실행합니다.
+
+```sh
+mkdir -p /secure/backups/lorehub
+chmod 700 /secure/backups/lorehub
+# 기존 DATABASE_URL을 읽어 고유한 디렉터리에 custom-format 백업을 만듭니다.
+sh scripts/backup-postgres.sh /secure/backups/lorehub
+
+# 위 명령이 출력한 파일 경로를 전달합니다.
+sh scripts/verify-postgres-backup.sh /secure/backups/lorehub/LOREHUB_BACKUP_DIRECTORY/lorehub.dump
+```
+
+백업 스크립트는 기존 파일을 덮어쓰지 않으며 디렉터리와 파일을 소유자만 접근 가능하게 생성합니다. `pg_dump` 또는 archive 목록 확인이 실패하면 불완전한 백업을 정리합니다. 파일을 만든 것만으로 복구 가능성을 판단하지 말고 복원 점검까지 실행하세요. URL을 도구 인자로 전달하므로 비밀번호 대신 `.pgpass`를 사용할 수 있습니다.
+
+복원 점검은 기존 `DATABASE_URL`·PostgreSQL 연결 환경변수를 무시하고, 전용 임시 클러스터의 Unix socket에만 접속합니다. 신뢰할 수 있는 자체 백업만 사용합니다. `pg_restore --single-transaction --exit-on-error`로 실제 복원하고 migration 성공 여부, 실행·job·로그·저장소·사용자 행 수와 로그 본문 크기를 확인한 뒤 클러스터를 정리합니다. 운영 DB에 복원하는 기능은 없습니다. 일반 종료와 오류·종료 신호는 정리하지만 `SIGKILL`이나 호스트 장애 시 임시 디렉터리가 남을 수 있습니다.
+
+이 점검은 **PostgreSQL 백업의 복원 가능성**을 확인합니다. 복원에는 소유권·권한을 적용하지 않으므로 실제 복구에서는 DB 계정과 권한을 별도로 준비해야 합니다. 전체 서비스 복구에는 PostgreSQL 외에 Lore의 `dynamodb_data`와 대응 S3 payload, local backend 데이터, JWT 키·환경 설정이 필요합니다. 복구 지점을 맞추려면 새 CI 제출과 저장소 변경을 멈추고 실행 중 작업을 정리한 상태에서 이들을 함께 보관합니다. S3만으로는 저장소를 복구할 수 없습니다.
+
+실제 장애 복구는 별도 환경에서 백업을 복원하고 동일 버전 바이너리로 확인한 다음 전환합니다. 검증 중에는 coordinator와 Runner의 자동 실행을 시작하지 않습니다. 복원 후 실행 중으로 남은 작업은 원래 프로세스와 이어지지 않으며 lease 만료 후 실패 처리됩니다. 로그인·저장소 조회·실행 이력·로그를 확인하고, 외부 부수 효과를 확인한 작업만 수동으로 재실행하세요. 자동화된 CI 복원 테스트는 작은 fixture 기준이므로 운영 크기의 백업으로 복원 시간과 허용 가능한 데이터 손실 범위도 별도 측정해야 합니다.
 
 ## 서비스 운영 및 다음 단계
 
@@ -509,6 +628,40 @@ sudo launchctl kickstart -k system/co.kr.zenogrid.lorehub.runner
 
 설치기는 Runner와 Lore CLI를 `/usr/local/libexec/lorehub-runner`에 배치하고 시스템 시작 시 실행되는 LaunchDaemon을 등록합니다. 설정, 키, Runner ID, 작업 데이터는 `/Library/Application Support/LoreHub Runner`에 보존됩니다. 현재 배포 패키지는 Apple silicon(`aarch64`)용입니다.
 
+### Runner 통신 장애 복구
+
+Runner 등록·작업 수신·완료 보고는 연결 실패·타임아웃 및 HTTP `408/429/500/502/503/504`에 한해 최대 4회 시도합니다. 각 요청의 제한 시간은 5초이며, 재시도 사이에는 250ms부터 증가하는 대기 시간에 작은 무작위 지연을 더합니다. 인증·권한 오류나 잘못된 응답 데이터는 자동 재시도하지 않습니다.
+
+일반 실행 모드는 등록이나 작업 수신의 재시도를 모두 소진해도 종료하지 않고, 2초부터 최대 30초까지 대기 간격을 늘려 재접속합니다. 종료 신호는 이 대기와 진행 중인 등록·수신 요청을 중단합니다. `worker --once`는 제한된 요청 재시도 후 실패를 반환합니다. 완료 보고를 모두 실패한 일반 Runner는 경고를 남기고 작업 수신을 계속하며, 같은 Runner의 기존 실행 lease가 살아 있는 동안에는 새 작업을 배정하지 않습니다.
+
+작업 수신은 `/api/v1/runner/claim/{request_id}`를 사용합니다. 네트워크 오류 후에도 같은 요청 ID를 유지하며, 서버는 배정 결과를 실행 기록에 함께 저장합니다. 같은 요청의 동시 재전송에는 같은 실행을 반환하고, 이미 완료·취소·만료된 배정 요청으로는 다른 작업을 받거나 기존 작업을 재실행하지 않습니다. 실제 작업 스크립트는 재시도 대상이 아닙니다. 완료 재보고도 기존 종료 결과를 덮어쓰지 않습니다. 로그 추가·job 생성은 아직 멱등 요청이 아니므로 자동 재전송하지 않습니다.
+
+기존 5초 heartbeat, 연속 3회 heartbeat 실패 시 실행 취소, 30초 lease 만료 처리는 유지됩니다. 장시간 단절이나 Runner 프로세스 재시작 후 실행·완료 보고를 복구하는 영속 큐는 제공하지 않습니다.
+
+**배포 순서:** `0028_runner_claim_requests.sql` migration이 적용되는 Coordinator를 먼저 배포한 뒤 Runner를 업데이트합니다. 기존 Runner의 `/api/v1/runner/claim` 경로도 유지합니다. 새 Runner는 구형 Coordinator가 요청 ID를 무시하고 중복 배정하는 일을 막기 위해 기존 경로로 자동 전환하지 않으며, 새 경로가 없는 서버에서는 `404`로 종료합니다.
+
+### Runner 유지보수 모드
+
+관리자는 **Runners → 배정 중지**로 Runner의 신규 작업 수신을 중단할 수 있습니다. 이미 배정된 파이프라인은 취소하지 않고 정상적으로 마무리하며, 화면은 **작업 마무리 중 → 유지보수 모드**로 전환됩니다. 연결 상태인 online/offline은 별도로 표시합니다. 현재 실행을 조회할 저장소 권한이 없으면 실행 ID와 링크를 숨기고 실행 여부만 표시합니다.
+
+유지보수 모드가 된 것을 확인한 뒤 OS 서비스 관리자로 Runner를 중지하고 점검하세요. 이 기능 자체가 Runner 프로세스나 셀프 업데이트를 중지하지는 않습니다. 점검 후 **배정 재개**를 누르면 새 작업을 받을 수 있습니다. 설정은 Coordinator DB에 저장되어 heartbeat·재접속·재등록 뒤에도 유지되며, 등록을 삭제하고 다시 생성하면 기본값(배정 허용)으로 돌아갑니다.
+
+`POST /api/v1/runners/{id}/drain`은 관리자 세션과 CSRF 토큰, JSON `{"draining": true}`(중지) 또는 `{"draining": false}`(재개)를 받습니다. 같은 값을 반복해도 결과는 같습니다. 배정 트랜잭션과 전환 요청은 Runner 행 잠금으로 직렬화합니다. 중지 응답을 받은 이후에는 새로운 배정을 만들지 않으며, 중지 직전에 이미 배정한 작업의 요청 ID 재전송은 기존 실행을 반환해 마무리할 수 있게 합니다. 기존 Runner의 claim 경로에도 중지가 적용됩니다.
+
+운영 상태의 유휴 Runner 수는 배정 중지된 Runner를 제외합니다. 대상 OS의 연결된 Runner가 모두 중지 상태라면 대기 원인에 이를 표시합니다. `0029_runner_drain.sql` migration과 웹 화면을 포함한 Coordinator 배포로 적용되며, 이 기능을 위한 Runner 바이너리 교체는 필요하지 않습니다.
+
+### Runner 상태 진단
+
+Runners 목록에서 **Runner 이름**을 누르면 최근 등록, 마지막 연결 보고, 마지막 작업 요청, 종료 보고, 관측 시각을 확인합니다. Docker 정보는 등록 시 CLI 설치 확인 결과이며 daemon의 현재 실행 여부를 뜻하지 않습니다. 진단은 로그인한 사용자가 볼 수 있고, 작업 배정 중지·재개는 기존처럼 관리자만 가능합니다.
+
+- **종료 보고됨 / 연결 확인 지연:** Runner의 명시적인 종료 보고와 15초 넘게 heartbeat가 없는 상태를 구분합니다. 연결 끊김만으로 프로세스 종료나 네트워크 장애 원인을 단정하지 않습니다.
+- **작업 요청 지연:** heartbeat는 유지되지만 유휴 Runner의 작업 요청이 60초 넘게 없는 상태입니다. 등록 후 아직 요청이 없으면 등록 시각을 기준으로 판단합니다. 자동 업데이트 진행, Runner 로그와 Coordinator 연결을 확인하세요.
+- **작업 실행 중 / 작업 마무리 중 / 유지보수 모드:** 긴 작업 때문에 작업 요청이 없는 것을 수신 장애로 표시하지 않습니다. 유지보수 설정도 별도로 반영합니다.
+
+작업을 배정하지 않은 빈 응답, 유지보수 중 요청, 동일 요청 ID의 재전송도 마지막 작업 요청에 반영합니다. 등록 시에는 이전 요청 시각을 초기화합니다. 화면의 시각과 진단은 Coordinator 관측 기준이며, 조회 실패 시 마지막 정보라는 안내를 표시합니다. 원격 호스트의 CPU·메모리·디스크 또는 프로세스 로그는 수집하지 않습니다.
+
+`0030_runner_poll_diagnostics.sql`을 포함한 Coordinator 배포가 필요하며 기존 Runner의 claim API에도 적용됩니다. 이번 변경만으로 Runner 바이너리를 다시 설치할 필요는 없습니다.
+
 ### Runner 셀프 업데이트
 
 일반 설치형 Runner는 유휴 상태에서 기본 5분마다 coordinator의 대상 OS/아키텍처 릴리스를 확인합니다. 현재 버전보다 높은 SemVer만 내려받으며, coordinator가 시작 시 계산한 파일 크기와 SHA-256이 모두 일치해야 설치합니다. job 실행 중에는 업데이트하지 않습니다. Unix Runner는 같은 디렉터리에서 실행 파일을 원자적으로 교체하고 종료 코드 `75`로 끝나 systemd/launchd가 다시 시작합니다. Windows Runner는 `lorehub.exe.update`로 준비한 뒤 `run-runner.ps1`이 프로세스 종료 후 교체하고 즉시 다시 실행합니다.
@@ -528,22 +681,23 @@ CLI 기본 릴리스 디렉터리는 `deploy/runner-releases`이며 `LOREHUB_RUN
 
 `.lore-ci.toml`의 `script`는 Linux/macOS에서 POSIX shell, Windows에서 PowerShell 문법으로 해석됩니다. 이름이 있는 자동 파이프라인은 `runner_os`로 해당 OS의 Runner만 선택합니다. 기존 루트 `stages`/`jobs` 형식에는 OS 조건이 없으므로 먼저 claim한 Runner에서 실행됩니다.
 
-Runner는 JWT로 인증된 coordinator HTTP API를 통해 등록, claim, heartbeat, 상태 및 로그를 처리하며 PostgreSQL에 직접 연결하지 않습니다. 저장소 파일 탐색, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
+Runner는 JWT로 인증된 coordinator HTTP API를 통해 등록, claim, heartbeat, 상태 및 로그를 처리하며 PostgreSQL에 직접 연결하지 않습니다. 저장소 파일 탐색, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 실행 메타데이터 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
 
 ### 계정, 계정 그룹, sparse workspace view
 
 사이드바에서 **계정 관리** (`#accounts`), **계정 그룹 관리** (`#account-groups`),
 **Workspace view 설정** (`#workspace-views`) 화면을 사용할 수 있습니다. 모바일에서는 페이지
-선택 메뉴로 이동합니다. 기존 언어 설정(한국어·영어·중국어)을 따릅니다.
+선택 메뉴로 이동합니다. 기존 언어 설정(한국어·영어·중국어)을 따릅니다. 현재 이 관리 화면과
+아래 관리 API는 모두 관리자 전용이며 일반 사용자·그룹 구성원은 `403`을 받습니다.
 
-- 계정은 Google Workspace 최초 로그인 시 등록됩니다. 로그인한 조직 사용자는 계정 목록을
-  조회하고 자신의 표시 이름을 수정할 수 있습니다. 표시 이름은 Google 재로그인 후에도 유지됩니다.
+- 계정은 Google Workspace 최초 로그인 시 등록됩니다. 관리자는 계정 목록을 조회하고
+  자신의 표시 이름을 수정할 수 있습니다. 표시 이름은 Google 재로그인 후에도 유지됩니다.
 - 그룹 생성자는 이름·설명과 기존 계정의 구성원 목록을 관리합니다. 생성자는 항상 구성원으로
-  포함되며, 그룹 목록에는 자신이 소유하거나 참여한 그룹만 표시됩니다.
-- 그룹 소유자는 자신이 소유한 리포지토리에 대해 그룹별 view 프리셋을 저장할 수 있습니다.
-  관리자라면 모든 리포지토리에서 본인 view 프리셋을 만들고 본인 그룹에 연결할 수 있습니다.
-  그룹 구성원은 저장된 프리셋을 조회·다운로드할 수 있습니다. 그룹 가입은 Lore 리포지토리의
-  접근 권한을 부여하지 않으며, 리포지토리 소유자 또는 관리자 권한 검사가 적용됩니다.
+  포함되며, 관리자는 전체 그룹을 조회할 수 있지만 다른 소유자의 그룹은 수정할 수 없습니다.
+- 관리자는 모든 리포지토리에서 본인 view 프리셋을 만들고 본인 그룹에 연결할 수 있습니다.
+  다른 소유자의 프리셋은 조회만 가능합니다. 그룹의 view 프리셋 연결과 리포지토리 접근 권한
+  부여는 별도이며, 접근 권한을 명시적으로 부여받은 그룹 구성원은 저장소와 실행 정보를
+  조회할 수 있어도 이 관리 API에는 접근할 수 없습니다.
 - 전체 workspace 모드는 모든 경로를 포함하는 빈 view 파일을 제공합니다. Sparse 모드는
   Lore view 원문을 순서대로 저장합니다. 일반 패턴은 제외하고 `!` 패턴은 포함하며, 뒤의
   규칙이 우선합니다. 예를 들어 다음 파일은 `client`와 `shared`를 포함하고 생성물을 제외합니다.
@@ -573,17 +727,17 @@ lore repository clone --view ./view lores://lorehub.zenogrid.co.kr:41337/project
 | --- | --- |
 | `GET /api/v1/accounts` | 조직 계정 목록 |
 | `POST /api/v1/accounts/me` | 내 표시 이름 수정 (`name`) |
-| `GET /api/v1/account-groups` | 소유·참여 그룹 목록 |
+| `GET /api/v1/account-groups` | 전체 그룹 목록 |
 | `POST /api/v1/account-groups` | 그룹 생성 (`name`, `description`, `member_ids`) |
 | `POST /api/v1/account-groups/{id}` | 그룹 수정 |
 | `DELETE /api/v1/account-groups/{id}` | 그룹 삭제 |
-| `GET /api/v1/workspace-repositories` | 프리셋을 관리할 수 있는 소유 리포지토리 목록 |
+| `GET /api/v1/workspace-repositories` | 프리셋을 만들 수 있는 전체 리포지토리 목록 |
 | `GET /api/v1/account-groups/{id}/views` | 그룹의 저장된 view 목록 |
-| `POST /api/v1/account-groups/{id}/views/{resource_id}` | 프리셋 저장 (`mode`: `full` 또는 `sparse`, `rules`) |
+| `POST /api/v1/account-groups/{id}/views/{resource_id}` | 기존 프리셋 연결 (`view_id`) |
 | `DELETE /api/v1/account-groups/{id}/views/{resource_id}` | 프리셋 삭제 |
 
 통합 테스트는 폐기 가능한 PostgreSQL 인스턴스에서 실행합니다.
 
 ```sh
-DATABASE_URL=postgresql://... cargo test --test management -- --ignored
+sh scripts/with-test-postgres.sh cargo test --locked --no-default-features --test management -- --ignored
 ```

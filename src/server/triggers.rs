@@ -109,6 +109,12 @@ pub async fn run(
                 Ok(backend) => backend,
                 Err(error) => {
                     tracing::warn!(repository = %repository.name, message = %error.message, "invalid repository storage backend");
+                    super::operations::record_watch(
+                        &pool,
+                        &repository.resource_id,
+                        Some("backend_unavailable"),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -117,6 +123,12 @@ pub async fn run(
                 Ok(url) => url,
                 Err(error) => {
                     tracing::warn!(repository = %repository.name, message = %error.message, "repository storage backend unavailable");
+                    super::operations::record_watch(
+                        &pool,
+                        &repository.resource_id,
+                        Some("backend_unavailable"),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -126,6 +138,12 @@ pub async fn run(
                 Ok(url) => url,
                 Err(error) => {
                     tracing::warn!(repository = %repository.name, message = %error.message, "repository storage backend unavailable");
+                    super::operations::record_watch(
+                        &pool,
+                        &repository.resource_id,
+                        Some("backend_unavailable"),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -139,6 +157,7 @@ pub async fn run(
                         result = watch(&pool, &binary, &url, &public_url, &repository_service, &tokens, &repository) => {
                             if let Err(error) = result {
                                 tracing::warn!(repository = %repository.name, %error, "push trigger reconnecting; cursor retained");
+                                super::operations::record_watch(&pool, &repository.resource_id, Some("watch_failed")).await;
                             }
                         }
                     }
@@ -425,6 +444,14 @@ async fn watch(
                 refresh_link_index(pool, binary, url, tokens, repository, &remote_branches).await
             {
                 tracing::warn!(repository = %repository.name, %error, "cannot refresh repository link index");
+                super::operations::record_watch(
+                    pool,
+                    &repository.resource_id,
+                    Some("link_index_failed"),
+                )
+                .await;
+            } else {
+                super::operations::record_watch(pool, &repository.resource_id, None).await;
             }
             propagate_link_updates(
                 pool,

@@ -1,8 +1,9 @@
 "use strict";
 
-const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "repository-access", "workspace-views"];
+const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "repository-access", "workspace-views", "operations"];
 const management = { accounts: [], groups: [], repositories: [], repositoryAccess: { repositories: [], groups: [] }, views: [], assignments: [], groupId: "", resourceId: "", loaded: false, request: 0, dirty: false };
 const managementCopy = {
+  operationsMenu: ["운영 상태", "Operations", "运行状态"],
   accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], repositoryAccess: ["Repository 접근 권한", "Repository access", "仓库访问权限"], views: ["Sparse Workspace View 설정", "Sparse Workspace Views", "稀疏工作区视图设置"],
   accountMenu: ["계정", "Accounts", "账号"], groupMenu: ["계정 그룹", "Account groups", "账号组"], accessMenu: ["Repository 권한", "Repository access", "仓库权限"], viewMenu: ["Sparse View", "Sparse View", "稀疏视图"],
   accountIntro: ["조직 계정을 확인하고 관리자는 계정 등급을 변경할 수 있습니다.", "Browse organization accounts. Administrators can change account roles.", "查看组织账号。管理员可以更改账号等级。"],
@@ -61,10 +62,10 @@ function initManagement() {
   const nav = document.querySelector(".primary-nav");
   const managementNav = nav.querySelector('[data-nav-group="management"]');
   managementNav.hidden = true;
-  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];
+  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu", "operationsMenu"];
   MANAGEMENT_SECTIONS.forEach((section, index) => {
     const link = mn("a", "nav-item"); link.href = `#${section}`; link.dataset.section = section;
-    const icon = mn("span", "management-nav-icon", ["◎", "▦", "◇", "⌘"][index]); icon.setAttribute("aria-hidden", "true");
+    const icon = mn("span", "management-nav-icon", ["◎", "▦", "◇", "⌘", "◉"][index]); icon.setAttribute("aria-hidden", "true");
     link.append(icon, mn("span", "management-nav-label", mt(menuKeys[index]))); managementNav.append(link);
     const page = mn("section", "management-page"); page.id = `${section}-page`; page.hidden = true;
     document.querySelector(".page-content").append(page);
@@ -75,18 +76,24 @@ function initManagement() {
     for (const link of group.querySelectorAll("a")) options.append(new Option(link.textContent.trim(), link.dataset.section));
     mobile.append(options);
   }
-  mobile.addEventListener("change", () => { window.location.hash = mobile.value; });
+  mobile.addEventListener("change", () => { navigateRepositorySection(mobile.value); });
   document.querySelector(".page-content").prepend(mobile);
   window.addEventListener("beforeunload", (event) => { if (management.dirty) { event.preventDefault(); event.returnValue = ""; } });
 }
 function setManagementVisibility(visible) {
   const managementNav = document.querySelector('[data-nav-group="management"]');
   managementNav.hidden = !visible;
-  const managementOptions = document.querySelectorAll("#mobile-page-select option[value='accounts'], #mobile-page-select option[value='account-groups'], #mobile-page-select option[value='repository-access'], #mobile-page-select option[value='workspace-views']");
-  managementOptions.forEach(option => { option.hidden = !visible; });
+  for (const section of MANAGEMENT_SECTIONS) {
+    document.querySelector(`#mobile-page-select option[value="${section}"]`).hidden = !visible;
+  }
+  if (!visible) {
+    operations.snapshot = null;
+    operations.request++;
+    document.getElementById("operations-page").replaceChildren();
+  }
 }
 function managementLocale() {
-  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu"];
+  const menuKeys = ["accountMenu", "groupMenu", "accessMenu", "viewMenu", "operationsMenu"];
   MANAGEMENT_SECTIONS.forEach((section, index) => {
     const label = mt(menuKeys[index]);
     document.querySelector(`[data-section="${section}"] .management-nav-label`).textContent = label;
@@ -111,6 +118,7 @@ function managementShell(section, titleKey, introKey) {
   heading.append(copy); page.append(heading); return page;
 }
 async function loadManagement() {
+  if (state.section === "operations") return loadOperations();
   const serial = ++management.request;
   const section = state.section;
   const page = document.getElementById(`${section}-page`);
@@ -134,6 +142,7 @@ async function loadManagement() {
   }
 }
 function renderManagement() {
+  if (state.section === "operations") return renderOperations();
   if (!management.loaded) return;
   if (state.section === "accounts") renderAccounts();
   else if (state.section === "account-groups") renderGroups();

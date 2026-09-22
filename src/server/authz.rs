@@ -470,7 +470,6 @@ mod tests {
             request(
                 epic_urc::ExchangeUserTokenForMultiresourceTokenRequest {
                     resource_id: vec!["urc-project".into()],
-                    ..Default::default()
                 },
                 &token,
             )

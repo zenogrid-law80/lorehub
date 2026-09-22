@@ -1,8 +1,7 @@
 //! On-demand, read-only run analysis. No inferred historical dependency bindings.
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
-    http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -10,6 +9,7 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use super::api::{ApiError, AppState};
+use super::{auth::AuthSession, pipeline_access::PipelineAccess};
 use crate::ci::db::{Job, Pipeline};
 
 #[derive(Serialize)]
@@ -41,12 +41,18 @@ pub(super) struct Insights {
 
 pub(super) async fn insights(
     State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Insights>, ApiError> {
-    read_insights(&state.pool, id).await.map(Json)
+    let access = PipelineAccess::new(&state.repositories, session.user.id);
+    read_insights(&state.pool, id, &access).await.map(Json)
 }
 
-async fn read_insights(pool: &PgPool, id: Uuid) -> Result<Insights, ApiError> {
+async fn read_insights(
+    pool: &PgPool,
+    id: Uuid,
+    access: &PipelineAccess,
+) -> Result<Insights, ApiError> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         .execute(&mut *tx)
@@ -54,11 +60,7 @@ async fn read_insights(pool: &PgPool, id: Uuid) -> Result<Insights, ApiError> {
     let observed_at = sqlx::query_scalar("SELECT transaction_timestamp()")
         .fetch_one(&mut *tx)
         .await?;
-    let pipeline: Pipeline = sqlx::query_as("SELECT * FROM pipelines WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "pipeline not found".into()))?;
+    let pipeline = access.pipeline(&mut *tx, id).await?;
     let jobs = sqlx::query_as("SELECT * FROM jobs WHERE pipeline_id = $1 ORDER BY position")
         .bind(id)
         .fetch_all(&mut *tx)
@@ -67,21 +69,21 @@ async fn read_insights(pool: &PgPool, id: Uuid) -> Result<Insights, ApiError> {
     // Do not fall back to another branch/revision when a prerequisite is absent.
     let upstream_truncated = pipeline.pipeline_needs.len() > 100;
     let names: Vec<_> = pipeline.pipeline_needs.iter().take(100).cloned().collect();
-    let upstream = sqlx::query_as(
-        "SELECT dependency.name, latest.id AS run_id, latest.status, latest.created_at FROM unnest($1::text[]) WITH ORDINALITY AS dependency(name, pos) LEFT JOIN LATERAL (SELECT id,status,created_at FROM pipelines WHERE repository_url = $2 AND branch IS NOT DISTINCT FROM $3 AND revision = $4 AND pipeline_name = dependency.name ORDER BY created_at DESC,id DESC LIMIT 1) latest ON true ORDER BY dependency.pos"
-    ).bind(&names).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision)
+    let upstream = access.query_as(&PipelineAccess::sql(
+        "SELECT dependency.name, latest.id AS run_id, latest.status, latest.created_at FROM unnest($4::text[]) WITH ORDINALITY AS dependency(name, pos) LEFT JOIN LATERAL (SELECT id,status,created_at FROM accessible_pipelines WHERE repository_url = $5 AND branch IS NOT DISTINCT FROM $6 AND revision = $7 AND pipeline_name = dependency.name ORDER BY created_at DESC,id DESC LIMIT 1) latest ON true ORDER BY dependency.pos"
+    )).bind(&names).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision)
         .fetch_all(&mut *tx).await?;
-    let mut downstream: Vec<RelatedRun> = sqlx::query_as(
-        "SELECT pipeline_name AS name,id AS run_id,status,created_at FROM (SELECT DISTINCT ON (pipeline_name) * FROM pipelines WHERE repository_url = $1 AND branch IS NOT DISTINCT FROM $2 AND revision = $3 AND pipeline_name IS NOT NULL ORDER BY pipeline_name,created_at DESC,id DESC) latest WHERE $4 = ANY(pipeline_needs) AND id <> $5 ORDER BY pipeline_name LIMIT 101"
-    ).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision).bind(&pipeline.pipeline_name).bind(id)
+    let mut downstream: Vec<RelatedRun> = access.query_as(&PipelineAccess::sql(
+        "SELECT pipeline_name AS name,id AS run_id,status,created_at FROM (SELECT DISTINCT ON (pipeline_name) * FROM accessible_pipelines WHERE repository_url = $4 AND branch IS NOT DISTINCT FROM $5 AND revision = $6 AND pipeline_name IS NOT NULL ORDER BY pipeline_name,created_at DESC,id DESC) latest WHERE $7 = ANY(pipeline_needs) AND id <> $8 ORDER BY pipeline_name LIMIT 101"
+    )).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision).bind(&pipeline.pipeline_name).bind(id)
         .fetch_all(&mut *tx).await?;
     let downstream_truncated = downstream.len() > 100;
     downstream.truncate(100);
     // The baseline must already have completed when this run was submitted.
     // A later retry/completion must not silently change an old run's comparison.
-    let previous_pipeline: Option<Pipeline> = sqlx::query_as(
-        "SELECT * FROM pipelines WHERE repository_url = $1 AND branch IS NOT DISTINCT FROM $2 AND pipeline_name IS NOT DISTINCT FROM $3 AND (created_at,id) < ($4,$5) AND finished_at <= $4 AND status IN ('succeeded','failed','canceled') ORDER BY created_at DESC,id DESC LIMIT 1"
-    ).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.pipeline_name).bind(pipeline.created_at).bind(id)
+    let previous_pipeline: Option<Pipeline> = access.query_as(&PipelineAccess::sql(
+        "SELECT * FROM accessible_pipelines WHERE repository_url = $4 AND branch IS NOT DISTINCT FROM $5 AND pipeline_name IS NOT DISTINCT FROM $6 AND (created_at,id) < ($7,$8) AND finished_at <= $7 AND status IN ('succeeded','failed','canceled') ORDER BY created_at DESC,id DESC LIMIT 1"
+    )).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.pipeline_name).bind(pipeline.created_at).bind(id)
         .fetch_optional(&mut *tx).await?;
     let previous = if let Some(previous_pipeline) = previous_pipeline {
         let previous_jobs =
@@ -185,6 +187,23 @@ mod tests {
     #[sqlx::test]
     #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
     async fn insights_scope_baseline_and_comparison(pool: PgPool) {
+        let user = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO users(id,google_sub,email) VALUES($1,'insights','insights@example.test')",
+        )
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO lore_resources(resource_id,name,owner_subject,created_at) VALUES('insights','repo',$1,now()-interval '1 day')")
+            .bind(user.to_string()).execute(&pool).await.unwrap();
+        let repositories = super::super::repositories::RepositoryService::new(
+            "/usr/bin/false",
+            "lores://fixture",
+            "lores://fixture",
+        )
+        .unwrap();
+        let access = PipelineAccess::new(&repositories, user);
         let previous = seed(&pool, "server", "main", "old", 300, "succeeded").await;
         sqlx::query("UPDATE pipelines SET finished_at=now()-interval '200 seconds' WHERE id=$1")
             .bind(previous)
@@ -222,7 +241,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        let result = read_insights(&pool, current).await.unwrap();
+        let result = read_insights(&pool, current, &access).await.unwrap();
         assert_eq!(result.current.pipeline.id, current);
         assert_eq!(result.previous.unwrap().pipeline.id, previous);
         assert_eq!(result.upstream.len(), 2);
@@ -234,7 +253,7 @@ mod tests {
         assert_eq!(result.comparison_warnings, ["revision"]);
         // Different execution conditions disable numeric delta calculations.
         sqlx::query("UPDATE pipelines SET runner_os='windows',working_directory='elsewhere',sparse_view_name='Different',graph_definition=NULL WHERE id=$1").bind(previous).execute(&pool).await.unwrap();
-        let result = read_insights(&pool, current).await.unwrap();
+        let result = read_insights(&pool, current, &access).await.unwrap();
         assert!(!result.comparable);
         for reason in [
             "runner_os",
@@ -244,10 +263,10 @@ mod tests {
         ] {
             assert!(result.comparison_warnings.contains(&reason));
         }
-        let absent = read_insights(&pool, upstream).await.unwrap();
+        let absent = read_insights(&pool, upstream, &access).await.unwrap();
         assert!(absent.previous.is_none());
         assert!(!absent.comparable);
-        assert!(read_insights(&pool, Uuid::new_v4()).await.is_err());
+        assert!(read_insights(&pool, Uuid::new_v4(), &access).await.is_err());
         let status: String = sqlx::query_scalar("SELECT status FROM pipelines WHERE id=$1")
             .bind(current)
             .fetch_one(&pool)

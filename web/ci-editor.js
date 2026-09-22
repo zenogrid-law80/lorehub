@@ -66,6 +66,7 @@ function ciLineDiff(before, after, maxCells = 1000000) {
 
 const ciEditor = { history: null, session: null, restoring: false, generation: 0, zoom: 1, diffTimer: null };
 Object.assign(I18N.ko, {
+  "Reveal selection": "선택 항목으로 이동",
   "Undo": "실행 취소", "Redo": "다시 실행", "Review changes": "변경 비교", "Configuration changes": "설정 변경 내용",
   "Graph zoom": "그래프 배율", "Zoom out": "축소", "Zoom in": "확대", "Reset zoom": "원래 크기", "Fit graph": "화면 맞춤", "Pipeline graph": "파이프라인 그래프", "Drag empty space to pan": "빈 공간을 드래그해 이동",
   "Compare the saved file with the exact content that will be saved. Visual editing may rewrite comments and formatting.": "저장된 원본과 실제 저장될 내용을 비교합니다. Visual 편집은 주석과 서식을 다시 작성할 수 있습니다.",
@@ -75,6 +76,7 @@ Object.assign(I18N.en, {
   "ci.noChanges": "No changes", "ci.diffCount": "{added} lines added · {removed} lines removed", "ci.moreLines": "Show next 500 lines", "ci.largeDiff": "Large configuration: compare the complete source below.", "ci.original": "Saved source", "ci.draft": "Content to save", "ci.unchanged": "{count} unchanged lines",
 });
 Object.assign(I18N["zh-CN"], {
+  "Reveal selection": "定位所选项",
   "Undo": "撤销", "Redo": "重做", "Review changes": "比较变更", "Configuration changes": "配置变更", "Graph zoom": "图表缩放", "Zoom out": "缩小", "Zoom in": "放大", "Reset zoom": "原始大小", "Fit graph": "适应画面", "Pipeline graph": "流水线图表", "Drag empty space to pan": "拖动空白区域以移动",
   "Compare the saved file with the exact content that will be saved. Visual editing may rewrite comments and formatting.": "比较已保存的原文和即将保存的内容。可视化编辑可能重写注释和格式。",
   "ci.noChanges": "无变更", "ci.diffCount": "新增 {added} 行 · 删除 {removed} 行", "ci.moreLines": "显示接下来的 500 行", "ci.largeDiff": "大型配置：在下方比较完整原文。", "ci.original": "已保存的原文", "ci.draft": "即将保存的内容", "ci.unchanged": "{count} 行未变更",
@@ -221,6 +223,7 @@ function refreshCiGraphLabels() {
     card.querySelector("small").textContent = t("dynamic.jobSteps", { count: job.script.length, seconds: job.timeout_seconds });
     const needs = card.querySelector(".config-job-needs"); if (needs) needs.textContent = t("dynamic.jobNeeds", { jobs: (job.needs ?? []).join(", ") });
   }
+  filterCiPipelineList();
   window.requestAnimationFrame(redrawCiEdges);
 }
 
@@ -238,6 +241,32 @@ function fitCiGraph() {
   const viewport = ciElement("ci-graph-viewport"), graph = elements["repository-config-stage-graph"];
   setCiZoom(Math.min(1, viewport.clientWidth / Math.max(1, graph.scrollWidth), viewport.clientHeight / Math.max(1, graph.scrollHeight)));
   viewport.scrollLeft = 0; viewport.scrollTop = 0;
+}
+
+function ciGraphSelectionTarget() {
+  if (state.repositoryConfigMode !== "visual" || ciElement("repository-config-visual").hidden) return null;
+  const graph = ciElement("repository-config-stage-graph");
+  if (ciVisual.scope === "overview") return graph.querySelector(".ci-pipeline-card.is-active");
+  return graph.querySelector(".config-job-card.is-active, .config-stage-header.is-active")
+    ?? graph.querySelector(".config-stage-header");
+}
+
+function updateCiRevealControl() {
+  ciElement("ci-reveal-selection").disabled = state.repositoryConfigSaving || !ciGraphSelectionTarget();
+}
+
+function revealCiSelection(focus = true) {
+  const target = ciGraphSelectionTarget();
+  if (!target) return;
+  const viewport = ciElement("ci-graph-viewport");
+  const bounds = viewport.getBoundingClientRect(), item = target.getBoundingClientRect();
+  // Rectangles include CSS zoom. Scroll only the graph, preserving the page and draft.
+  // Oversized cards align near their start so the item name remains visible.
+  viewport.scrollLeft += item.left + Math.min(item.width, Math.max(1, viewport.clientWidth - 32)) / 2
+    - bounds.left - viewport.clientLeft - viewport.clientWidth / 2;
+  viewport.scrollTop += item.top + Math.min(item.height, Math.max(1, viewport.clientHeight - 32)) / 2
+    - bounds.top - viewport.clientTop - viewport.clientHeight / 2;
+  if (focus) target.focus({ preventScroll: true });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -262,6 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ciElement("ci-zoom-out").addEventListener("click", () => setCiZoom(Math.round((ciEditor.zoom - .25) * 100) / 100));
   ciElement("ci-zoom-reset").addEventListener("click", () => setCiZoom(1));
   ciElement("ci-zoom-fit").addEventListener("click", fitCiGraph);
+  ciElement("ci-reveal-selection").addEventListener("click", () => revealCiSelection());
   const viewport = ciElement("ci-graph-viewport"); let drag = null;
   viewport.addEventListener("pointerdown", event => {
     if (event.button !== 0 || event.pointerType !== "mouse" || event.target.closest("button, input, textarea, select, a")) return;

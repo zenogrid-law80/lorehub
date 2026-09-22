@@ -26,7 +26,7 @@ const runs = Object.fromEntries([makeRun("server", "failed"), makeRun("client", 
 const routes = Object.values(runs).map(({ pipeline }) => ({ ...pipeline, runner_os: "windows", revision: "b".repeat(64), revision_number: 11,
   graph: { stages: [{ name: "new-config", jobs: ["new-job"] }] }, latest_pipeline_id: pipeline.id, latest_created_at: now,
 }));
-const assets = new Set(["app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "theme.js"]);
+const assets = new Set(["app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js", "theme.js"]);
 // Deterministic analysis timings with a queue delay, longer completed jobs,
 // an unfinished job, missing prerequisites, and a changed-configuration baseline.
 const at = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
@@ -60,6 +60,7 @@ createServer(async (req, res) => {
     }
     let data = [];
     if (url.pathname === "/api/v1/me") data = { id: "fixture", name: "Execution Preview", email: "fixture@example.test", role: "user" };
+    else if (url.pathname === "/api/v1/repositories") data = { repositories: [{ id: "demo", name: "demo", url: repository, storage_backend: "dynamodb_s3" }], server_url: "lores://fixture", storage_backends: ["dynamodb_s3"] };
     else if (url.pathname === "/api/v1/pipeline-history") data = { pipelines: Object.values(runs).map(run => run.pipeline), next_before: null };
     else if (url.pathname === "/api/v1/pipeline-graphs") data = routes;
     else if (url.pathname === "/api/v1/runners") data = [{ id: "runner1", name: "Linux test runner", os: "linux", status: "busy", arch: "x86_64", last_seen: now }];
@@ -70,7 +71,7 @@ createServer(async (req, res) => {
     }
     else if (url.pathname.endsWith("/logs")) {
       const id = url.pathname.split("/")[4], job = url.searchParams.get("job_id"), after = Number(url.searchParams.get("after") || 0);
-      data = Array.from({ length: job?.includes("compile-16") ? 501 : 3 }, (_, i) => ({ id: i + 1, job_id: job, stream: i === 1 ? "stderr" : "stdout", content: `${job || id}: ${i === 1 ? "fixture diagnostic <script>literal text</script>" : `log ${i + 1}`}\n` })).filter(row => row.id > after).slice(0, Number(url.searchParams.get("limit") || 100));
+      data = Array.from({ length: !job ? 2501 : job.includes("compile-16") ? 501 : 3 }, (_, i) => ({ id: i + 1, job_id: job, stream: i === 1 ? "stderr" : "stdout", content: `${job || id}: ${i === 1 ? "fixture diagnostic <script>literal text</script>" : `log ${i + 1}`}\n` })).filter(row => row.id > after).slice(0, Number(url.searchParams.get("limit") || 100));
     } else if (url.pathname.startsWith("/api/v1/pipelines/")) {
       const id = url.pathname.split("/")[4];
       data = id.endsWith("-previous") ? analysisFixture(id.replace(/-previous$/, "")).previous : analysisFixture(id).current;

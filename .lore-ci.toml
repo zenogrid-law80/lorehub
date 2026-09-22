@@ -1,0 +1,19 @@
+[[pipelines]]
+name = "verify"
+category = "quality"
+runner_os = "linux"
+# Lore accepts exact paths and directory/**, not a standalone ** wildcard.
+changes = [
+  "src/**", "web/**", "migrations/**", "proto/**", "tests/**", "scripts/**",
+  "examples/**", "deploy/**", ".github/**",
+  "Cargo.toml", "Cargo.lock", "build.rs", ".lore-ci.toml", "README.md",
+  "compose.yaml", ".gitignore", ".gitattributes", ".dockerignore", ".env.example",
+]
+working_directory = "."
+stages = ["verify"]
+
+[[pipelines.jobs]]
+name = "all-checks"
+stage = "verify"
+script = ["RUSTUP_TOOLCHAIN=1.96 sh scripts/check.sh"]
+timeout_seconds = 1800

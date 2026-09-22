@@ -903,7 +903,7 @@ async fn authenticated_api_and_log_cursor(pool: PgPool) {
 
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
-async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
+async fn pipeline_graphs_require_repository_access_and_preserve_legacy_branches(pool: PgPool) {
     let auth = AuthService::new(
         pool.clone(),
         AuthConfig::new(
@@ -945,7 +945,7 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO lore_resources (resource_id,name,owner_subject) VALUES ('shared-graph-resource','shared-graph',$1)")
+    sqlx::query("INSERT INTO lore_resources (resource_id,name,owner_subject,created_at) VALUES ('shared-graph-resource','shared-graph',$1,now()-interval '2 days')")
         .bind(owner_id.to_string())
         .execute(&pool)
         .await
@@ -970,6 +970,40 @@ async fn pipeline_graphs_are_visible_across_workspace_accounts(pool: PgPool) {
         .execute(&pool)
         .await
         .unwrap();
+
+    for path in ["/api/v1/pipeline-graphs", "/api/v1/pipelines"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("cookie", format!("lorehub_session={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body, serde_json::json!([]));
+    }
+    let group = Uuid::new_v4();
+    sqlx::query("INSERT INTO account_groups(id,name,owner_id) VALUES($1,'Graph viewers',$2)")
+        .bind(group)
+        .bind(owner_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO account_group_members(group_id,user_id) VALUES($1,$2)")
+        .bind(group)
+        .bind(viewer_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO repository_account_group_access(resource_id,group_id) VALUES('shared-graph-resource',$1)")
+        .bind(group).execute(&pool).await.unwrap();
 
     let response = app
         .clone()

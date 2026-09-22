@@ -25,13 +25,13 @@ const I18N = {
     "등록된 runner의 운영체제, 연결 상태와 현재 작업을 확인합니다.": "Check each registered Runner's operating system, connection, and current job.", "Runner 다운로드": "Download Runner", "LoreHub runner와 Lore CLI, 설치 스크립트가 포함된 x86_64 패키지입니다.": "x86_64 packages containing the LoreHub Runner, Lore CLI, and install scripts.", "Runner 요약": "Runner summary", "등록된 전체 runner": "All registered Runners", "15초 내 heartbeat": "Heartbeat within 15 seconds", "종료 또는 heartbeat 만료": "Stopped or heartbeat expired", "5초 간격으로 상태가 갱신됩니다": "Status refreshes every 5 seconds", "등록된 runner가 없습니다": "No registered Runners", "Linux 또는 Windows에서 lorehub worker를 실행하면 자동으로 표시됩니다.": "Run a lorehub worker on Linux or Windows and it will appear automatically.", "Offline runner도 이력으로 유지됩니다.": "Offline Runners remain in history.",
     "닫기": "Close", "실행할 Lore 저장소와 변경되지 않는 64자리 revision hash를 입력하세요.": "Enter the Lore repository and immutable 64-character revision hash to run.", "lores:// 주소": "lores:// URL", "branch나 head 대신 전체 revision hash": "Full revision hash instead of a branch or head", "현재 서버에 새로운 Lore repository를 생성합니다.": "Create a new Lore repository on the current server.", "영문자·숫자로 시작하고 끝나며 점, 대시, 밑줄 사용 가능": "Start and end with a letter or number; dots, dashes, and underscores are allowed.", "repository와 서버에 저장된 데이터를 삭제합니다. 이 작업은 되돌릴 수 없습니다.": "Delete the repository and its server data. This action cannot be undone.", "확인을 위해 repository 이름 입력": "Enter the repository name to confirm", "Google 로그인 계정으로 발급된 토큰입니다. 1시간 동안 유효하며 다른 사람과 공유하지 마세요.": "This token was issued for your Google account. It is valid for one hour; do not share it.", "로그를 불러오는 중…": "Loading logs…",
     "Total pipelines": "Total pipelines", "Succeeded": "Succeeded", "Active": "Active", "Needs attention": "Needs attention", "Recent pipelines": "Recent pipelines", "Finished": "Finished", "Created": "Created", "Duration": "Duration", "New pipeline": "New pipeline", "Pipeline graphs": "Pipeline graphs", "Routes": "Routes", "Folder rules": "Folder rules", "Runner targets": "Runner targets", "Folder routing map": "Folder routing map", "New repository": "New repository", "Current Lore server": "Current Lore server", "Repository list": "Repository list", "Total runners": "Total runners", "Registered runners": "Registered runners", "Operating system": "Operating system", "Architecture": "Architecture", "Version": "Version", "Last seen": "Last seen", "Current job": "Current job", "optional": "optional",
-    "dynamic.errorUser": "Could not load sign-in information.", "dynamic.sessionExpired": "Your session has expired.", "dynamic.requestFailed": "Request failed ({status}).", "dynamic.updated": "Updated now · {time}", "dynamic.refreshPipelines": "Pipelines refreshed.", "dynamic.refreshRepositories": "Repositories refreshed.", "dynamic.refreshRunners": "Runner status refreshed.", "dynamic.refreshGraphs": "Pipeline graphs refreshed.", "dynamic.beforeRun": "{branch} · no runs yet", "dynamic.viewRun": "View run", "dynamic.noRuns": "No runs yet", "dynamic.idle": "Idle", "dynamic.copyUrl": "Copy URL", "dynamic.runPipeline": "Run pipeline", "dynamic.delete": "Delete", "dynamic.urlCopied": "Repository URL copied.", "dynamic.copyFailed": "Could not copy to the clipboard.", "dynamic.repositoryCreated": "Repository created.", "dynamic.repositoryDeleted": "Repository deleted.", "dynamic.nameMismatch": "The repository name must match.", "dynamic.tokenCopied": "Lore access token copied.", "dynamic.pipelineQueued": "New pipeline added to the queue.", "dynamic.starting": "Starting…", "dynamic.loading": "Loading…", "dynamic.loadingLogs": "Loading logs…", "dynamic.workerPreparing": "The worker is preparing the job configuration.", "dynamic.noLogs": "No log output yet.", "dynamic.cancelRequested": "Pipeline cancellation requested.",
+    "dynamic.errorUser": "Could not load sign-in information.", "dynamic.sessionExpired": "Your session has expired.", "dynamic.requestFailed": "Request failed ({status}).", "dynamic.updated": "Updated now · {time}", "dynamic.refreshPipelines": "Pipelines refreshed.", "dynamic.refreshRepositories": "Repositories refreshed.", "dynamic.refreshRunners": "Runner status refreshed.", "dynamic.refreshGraphs": "Pipeline graphs refreshed.", "dynamic.beforeRun": "{branch} · no runs yet", "dynamic.viewRun": "View run", "dynamic.noRuns": "No runs yet", "dynamic.idle": "Idle", "dynamic.copyUrl": "Copy URL", "dynamic.runPipeline": "Run pipeline", "dynamic.delete": "Delete", "dynamic.urlCopied": "Repository URL copied.", "dynamic.copyFailed": "Could not copy to the clipboard.", "dynamic.repositoryCreated": "Repository created.", "dynamic.repositoryDeleted": "Repository deleted.", "dynamic.nameMismatch": "The repository name must match.", "dynamic.tokenCopied": "Lore access token copied.", "dynamic.pipelineQueued": "New pipeline added to the queue.", "dynamic.starting": "Starting…", "dynamic.loading": "Loading…", "dynamic.loadingLogs": "Loading logs…", "dynamic.workerPreparing": "The worker is preparing the job configuration.", "dynamic.noLogs": "No log output yet.", "dynamic.logsPruned": "Older logs were removed under the retention policy. Any remaining output is shown below.\n", "dynamic.cancelRequested": "Pipeline cancellation requested.",
     "dynamic.successRate": "Success rate {rate}", "dynamic.successRateEmpty": "Success rate —", "dynamic.countPipelines": "{count} pipelines", "dynamic.countFilteredPipelines": "{shown} / {total} pipelines", "dynamic.countRoutes": "{count} routes", "dynamic.countFilteredRoutes": "{shown} / {total} routes", "dynamic.countRepositories": "{count} repositories", "dynamic.countFilteredRepositories": "{shown} / {total} repositories", "dynamic.countRunners": "{count} Runners", "dynamic.countFilteredRunners": "{shown} / {total} Runners", "dynamic.pipelineTitle": "Pipeline #{id}", "dynamic.jobs": "{count} jobs", "dynamic.matchingPaths": "{count} matching path(s)", "dynamic.pathRule": "path rule", "dynamic.changedFolder": "Changed folder", "dynamic.runsIn": "runs in {directory}", "dynamic.repositoryRoot": "repository root", "dynamic.assigned": "{os} · assigned", "dynamic.target": "{os} target", "dynamic.waiting": "waiting for {os}", "dynamic.stage": "Stage · {status}", "dynamic.graphAria": "A change to {patterns} runs pipeline {pipeline} on a {os} Runner through stages {stages}.", "dynamic.greetingMorning": "Good morning, {name}.", "dynamic.greetingAfternoon": "Good afternoon, {name}.", "dynamic.greetingEvening": "Good evening, {name}.", "dynamic.detail": "View details",
     "status.configured": "Configured", "status.queued": "Queued", "status.running": "Running", "status.succeeded": "Passed", "status.failed": "Failed", "status.canceled": "Canceled", "status.skipped": "Skipped", "status.online": "Online", "status.offline": "Offline"
   },
   ko: {
     "Language": "언어", "LORE NATIVE DEV PLATFORM": "LORE 네이티브 개발 플랫폼", "ZENOGRID WORKSPACE": "ZENOGRID 워크스페이스", "Overview": "개요", "Pipelines": "파이프라인", "Graphs": "그래프", "Repositories": "저장소", "Runners": "Runner", "Workspace": "워크스페이스", "Internal": "내부", "Coordinator online": "Coordinator 온라인", "Search pipelines…": "파이프라인 검색…", "Total pipelines": "전체 파이프라인", "Succeeded": "성공", "Active": "활성", "Queued + running": "대기 + 실행 중", "Needs attention": "확인 필요", "Failed pipelines": "실패한 파이프라인", "Recent pipelines": "최근 파이프라인", "All": "전체", "Finished": "완료", "Status": "상태", "Pipeline": "파이프라인", "Revision": "Revision", "Created": "생성 시각", "Duration": "소요 시간", "Actions": "작업", "New pipeline": "새 파이프라인", "CI routing": "CI 라우팅", "Pipeline graphs": "파이프라인 그래프", "Routes": "경로", "Folder rules": "폴더 규칙", "Runner targets": "Runner 대상", "Folder routing map": "폴더 라우팅 맵", "Lore server": "Lore 서버", "New repository": "새 저장소", "Current Lore server": "현재 Lore 서버", "CLI access token": "CLI 액세스 토큰", "Online": "온라인", "Repository list": "저장소 목록", "CI infrastructure": "CI 인프라", "Runner 다운로드": "Runner 다운로드", "Total runners": "전체 Runner", "Offline": "오프라인", "Registered runners": "등록된 Runner", "Runner": "Runner", "Operating system": "운영체제", "Architecture": "아키텍처", "Version": "버전", "Last seen": "마지막 연결", "Current job": "현재 작업", "RUN CI": "CI 실행", "Repository URL": "저장소 URL", "Cancel": "취소", "Run pipeline": "파이프라인 실행", "LORE SERVER": "LORE 서버", "Repository name": "저장소 이름", "Storage Backend": "Storage Backend", "DynamoDB + S3": "DynamoDB + S3", "Local File": "Local File", "Description": "설명", "optional": "선택", "Repository purpose": "저장소 용도", "Create repository": "저장소 생성", "DANGER ZONE": "위험 구역", "Delete repository": "저장소 삭제", "CLI AUTHENTICATION": "CLI 인증", "Lore access token": "Lore 액세스 토큰", "Access token": "액세스 토큰", "Copy token": "토큰 복사", "Close": "닫기", "Execution graph": "실행 그래프", "folder routing": "폴더 라우팅", "Jobs": "작업", "Job log": "작업 로그", "live": "실시간", "Cancel pipeline": "파이프라인 취소",
-    "dynamic.errorUser": "로그인 정보를 불러오지 못했습니다.", "dynamic.sessionExpired": "세션이 만료되었습니다.", "dynamic.requestFailed": "요청에 실패했습니다 ({status}).", "dynamic.updated": "방금 업데이트 · {time}", "dynamic.refreshPipelines": "파이프라인을 새로고침했습니다.", "dynamic.refreshRepositories": "저장소를 새로고침했습니다.", "dynamic.refreshRunners": "Runner 상태를 새로고침했습니다.", "dynamic.refreshGraphs": "파이프라인 그래프를 새로고침했습니다.", "dynamic.beforeRun": "{branch} · 실행 전", "dynamic.viewRun": "실행 보기", "dynamic.noRuns": "실행 이력 없음", "dynamic.idle": "대기", "dynamic.copyUrl": "URL 복사", "dynamic.runPipeline": "파이프라인 실행", "dynamic.delete": "삭제", "dynamic.urlCopied": "저장소 URL을 복사했습니다.", "dynamic.copyFailed": "클립보드에 복사하지 못했습니다.", "dynamic.repositoryCreated": "저장소를 생성했습니다.", "dynamic.repositoryDeleted": "저장소를 삭제했습니다.", "dynamic.nameMismatch": "저장소 이름이 일치해야 합니다.", "dynamic.tokenCopied": "Lore 액세스 토큰을 복사했습니다.", "dynamic.pipelineQueued": "새 파이프라인을 큐에 추가했습니다.", "dynamic.starting": "시작 중…", "dynamic.loading": "불러오는 중…", "dynamic.loadingLogs": "로그를 불러오는 중…", "dynamic.workerPreparing": "Worker가 작업 구성을 준비하고 있습니다.", "dynamic.noLogs": "아직 출력된 로그가 없습니다.", "dynamic.cancelRequested": "파이프라인 취소를 요청했습니다.",
+    "dynamic.errorUser": "로그인 정보를 불러오지 못했습니다.", "dynamic.sessionExpired": "세션이 만료되었습니다.", "dynamic.requestFailed": "요청에 실패했습니다 ({status}).", "dynamic.updated": "방금 업데이트 · {time}", "dynamic.refreshPipelines": "파이프라인을 새로고침했습니다.", "dynamic.refreshRepositories": "저장소를 새로고침했습니다.", "dynamic.refreshRunners": "Runner 상태를 새로고침했습니다.", "dynamic.refreshGraphs": "파이프라인 그래프를 새로고침했습니다.", "dynamic.beforeRun": "{branch} · 실행 전", "dynamic.viewRun": "실행 보기", "dynamic.noRuns": "실행 이력 없음", "dynamic.idle": "대기", "dynamic.copyUrl": "URL 복사", "dynamic.runPipeline": "파이프라인 실행", "dynamic.delete": "삭제", "dynamic.urlCopied": "저장소 URL을 복사했습니다.", "dynamic.copyFailed": "클립보드에 복사하지 못했습니다.", "dynamic.repositoryCreated": "저장소를 생성했습니다.", "dynamic.repositoryDeleted": "저장소를 삭제했습니다.", "dynamic.nameMismatch": "저장소 이름이 일치해야 합니다.", "dynamic.tokenCopied": "Lore 액세스 토큰을 복사했습니다.", "dynamic.pipelineQueued": "새 파이프라인을 큐에 추가했습니다.", "dynamic.starting": "시작 중…", "dynamic.loading": "불러오는 중…", "dynamic.loadingLogs": "로그를 불러오는 중…", "dynamic.workerPreparing": "Worker가 작업 구성을 준비하고 있습니다.", "dynamic.noLogs": "아직 출력된 로그가 없습니다.", "dynamic.logsPruned": "보존 기간이 지난 로그가 삭제되었습니다. 남아 있는 출력은 아래에 표시됩니다.\n", "dynamic.cancelRequested": "파이프라인 취소를 요청했습니다.",
     "dynamic.successRate": "성공률 {rate}", "dynamic.successRateEmpty": "성공률 —", "dynamic.countPipelines": "파이프라인 {count}개", "dynamic.countFilteredPipelines": "파이프라인 {shown} / {total}개", "dynamic.countRoutes": "경로 {count}개", "dynamic.countFilteredRoutes": "경로 {shown} / {total}개", "dynamic.countRepositories": "저장소 {count}개", "dynamic.countFilteredRepositories": "저장소 {shown} / {total}개", "dynamic.countRunners": "Runner {count}개", "dynamic.countFilteredRunners": "Runner {shown} / {total}개", "dynamic.pipelineTitle": "파이프라인 #{id}", "dynamic.jobs": "작업 {count}개", "dynamic.matchingPaths": "일치 경로 {count}개", "dynamic.pathRule": "경로 규칙", "dynamic.changedFolder": "변경 폴더", "dynamic.runsIn": "{directory}에서 실행", "dynamic.repositoryRoot": "저장소 루트", "dynamic.assigned": "{os} · 배정됨", "dynamic.target": "{os} 대상", "dynamic.waiting": "{os} 대기 중", "dynamic.stage": "단계 · {status}", "dynamic.graphAria": "{patterns} 변경이 {pipeline} 파이프라인과 {os} Runner를 거쳐 {stages} 단계를 실행합니다.", "dynamic.greetingMorning": "좋은 아침입니다, {name}님.", "dynamic.greetingAfternoon": "안녕하세요, {name}님.", "dynamic.greetingEvening": "좋은 저녁입니다, {name}님.", "dynamic.detail": "상세 보기",
     "status.configured": "설정됨", "status.queued": "대기 중", "status.running": "실행 중", "status.succeeded": "성공", "status.failed": "실패", "status.canceled": "취소됨", "status.skipped": "건너뜀", "status.online": "온라인", "status.offline": "오프라인"
   },
@@ -42,7 +42,7 @@ const I18N = {
     "Lore server": "Lore 服务器", "현재 Lore 서버의 repository를 생성하고 연결 주소를 관리합니다.": "在当前 Lore 服务器上创建仓库并管理连接地址。", "New repository": "新建仓库", "Current Lore server": "当前 Lore 服务器", "CLI access token": "CLI 访问令牌", "Online": "在线", "Repository list": "仓库列表", "서버에서 조회한 Lore repository": "从服务器加载的 Lore 仓库", "Repository가 없습니다": "暂无仓库", "현재 Lore 서버에 첫 repository를 만드세요.": "在当前 Lore 服务器上创建第一个仓库。", "Google Workspace 로그인 사용자만 관리할 수 있습니다.": "仅已登录的 Google Workspace 用户可以管理仓库。",
     "CI infrastructure": "CI 基础设施", "등록된 runner의 운영체제, 연결 상태와 현재 작업을 확인합니다.": "查看已注册 Runner 的操作系统、连接状态和当前任务。", "Runner 다운로드": "下载 Runner", "LoreHub runner와 Lore CLI, 설치 스크립트가 포함된 x86_64 패키지입니다.": "包含 LoreHub Runner、Lore CLI 和安装脚本的 x86_64 软件包。", "Runner 요약": "Runner 摘要", "Total runners": "Runner 总数", "등록된 전체 runner": "所有已注册 Runner", "15초 내 heartbeat": "15 秒内收到心跳", "Offline": "离线", "종료 또는 heartbeat 만료": "已停止或心跳过期", "Registered runners": "已注册的 Runner", "5초 간격으로 상태가 갱신됩니다": "状态每 5 秒刷新", "Runner": "Runner", "Operating system": "操作系统", "Architecture": "架构", "Version": "版本", "Last seen": "最后在线", "Current job": "当前任务", "등록된 runner가 없습니다": "暂无已注册 Runner", "Linux 또는 Windows에서 lorehub worker를 실행하면 자동으로 표시됩니다.": "在 Linux 或 Windows 上运行 lorehub worker 后会自动显示。", "Offline runner도 이력으로 유지됩니다.": "离线 Runner 仍保留在历史记录中。",
     "RUN CI": "运行 CI", "닫기": "关闭", "실행할 Lore 저장소와 변경되지 않는 64자리 revision hash를 입력하세요.": "输入要运行的 Lore 仓库和不可变的 64 位修订哈希。", "Repository URL": "仓库 URL", "lores:// 주소": "lores:// 地址", "64-character Lore revision hash": "64 位 Lore 修订哈希", "branch나 head 대신 전체 revision hash": "使用完整修订哈希，而不是分支或 head", "Cancel": "取消", "Run pipeline": "运行流水线", "LORE SERVER": "LORE 服务器", "현재 서버에 새로운 Lore repository를 생성합니다.": "在当前服务器上创建新的 Lore 仓库。", "Repository name": "仓库名称", "영문자·숫자로 시작하고 끝나며 점, 대시, 밑줄 사용 가능": "以字母或数字开头和结尾，可使用点、连字符和下划线。", "Description": "描述", "optional": "可选", "Repository purpose": "仓库用途", "Create repository": "创建仓库", "DANGER ZONE": "危险操作", "Delete repository": "删除仓库", "repository와 서버에 저장된 데이터를 삭제합니다. 이 작업은 되돌릴 수 없습니다.": "删除仓库及服务器上的数据。此操作无法撤销。", "확인을 위해 repository 이름 입력": "输入仓库名称以确认", "CLI AUTHENTICATION": "CLI 身份验证", "Lore access token": "Lore 访问令牌", "Google 로그인 계정으로 발급된 토큰입니다. 1시간 동안 유효하며 다른 사람과 공유하지 마세요.": "这是为您的 Google 账号签发的令牌，有效期一小时，请勿与他人共享。", "Access token": "访问令牌", "Copy token": "复制令牌", "Close": "关闭", "PIPELINE": "流水线", "Execution graph": "执行图", "folder routing": "文件夹路由", "Jobs": "任务", "Job log": "任务日志", "live": "实时", "로그를 불러오는 중…": "正在加载日志…", "Cancel pipeline": "取消流水线",
-    "dynamic.errorUser": "无法加载登录信息。", "dynamic.sessionExpired": "会话已过期。", "dynamic.requestFailed": "请求失败（{status}）。", "dynamic.updated": "刚刚更新 · {time}", "dynamic.refreshPipelines": "流水线已刷新。", "dynamic.refreshRepositories": "仓库已刷新。", "dynamic.refreshRunners": "Runner 状态已刷新。", "dynamic.refreshGraphs": "流水线图表已刷新。", "dynamic.beforeRun": "{branch} · 尚未运行", "dynamic.viewRun": "查看运行", "dynamic.noRuns": "尚无运行", "dynamic.idle": "空闲", "dynamic.copyUrl": "复制 URL", "dynamic.runPipeline": "运行流水线", "dynamic.delete": "删除", "dynamic.urlCopied": "仓库 URL 已复制。", "dynamic.copyFailed": "无法复制到剪贴板。", "dynamic.repositoryCreated": "仓库已创建。", "dynamic.repositoryDeleted": "仓库已删除。", "dynamic.nameMismatch": "仓库名称必须一致。", "dynamic.tokenCopied": "Lore 访问令牌已复制。", "dynamic.pipelineQueued": "新流水线已加入队列。", "dynamic.starting": "正在启动…", "dynamic.loading": "正在加载…", "dynamic.loadingLogs": "正在加载日志…", "dynamic.workerPreparing": "Worker 正在准备任务配置。", "dynamic.noLogs": "暂无日志输出。", "dynamic.cancelRequested": "已请求取消流水线。",
+    "dynamic.errorUser": "无法加载登录信息。", "dynamic.sessionExpired": "会话已过期。", "dynamic.requestFailed": "请求失败（{status}）。", "dynamic.updated": "刚刚更新 · {time}", "dynamic.refreshPipelines": "流水线已刷新。", "dynamic.refreshRepositories": "仓库已刷新。", "dynamic.refreshRunners": "Runner 状态已刷新。", "dynamic.refreshGraphs": "流水线图表已刷新。", "dynamic.beforeRun": "{branch} · 尚未运行", "dynamic.viewRun": "查看运行", "dynamic.noRuns": "尚无运行", "dynamic.idle": "空闲", "dynamic.copyUrl": "复制 URL", "dynamic.runPipeline": "运行流水线", "dynamic.delete": "删除", "dynamic.urlCopied": "仓库 URL 已复制。", "dynamic.copyFailed": "无法复制到剪贴板。", "dynamic.repositoryCreated": "仓库已创建。", "dynamic.repositoryDeleted": "仓库已删除。", "dynamic.nameMismatch": "仓库名称必须一致。", "dynamic.tokenCopied": "Lore 访问令牌已复制。", "dynamic.pipelineQueued": "新流水线已加入队列。", "dynamic.starting": "正在启动…", "dynamic.loading": "正在加载…", "dynamic.loadingLogs": "正在加载日志…", "dynamic.workerPreparing": "Worker 正在准备任务配置。", "dynamic.noLogs": "暂无日志输出。", "dynamic.logsPruned": "已按保留策略删除过期日志。剩余输出显示在下方。\n", "dynamic.cancelRequested": "已请求取消流水线。",
     "dynamic.successRate": "成功率 {rate}", "dynamic.successRateEmpty": "成功率 —", "dynamic.countPipelines": "{count} 条流水线", "dynamic.countFilteredPipelines": "{shown} / {total} 条流水线", "dynamic.countRoutes": "{count} 条路由", "dynamic.countFilteredRoutes": "{shown} / {total} 条路由", "dynamic.countRepositories": "{count} 个仓库", "dynamic.countFilteredRepositories": "{shown} / {total} 个仓库", "dynamic.countRunners": "{count} 个 Runner", "dynamic.countFilteredRunners": "{shown} / {total} 个 Runner", "dynamic.pipelineTitle": "流水线 #{id}", "dynamic.jobs": "{count} 个任务", "dynamic.matchingPaths": "{count} 个匹配路径", "dynamic.pathRule": "路径规则", "dynamic.changedFolder": "变更文件夹", "dynamic.runsIn": "在 {directory} 中运行", "dynamic.repositoryRoot": "仓库根目录", "dynamic.assigned": "{os} · 已分配", "dynamic.target": "目标 {os}", "dynamic.waiting": "等待 {os}", "dynamic.stage": "阶段 · {status}", "dynamic.graphAria": "{patterns} 的变更会通过 {os} Runner 运行流水线 {pipeline} 的 {stages} 阶段。", "dynamic.greetingMorning": "早上好，{name}。", "dynamic.greetingAfternoon": "下午好，{name}。", "dynamic.greetingEvening": "晚上好，{name}。", "dynamic.detail": "查看详情",
     "status.configured": "已配置", "status.queued": "排队中", "status.running": "运行中", "status.succeeded": "成功", "status.failed": "失败", "status.canceled": "已取消", "status.skipped": "已跳过", "status.online": "在线", "status.offline": "离线"
   }
@@ -76,6 +76,13 @@ Object.assign(I18N.en, {
   "dynamic.stopRunnerFirst": "Stop the Runner before removing it.",
   "dynamic.runnerNameMismatch": "The Runner name must match.",
   "dynamic.runnerRemoved": "Runner registration removed.",
+  "runner.pause": "Pause assignments", "runner.resume": "Resume assignments",
+  "runner.draining": "Finishing current work", "runner.drained": "Maintenance mode",
+  "runner.pauseHint": "Stop assigning new work to {name}. Current work will finish normally.",
+  "runner.resumeHint": "Allow {name} to receive new work again.",
+  "runner.paused": "New assignments paused. Current work will finish normally.",
+  "runner.resumed": "New assignments resumed.", "runner.restricted": "Running (restricted)",
+  "배정 중지는 현재 작업을 마친 뒤 새 작업을 받지 않습니다. 점검 후 배정 재개를 누르세요.": "Pausing assignments lets current work finish and blocks new work. Resume assignments after maintenance.",
   "docker.installed": "Installed", "docker.notInstalled": "Not installed", "docker.unknown": "Not reported",
   "Sources and runtime": "Sources and runtime", "Management": "Management", "Execution graphs": "Execution graphs", "CI settings": "CI settings",
   "Repository branch tree": "Repository branch tree", "Repository와 branch별로 pipeline 실행 그래프를 구분합니다.": "Groups pipeline execution graphs by repository and branch.",
@@ -103,6 +110,12 @@ Object.assign(I18N.ko, {
   "dynamic.stopRunnerFirst": "Runner를 중지한 후 등록 해제할 수 있습니다.",
   "dynamic.runnerNameMismatch": "Runner 이름이 일치해야 합니다.",
   "dynamic.runnerRemoved": "Runner 등록을 해제했습니다.",
+  "runner.pause": "배정 중지", "runner.resume": "배정 재개",
+  "runner.draining": "작업 마무리 중", "runner.drained": "유지보수 모드",
+  "runner.pauseHint": "{name}의 새 작업 배정을 중지합니다. 현재 작업은 정상적으로 마무리합니다.",
+  "runner.resumeHint": "{name}이 새 작업을 다시 받을 수 있도록 합니다.",
+  "runner.paused": "새 작업 배정을 중지했습니다. 현재 작업은 계속 실행됩니다.",
+  "runner.resumed": "새 작업 배정을 재개했습니다.", "runner.restricted": "실행 중 (접근 제한)",
   "docker.installed": "설치됨", "docker.notInstalled": "미설치", "docker.unknown": "확인 전",
   "dynamic.countBranches": "Branch {count}개",
   "Sources and runtime": "소스 및 실행 환경", "Management": "관리", "Execution graphs": "실행 그래프", "CI settings": "CI 설정",
@@ -135,6 +148,13 @@ Object.assign(I18N["zh-CN"], {
   "dynamic.stopRunnerFirst": "请先停止 Runner，然后再将其移除。",
   "dynamic.runnerNameMismatch": "Runner 名称必须一致。",
   "dynamic.runnerRemoved": "Runner 注册已移除。",
+  "runner.pause": "暂停分配", "runner.resume": "恢复分配",
+  "runner.draining": "正在完成当前任务", "runner.drained": "维护模式",
+  "runner.pauseHint": "停止向 {name} 分配新任务。当前任务将正常完成。",
+  "runner.resumeHint": "允许 {name} 再次接收新任务。",
+  "runner.paused": "已暂停新任务分配。当前任务继续执行。",
+  "runner.resumed": "已恢复新任务分配。", "runner.restricted": "运行中（受限）",
+  "배정 중지는 현재 작업을 마친 뒤 새 작업을 받지 않습니다. 점검 후 배정 재개를 누르세요.": "暂停分配后，当前任务正常完成，不再接收新任务。维护结束后请恢复分配。",
   "docker.installed": "已安装", "docker.notInstalled": "未安装", "docker.unknown": "尚未报告",
   "dynamic.countBranches": "{count} 个分支",
   "Sources and runtime": "源代码与运行环境", "Management": "管理", "Execution graphs": "执行图", "CI settings": "CI 设置",
@@ -231,6 +251,11 @@ const state = {
   user: null,
   pipelines: [],
   pipelineNextBefore: null,
+  pipelineRequest: 0,
+  pipelineLoading: false,
+  pipelineSearchTimer: null,
+  pipelineHasOlderPages: false,
+  repositoryScope: "",
   repositories: [],
   runners: [],
   pipelineGraphs: [],
@@ -274,8 +299,7 @@ const state = {
   pipelineNameFilter: "",
   query: "",
   selectedId: null,
-  detailLogs: [],
-  detailLogsPipelineId: null,
+  detailLogView: null,
   refreshTimer: null,
   updatedAt: {},
 };
@@ -295,6 +319,8 @@ document.addEventListener("DOMContentLoaded", () => {
     "pipeline-repository-filter", "pipeline-branch-filter", "pipeline-name-filter", "pipeline-filter-reset",
     "pipeline-detail-dialog", "detail-repository", "detail-title", "detail-summary",
     "execution-graph-section", "execution-graph", "job-count", "job-list", "pipeline-log", "cancel-pipeline-button", "toast-region",
+    "detail-log-more", "detail-log-follow", "detail-log-restart", "detail-log-note", "detail-retry",
+    "detail-copy-link", "detail-permalink",
     "repositories-page", "new-repository-button", "new-repository-dialog", "repository-form",
     "repository-name", "repository-description", "create-repository-button", "repository-list",
     "repository-empty-state", "repository-count", "nav-repository-count", "repository-server-url",
@@ -322,11 +348,14 @@ document.addEventListener("DOMContentLoaded", () => {
     "runner-stat-total", "runner-stat-online", "runner-stat-offline", "runner-last-updated",
     "remove-runner-dialog", "remove-runner-form", "remove-runner-name",
     "remove-runner-confirmation", "confirm-remove-runner-button",
+    "runner-diagnostics-dialog", "runner-diagnostics-title", "runner-diagnostics-status",
+    "runner-diagnostics-hint", "runner-diagnostics-facts", "runner-diagnostics-freshness",
     "graphs-page", "pipeline-graph-list", "graph-empty-state", "graph-count", "nav-graph-count",
     "graph-stat-routes", "graph-stat-folders", "graph-stat-runners", "graph-last-updated",
   ]) elements[id] = document.getElementById(id);
 
   initManagement();
+  initRepositoryContext();
   registerStaticTranslations();
   bindLocaleControls();
   bindThemeControl();
@@ -407,6 +436,8 @@ function applyLocale(rerender) {
   for (const entry of localizedTextNodes) entry.node.nodeValue = `${entry.leading}${t(entry.key)}${entry.trailing}`;
   for (const entry of localizedAttributes) entry.element.setAttribute(entry.attribute, t(entry.key));
   managementLocale();
+  renderRepositoryContext();
+  document.querySelector('.status-tab[data-status="failed"]').textContent = t("status.failed");
   if (!rerender) return;
   if (state.user) renderUser(state.user);
   updateSectionSearch();
@@ -422,12 +453,42 @@ function applyLocale(rerender) {
 }
 
 function bindEvents() {
+  document.querySelectorAll('a[href="/auth/google/login"]').forEach(link => link.addEventListener("click", rememberPipelineLogin));
   elements["new-pipeline-button"].addEventListener("click", openNewPipeline);
   elements["new-repository-button"].addEventListener("click", openNewRepository);
   document.querySelectorAll(".js-open-repository").forEach((button) => button.addEventListener("click", openNewRepository));
   document.querySelectorAll(".js-open-pipeline").forEach((button) => button.addEventListener("click", openNewPipeline));
   document.querySelectorAll(".modal-close, .modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-pipeline-dialog"].close()));
   document.querySelectorAll(".drawer-close").forEach((button) => button.addEventListener("click", () => elements["pipeline-detail-dialog"].close()));
+  elements["pipeline-detail-dialog"].addEventListener("close", () => {
+    if (elements["pipeline-detail-dialog"].open) return;
+    const id = state.selectedId;
+    executionDetailRequest++;
+    state.selectedId = null;
+    state.detailLogView = null;
+    if (id) closePipelineLocation(id);
+  });
+  elements["detail-copy-link"].addEventListener("click", async () => {
+    if (!state.selectedId) return;
+    try { await navigator.clipboard.writeText(pipelinePermalink(state.selectedId)); toast(t("dynamic.urlCopied"), "success"); }
+    catch (_) { toast(t("dynamic.copyFailed"), "error"); }
+  });
+  elements["detail-log-more"].addEventListener("click", () => void loadPipelineLogs(state.selectedId));
+  elements["detail-log-restart"].addEventListener("click", () => void restartDetailLogs());
+  elements["detail-log-follow"].addEventListener("click", () => {
+    const cache = state.detailLogView;
+    if (!cache) return;
+    cache.follow = !cache.follow;
+    renderLogs(cache.rows, cache.prunedAt);
+    if (cache.follow && !cache.more) void loadPipelineLogs(cache.id);
+  });
+  elements["pipeline-log"].addEventListener("scroll", () => {
+    const cache = state.detailLogView, terminal = elements["pipeline-log"];
+    if (!cache?.follow || terminal.scrollTop + terminal.clientHeight >= terminal.scrollHeight - 8) return;
+    cache.follow = false;
+    renderLogs(cache.rows, cache.prunedAt);
+  });
+  elements["detail-retry"].addEventListener("click", () => { if (state.selectedId) void openPipeline(state.selectedId); });
   document.querySelectorAll(".repository-modal-close, .repository-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-dialog"].close()));
   document.querySelectorAll(".delete-modal-close, .delete-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["delete-repository-dialog"].close()));
   document.querySelectorAll(".repository-branches-modal-close, .repository-branches-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["repository-branches-dialog"].close()));
@@ -437,7 +498,7 @@ function bindEvents() {
   elements["delete-repository-form"].addEventListener("submit", deleteRepository);
   elements["repository-branches-form"].addEventListener("submit", saveRepositoryPipelineBranches);
   elements["repository-config-form"].addEventListener("submit", saveRepositoryConfig);
-  elements["repository-config-repository"].addEventListener("change", () => void loadRepositoryConfigPage(elements["repository-config-repository"].value));
+  elements["repository-config-repository"].addEventListener("change", () => chooseRepositorySection("ci-settings", elements["repository-config-repository"].value));
   elements["repository-config-branch"].addEventListener("change", () => void loadRepositoryConfig());
   elements["repository-config-edit"].addEventListener("click", () => setRepositoryConfigEditing(true));
   elements["repository-config-cancel-edit"].addEventListener("click", () => setRepositoryConfigEditing(false));
@@ -448,7 +509,7 @@ function bindEvents() {
   document.querySelectorAll(".js-open-repository-link").forEach((button) => button.addEventListener("click", openNewRepositoryLink));
   document.querySelectorAll(".repository-link-modal-close, .repository-link-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-link-dialog"].close()));
   elements["repository-link-form"].addEventListener("submit", createRepositoryLink);
-  elements["repository-link-repository"].addEventListener("change", () => void loadRepositoryLinksPage(elements["repository-link-repository"].value));
+  elements["repository-link-repository"].addEventListener("change", () => chooseRepositorySection("repository-links", elements["repository-link-repository"].value));
   elements["repository-link-branch"].addEventListener("change", () => void loadRepositoryLinks());
   elements["repository-link-source-repository"].addEventListener("change", () => void loadRepositoryLinkSourceBranches());
   elements["repository-link-list"].addEventListener("click", repositoryLinkAction);
@@ -473,7 +534,7 @@ function bindEvents() {
     else if (state.section === "runners") renderRunners();
     else if (state.section === "graphs") renderPipelineGraphs();
     else if (isManagement()) { if (!management.dirty) renderManagement(); }
-    else renderPipelines();
+    else searchPipelineHistory(250);
   });
   elements["refresh-button"].addEventListener("click", () => void refreshSection(true));
   elements["load-more-pipelines"].addEventListener("click", () => void loadPipelines(false, true));
@@ -493,23 +554,27 @@ function bindEvents() {
   document.querySelectorAll(".status-tab").forEach((button) => button.addEventListener("click", () => {
     state.filter = button.dataset.status;
     document.querySelectorAll(".status-tab").forEach((tab) => tab.classList.toggle("is-active", tab === button));
-    renderPipelines();
+    searchPipelineHistory();
   }));
   for (const [id, stateKey] of [
     ["pipeline-repository-filter", "pipelineRepositoryFilter"],
     ["pipeline-branch-filter", "pipelineBranchFilter"],
     ["pipeline-name-filter", "pipelineNameFilter"],
   ]) {
-    elements[id].addEventListener("change", () => {
+    elements[id].addEventListener(stateKey === "pipelineRepositoryFilter" ? "change" : "input", () => {
+      if (stateKey === "pipelineRepositoryFilter") {
+        navigateRepositorySection("pipelines", elements[id].value);
+        return;
+      }
       state[stateKey] = elements[id].value;
-      renderPipelines();
+      searchPipelineHistory(250);
     });
   }
   elements["pipeline-filter-reset"].addEventListener("click", () => {
     state.pipelineRepositoryFilter = "";
     state.pipelineBranchFilter = "";
     state.pipelineNameFilter = "";
-    renderPipelines();
+    navigateRepositorySection("pipelines", "");
   });
   elements["pipeline-table-body"].addEventListener("click", (event) => {
     const row = event.target.closest("tr[data-id]");
@@ -520,10 +585,9 @@ function bindEvents() {
   document.querySelectorAll(".nav-item[data-section]").forEach((link) => link.addEventListener("click", (event) => {
     event.preventDefault();
     const section = availableSections().includes(link.dataset.section) ? link.dataset.section : "overview";
-    window.location.hash = section;
-    if (window.location.hash.slice(1) === state.section) void showSection(section);
+    navigateRepositorySection(section);
   }));
-  window.addEventListener("hashchange", () => void showSection(sectionFromHash()));
+  window.addEventListener("hashchange", () => void syncPipelineLocation());
   window.addEventListener("beforeunload", (event) => {
     if (!state.repositoryConfigEditing) return;
     event.preventDefault();
@@ -546,12 +610,13 @@ async function initialize() {
     }
     if (!response.ok) throw new Error(t("dynamic.errorUser"));
     const user = await response.json();
+    restorePipelineLogin();
     state.user = user;
     renderUser(user);
     elements["loading-view"].hidden = true;
     elements["app-view"].hidden = false;
-    await Promise.all([loadPipelines(false), loadRunners(false)]);
-    await showSection(sectionFromHash());
+    await Promise.all([loadRepositories(false), loadRunners(false)]);
+    await syncPipelineLocation(true);
     state.refreshTimer = window.setInterval(() => void refreshActiveViews(), 5000);
   } catch (error) {
     showLogin();
@@ -560,7 +625,7 @@ async function initialize() {
 }
 
 function sectionFromHash() {
-  const section = window.location.hash.slice(1);
+  const section = repositoryRoute(window.location.hash).section;
   return availableSections().includes(section) ? section : "overview";
 }
 
@@ -570,19 +635,45 @@ function availableSections() {
 
 async function showSection(section) {
   if (!availableSections().includes(section)) section = "overview";
-  if (state.section === section && section === "ci-settings" && state.repositoryConfigEditing) return;
+  const scope = REPOSITORY_SECTIONS.includes(section) ? repositoryRoute(window.location.hash).repository : "";
+  const scopeChanged = scope !== state.repositoryScope;
+  if (state.section === section && !scopeChanged && section === "ci-settings" && state.repositoryConfigEditing) return;
   if (state.section !== section && isManagement() && !discardManagement()) {
-    history.replaceState(null, "", `#${state.section}`);
+    history.replaceState(null, "", repositorySectionHash(state.section, state.repositoryScope));
     document.getElementById("mobile-page-select").value = state.section;
     return;
   }
-  if (state.section !== section && state.section === "ci-settings" && !discardRepositoryConfigEdit()) {
-    history.replaceState(null, "", `#${state.section}`);
+  if ((state.section !== section || scopeChanged) && state.section === "ci-settings" && !discardRepositoryConfigEdit()) {
+    history.replaceState(null, "", repositorySectionHash(state.section, state.repositoryScope));
     document.getElementById("mobile-page-select").value = state.section;
     return;
   }
   if (state.section !== section && state.section === "ci-settings") resetRepositoryConfig();
+  if (scopeChanged) {
+    state.repositoryScope = scope;
+    state.pipelineRepositoryFilter = scope;
+    state.pipelineBranchFilter = "";
+    state.pipelineNameFilter = "";
+    state.filter = "all";
+    document.querySelectorAll(".status-tab").forEach(tab => tab.classList.toggle("is-active", tab.dataset.status === "all"));
+    state.pipelineRequest++;
+    state.pipelineLoading = false;
+    state.pipelineHasOlderPages = false;
+    state.pipelineNextBefore = null;
+    state.pipelines = [];
+    state.pipelineGraphs = [];
+    executionGraphRequest++;
+    state.repositoryLinksRequest++;
+    state.repositoryConfigRequest++;
+    state.repositoryConfigName = scope ? repositoryName(scope) : null;
+    state.repositoryLinksName = scope ? repositoryName(scope) : null;
+    renderPipelines();
+    renderPipelineGraphs();
+    renderStats();
+  }
   state.section = section;
+  rememberPipelinePage(window.location.hash);
+  renderRepositoryContext();
   for (const key of MANAGEMENT_SECTIONS) document.getElementById(`${key}-page`).hidden = section !== key;
   document.getElementById("mobile-page-select").value = section;
   document.querySelectorAll(".overview-view").forEach((element) => { element.hidden = section !== "overview"; });
@@ -597,8 +688,9 @@ async function showSection(section) {
     const active = link.dataset.section === section;
     link.classList.toggle("is-active", active);
   });
-  state.query = "";
-  elements["pipeline-search"].value = "";
+  invalidatePipelineHistory();
+  restorePipelineHistoryFilters(window.location.hash);
+  renderPipelines();
   updateSectionSearch();
   if (isManagement()) await loadManagement();
   else if (section === "repositories") await loadRepositories(false);
@@ -606,10 +698,19 @@ async function showSection(section) {
   else if (section === "repository-links") await loadRepositoryLinksPage(state.repositoryLinksName);
   else if (section === "runners") await loadRunners(false);
   else if (section === "graphs") await loadPipelineGraphs(false);
+  else if (["overview", "pipelines"].includes(section)) await loadPipelines(false);
   else renderPipelines();
 }
 
 function updateSectionSearch() {
+  if (["overview", "pipelines"].includes(state.section)) elements["pipeline-search"].maxLength = 256;
+  else elements["pipeline-search"].removeAttribute("maxlength");
+  if (state.section === "operations") {
+    elements["pipeline-search"].disabled = true;
+    elements["pipeline-search"].placeholder = ot("title");
+    elements["pipeline-search"].previousElementSibling.textContent = ot("title");
+    return;
+  }
   elements["pipeline-search"].disabled = false;
   if (isManagement()) {
     const key = state.section === "workspace-views" ? "viewSearch" : state.section === "repository-access" ? "accessSearch" : "search";
@@ -675,32 +776,46 @@ async function api(path, options = {}) {
   if (!response.ok) {
     let message = t("dynamic.requestFailed", { status: response.status });
     try { message = (await response.json()).error || message; } catch (_) { /* response has no JSON body */ }
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: response.status });
   }
   if (response.status === 204) return null;
   return response.json();
 }
 
 async function loadPipelines(notify, append = false) {
+  if (state.pipelineLoading) return;
   const cursor = append ? state.pipelineNextBefore : null;
   if (append && !cursor) return;
+  const scope = state.repositoryScope;
+  const filters = pipelineHistoryParameters().toString();
+  const request = ++state.pipelineRequest;
+  state.pipelineLoading = true;
   elements["refresh-button"].disabled = true;
   elements["load-more-pipelines"].disabled = true;
+  renderPipelines();
   try {
-    const page = await api(`/api/v1/pipeline-history?limit=100${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`);
+    const page = await api(`/api/v1/pipeline-history?limit=100&${filters}${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`);
+    if (request !== state.pipelineRequest || scope !== state.repositoryScope || filters !== pipelineHistoryParameters().toString()) return;
     state.pipelines = append ? [...state.pipelines, ...page.pipelines] : page.pipelines;
     state.pipelineNextBefore = page.next_before;
+    state.pipelineHasOlderPages = append;
     renderStats();
     renderPipelines();
     state.updatedAt.pipelines = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshPipelines"), "success");
   } catch (error) {
+    if (request !== state.pipelineRequest || scope !== state.repositoryScope || filters !== pipelineHistoryParameters().toString()) return;
+    if (!append) { state.pipelines = []; state.pipelineNextBefore = null; renderStats(); renderPipelines(); }
     toast(error.message, "error");
   } finally {
-    elements["refresh-button"].disabled = false;
-    elements["load-more-pipelines"].disabled = !state.pipelineNextBefore;
-    elements["load-more-pipelines"].hidden = !state.pipelineNextBefore;
+    if (request === state.pipelineRequest && scope === state.repositoryScope) {
+      state.pipelineLoading = false;
+      elements["refresh-button"].disabled = false;
+      elements["load-more-pipelines"].disabled = !state.pipelineNextBefore;
+      elements["load-more-pipelines"].hidden = !state.pipelineNextBefore;
+      renderPipelines();
+    }
   }
 }
 
@@ -725,27 +840,42 @@ async function loadRepositories(notify) {
   }
 }
 
+let runnerListRequest = 0;
+let runnerLoadError = false;
+const runnerMutations = new Set();
+
 async function loadRunners(notify) {
+  if (runnerMutations.size) return;
+  const request = ++runnerListRequest;
   elements["refresh-button"].disabled = true;
   try {
-    state.runners = await api("/api/v1/runners");
+    const runners = await api("/api/v1/runners");
+    if (request !== runnerListRequest) return;
+    state.runners = runners;
+    runnerLoadError = false;
     renderRunners();
     state.updatedAt.runners = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshRunners"), "success");
   } catch (error) {
-    toast(error.message, "error");
+    if (request === runnerListRequest) {
+      runnerLoadError = true;
+      renderRunnerDiagnostics();
+      toast(error.message, "error");
+    }
   } finally {
-    elements["refresh-button"].disabled = false;
+    if (request === runnerListRequest) elements["refresh-button"].disabled = false;
   }
 }
 
 async function loadPipelineGraphs(notify) {
+  const scope = state.repositoryScope;
   const request = ++executionGraphRequest;
   elements["refresh-button"].disabled = true;
   elements["pipeline-graph-list"].setAttribute("aria-busy", "true");
   try {
-    const routes = await api("/api/v1/pipeline-graphs");
+    const routes = await api(`/api/v1/pipeline-graphs?${repositoryQuery(scope).slice(1)}`);
+    if (request !== executionGraphRequest || scope !== state.repositoryScope) return;
     const details = await Promise.all(routes.map(async (route) => {
       if (route.latest_pipeline_id) {
         const detail = await api(`/api/v1/pipelines/${encodeURIComponent(route.latest_pipeline_id)}`);
@@ -782,17 +912,22 @@ async function loadPipelineGraphs(notify) {
         },
       };
     }));
-    if (request !== executionGraphRequest) return;
+    if (request !== executionGraphRequest || scope !== state.repositoryScope) return;
     state.pipelineGraphs = details;
     renderPipelineGraphs();
     state.updatedAt.graphs = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshGraphs"), "success");
   } catch (error) {
+    if (request !== executionGraphRequest || scope !== state.repositoryScope) return;
+    state.pipelineGraphs = [];
+    renderPipelineGraphs();
     toast(error.message, "error");
   } finally {
-    elements["pipeline-graph-list"].removeAttribute("aria-busy");
-    elements["refresh-button"].disabled = false;
+    if (request === executionGraphRequest && scope === state.repositoryScope) {
+      elements["pipeline-graph-list"].removeAttribute("aria-busy");
+      elements["refresh-button"].disabled = false;
+    }
   }
 }
 
@@ -836,7 +971,7 @@ function renderPipelineGraphs() {
   for (const [repositoryUrl, branches] of repositories) {
     const repositoryTree = document.createElement("details");
     repositoryTree.className = "graph-repository-tree";
-    repositoryTree.open = Boolean(state.query) || state.graphExpandedRepositories.has(repositoryUrl);
+    repositoryTree.open = Boolean(state.repositoryScope) || Boolean(state.query) || state.graphExpandedRepositories.has(repositoryUrl);
     repositoryTree.addEventListener("toggle", () => {
       if (repositoryTree.open) state.graphExpandedRepositories.add(repositoryUrl);
       else state.graphExpandedRepositories.delete(repositoryUrl);
@@ -1001,8 +1136,84 @@ async function runPipelineFromGraph(detail, button) {
   }
 }
 
+let runnerDiagnosticId = null;
+const runnerDiagnosticCopy = {
+  title: ["Runner 진단", "Runner diagnostics", "Runner 诊断"],
+  ready: ["작업 요청 정상", "Polling normally", "任务请求正常"],
+  readyHint: ["최근 작업 요청을 받았습니다. 대기 작업이 실행되지 않으면 대상 OS와 선행 파이프라인 상태를 확인하세요.", "A recent work request was received. For queued work, check its target OS and upstream pipelines.", "已收到近期任务请求。如果任务仍在排队，请检查目标 OS 和上游流水线。"],
+  starting: ["첫 작업 요청 대기", "Awaiting first poll", "等待首次任务请求"],
+  startingHint: ["등록 이후 아직 작업 요청을 관측하지 못했습니다. 잠시 후 다시 확인하세요.", "No work request has been observed since registration. Check again shortly.", "注册后尚未观测到任务请求，请稍后检查。"],
+  poll_stalled: ["작업 요청 지연", "Work polling delayed", "任务请求延迟"],
+  poll_stalledHint: ["연결은 유지되지만 60초 넘게 작업 요청을 관측하지 못했습니다. 자동 업데이트 진행 여부, Runner 로그와 Coordinator 연결을 확인하세요.", "Heartbeat is current, but no work poll was observed for over 60 seconds. Check auto-update progress, Runner logs and the Coordinator connection.", "心跳正常，但超过 60 秒未观测到任务请求。请检查自动更新进度、Runner 日志和 Coordinator 连接。"],
+  heartbeat_lost: ["연결 확인 지연", "Heartbeat overdue", "心跳超时"],
+  heartbeat_lostHint: ["15초 넘게 heartbeat가 없습니다. Runner 서비스와 네트워크를 확인하세요. 이 정보만으로 종료 원인을 알 수는 없습니다.", "No heartbeat for over 15 seconds. Check the Runner service and network. This observation alone cannot identify the cause.", "超过 15 秒未收到心跳。请检查 Runner 服务和网络；仅凭此信息无法确定原因。"],
+  stopped: ["종료 보고됨", "Stop reported", "已报告停止"],
+  stoppedHint: ["Runner가 종료를 보고했습니다. 다시 사용하려면 서비스를 시작하고 새 heartbeat를 확인하세요.", "The Runner reported stopping. Start its service and check for a fresh heartbeat before using it again.", "Runner 已报告停止。如需再次使用，请启动服务并确认新心跳。"],
+  busy: ["작업 실행 중", "Running work", "正在执行任务"],
+  busyHint: ["배정된 파이프라인이 실행 중입니다. 실행 중에는 새 작업을 요청하지 않아도 정상입니다.", "An assigned pipeline is running. A Runner need not poll for new work while executing it.", "已分配的流水线正在运行。执行期间不请求新任务属于正常情况。"],
+  draining: ["작업 마무리 중", "Finishing current work", "正在完成当前任务"],
+  drainingHint: ["새 배정은 중지됐으며 기존 작업을 마무리하고 있습니다. 작업 완료 후 유지보수하세요.", "New assignments are paused while existing work finishes. Wait for completion before maintenance.", "已暂停新任务分配，正在完成现有任务。请等待完成后再维护。"],
+  paused: ["유지보수 모드", "Maintenance mode", "维护模式"],
+  pausedHint: ["새 작업 배정이 중지됐습니다. 점검 후 관리자가 배정을 재개할 수 있습니다.", "New assignments are paused. An administrator can resume them after maintenance.", "新任务分配已暂停。维护后管理员可以恢复分配。"],
+  unknown: ["진단 정보 없음", "Diagnostics unavailable", "无诊断信息"],
+  unknownHint: ["Coordinator가 진단 정보를 제공하지 않습니다.", "The Coordinator did not provide diagnostics.", "Coordinator 未提供诊断信息。"],
+  missing: ["Runner 등록 정보를 찾을 수 없습니다.", "Runner registration is no longer available.", "找不到 Runner 注册信息。"],
+  stale: ["갱신 실패 — 아래는 마지막으로 확인한 정보입니다.", "Refresh failed — showing the last observed data.", "刷新失败，以下显示最后观测到的信息。"],
+  observed: ["관측 시각", "Observed at", "观测时间"],
+  started: ["최근 등록", "Last registration", "最近注册"],
+  heartbeat: ["마지막 연결 보고", "Last presence report", "最近连接报告"],
+  poll: ["마지막 작업 요청", "Last work poll", "最近任务请求"],
+  stop: ["종료 보고", "Stop reported at", "停止报告时间"],
+  docker: ["Docker CLI (등록 시)", "Docker CLI (at registration)", "Docker CLI（注册时）"],
+  none: ["관측 기록 없음", "Not observed", "尚无观测记录"],
+};
+function rdt(key) { return runnerDiagnosticCopy[key]?.[state.locale === "ko" ? 0 : state.locale === "zh-CN" ? 2 : 1] ?? key; }
+function runnerDiagnosticCode(runner) {
+  return ["ready", "starting", "poll_stalled", "heartbeat_lost", "stopped", "busy", "draining", "paused"].includes(runner.diagnostic) ? runner.diagnostic : "unknown";
+}
+function runnerDiagnosticTime(value) {
+  if (!value) return rdt("none");
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString(localeTag()) : rdt("none");
+}
+function renderRunnerDiagnostics() {
+  if (!elements["runner-diagnostics-dialog"]?.open) return;
+  const runner = state.runners.find(item => item.id === runnerDiagnosticId);
+  elements["runner-diagnostics-title"].textContent = runner ? `${rdt("title")} · ${runner.name}` : rdt("title");
+  elements["runner-diagnostics-freshness"].textContent = runnerLoadError ? rdt("stale") : "";
+  elements["runner-diagnostics-facts"].replaceChildren();
+  if (!runner) {
+    elements["runner-diagnostics-status"].textContent = rdt("missing");
+    elements["runner-diagnostics-hint"].textContent = "";
+    return;
+  }
+  const code = runnerDiagnosticCode(runner);
+  elements["runner-diagnostics-status"].textContent = rdt(code);
+  elements["runner-diagnostics-hint"].textContent = rdt(`${code}Hint`);
+  const facts = [
+    ["Runner ID", runner.id], [t("Operating system"), `${runner.os} / ${runner.arch}`],
+    [t("Version"), runner.version], [rdt("docker"), dockerStatusLabel(runner.docker_available)],
+    [rdt("started"), runnerDiagnosticTime(runner.started_at)],
+    [rdt("heartbeat"), runnerDiagnosticTime(runner.last_seen)],
+    [rdt("poll"), runnerDiagnosticTime(runner.last_claim_at)],
+    [rdt("stop"), runnerDiagnosticTime(runner.stopped_at)],
+    [rdt("observed"), runnerDiagnosticTime(runner.observed_at)],
+  ];
+  for (const [label, value] of facts) {
+    const term = document.createElement("dt"), detail = document.createElement("dd");
+    term.textContent = label; detail.textContent = value;
+    elements["runner-diagnostics-facts"].append(term, detail);
+  }
+}
+
+function runnerMaintenanceLabel(runner) {
+  return runner.draining ? t(runner.busy ? "runner.draining" : "runner.drained") : "";
+}
+
 function renderRunners() {
-  const runners = state.runners.filter((runner) => !state.query || [runner.name, runner.id, runner.os, runner.arch, runner.version, runner.status, dockerStatusLabel(runner.docker_available)].some((value) => String(value).toLowerCase().includes(state.query)));
+  const focused = document.activeElement?.closest("button[data-runner-action]");
+  const focusId = focused?.dataset.runnerId, focusAction = focused?.dataset.runnerAction;
+  const runners = state.runners.filter((runner) => !state.query || [runner.name, runner.id, runner.os, runner.arch, runner.version, runner.status, runnerMaintenanceLabel(runner), rdt(runnerDiagnosticCode(runner)), dockerStatusLabel(runner.docker_available)].some((value) => String(value).toLowerCase().includes(state.query)));
   elements["runner-table-body"].replaceChildren();
   document.querySelector(".runner-table-wrap").hidden = runners.length === 0;
   elements["runner-empty-state"].hidden = runners.length !== 0;
@@ -1010,19 +1221,43 @@ function renderRunners() {
     const row = document.createElement("tr");
     const name = document.createElement("div");
     name.className = "runner-name";
-    name.append(textNode(runner.name, "runner-title"), textNode(runner.id, "runner-id"));
-    const current = runner.current_pipeline_id ? runnerPipelineButton(runner.current_pipeline_id) : textNode(t("dynamic.idle"), "runner-idle");
+    const details = document.createElement("button");
+    details.type = "button"; details.className = "runner-title runner-details";
+    details.textContent = runner.name;
+    details.dataset.runnerAction = "diagnostics"; details.dataset.runnerId = runner.id;
+    details.setAttribute("aria-label", `${rdt("title")}: ${runner.name}`);
+    name.append(details, textNode(runner.id, "runner-id"));
+    if (["heartbeat_lost", "poll_stalled", "stopped"].includes(runner.diagnostic)) {
+      name.append(textNode(rdt(runner.diagnostic), "runner-diagnostic-note"));
+    }
+    const current = runner.current_pipeline_id ? runnerPipelineButton(runner.current_pipeline_id) : textNode(t(runner.busy ? "runner.restricted" : "dynamic.idle"), "runner-idle");
+    const status = document.createElement("div");
+    status.className = "runner-status";
+    status.append(statusBadge(runner.status));
+    if (runner.draining) status.append(textNode(runnerMaintenanceLabel(runner), "runner-maintenance"));
+    const actions = document.createElement("div");
+    actions.className = "runner-actions";
+    const drain = document.createElement("button");
+    drain.type = "button";
+    drain.className = "button button--ghost runner-drain";
+    drain.dataset.runnerAction = "drain";
+    drain.dataset.runnerId = runner.id;
+    drain.textContent = t(runner.draining ? "runner.resume" : "runner.pause");
+    drain.title = t(runner.draining ? "runner.resumeHint" : "runner.pauseHint", { name: runner.name });
+    drain.setAttribute("aria-label", `${drain.textContent}: ${runner.name}`);
+    drain.disabled = runnerMutations.has(runner.id);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "button button--danger runner-remove";
     remove.dataset.runnerAction = "remove";
     remove.dataset.runnerId = runner.id;
     remove.textContent = t("dynamic.remove");
-    remove.disabled = runner.status !== "offline" || Boolean(runner.current_pipeline_id);
+    remove.disabled = runner.status !== "offline" || runner.busy || Boolean(runner.current_pipeline_id) || runnerMutations.has(runner.id);
     remove.title = remove.disabled ? t("dynamic.stopRunnerFirst") : t("dynamic.removeRunner", { name: runner.name });
     remove.setAttribute("aria-label", t("dynamic.removeRunner", { name: runner.name }));
+    actions.append(drain, remove);
     row.append(
-      cell(statusBadge(runner.status)),
+      cell(status),
       cell(name),
       cell(osBadge(runner.os)),
       cell(textNode(runner.arch, "runner-meta")),
@@ -1030,7 +1265,7 @@ function renderRunners() {
       cell(dockerBadge(runner.docker_available)),
       cell(textNode(relativeTime(runner.last_seen), "time-cell")),
       cell(current),
-      cell(state.user?.role === "admin" ? remove : textNode("—", "runner-meta")),
+      cell(state.user?.role === "admin" ? actions : textNode("—", "runner-meta")),
     );
     elements["runner-table-body"].append(row);
   }
@@ -1044,6 +1279,9 @@ function renderRunners() {
     : t("dynamic.countFilteredRunners", { shown: runners.length, total });
   elements["nav-runner-count"].textContent = `${online}/${total}`;
   elements["nav-runner-count"].hidden = total === 0;
+  if (focusId) [...elements["runner-table-body"].querySelectorAll("button[data-runner-action]")]
+    .find(button => button.dataset.runnerId === focusId && button.dataset.runnerAction === focusAction)?.focus({ preventScroll: true });
+  renderRunnerDiagnostics();
 }
 
 function dockerStatusLabel(available) {
@@ -1059,16 +1297,50 @@ function dockerBadge(available) {
 }
 
 function runnerAction(event) {
-  const button = event.target.closest("button[data-runner-action='remove']");
-  if (!button || button.disabled) return;
+  const button = event.target.closest("button[data-runner-action]");
+  if (!button || button.disabled || !state.user) return;
   const runner = state.runners.find((item) => item.id === button.dataset.runnerId);
   if (!runner) return;
+  if (button.dataset.runnerAction === "diagnostics") {
+    runnerDiagnosticId = runner.id;
+    elements["runner-diagnostics-dialog"].showModal();
+    renderRunnerDiagnostics();
+    return;
+  }
+  if (state.user.role !== "admin") return;
+  if (button.dataset.runnerAction === "drain") {
+    void setRunnerDraining(runner.id, !runner.draining);
+    return;
+  }
+  if (button.dataset.runnerAction !== "remove") return;
   state.runnerToRemove = runner;
   elements["remove-runner-name"].textContent = runner.name;
   elements["remove-runner-confirmation"].value = "";
   elements["remove-runner-confirmation"].setCustomValidity("");
   elements["remove-runner-dialog"].showModal();
   window.setTimeout(() => elements["remove-runner-confirmation"].focus(), 0);
+}
+
+async function setRunnerDraining(id, draining) {
+  if (state.user?.role !== "admin" || runnerMutations.has(id)) return;
+  runnerMutations.add(id);
+  ++runnerListRequest; // Invalidate polls started before the mutation.
+  renderRunners();
+  try {
+    await api(`/api/v1/runners/${encodeURIComponent(id)}/drain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({ draining }),
+    });
+    const runner = state.runners.find(item => item.id === id);
+    if (runner) runner.draining = draining;
+    toast(t(draining ? "runner.paused" : "runner.resumed"), "success");
+  } catch (error) { toast(error.message, "error"); }
+  finally {
+    runnerMutations.delete(id);
+    await loadRunners(false);
+    renderRunners();
+  }
 }
 
 async function removeRunner(event) {
@@ -1118,6 +1390,7 @@ function runnerPipelineButton(id) {
 }
 
 function refreshSection(notify) {
+  cancelPipelineHistorySearch();
   if (isManagement()) return discardManagement() ? loadManagement() : Promise.resolve();
   if (state.section === "repositories") return loadRepositories(notify);
   if (state.section === "ci-settings") return discardRepositoryConfigEdit() ? loadCiSettings(notify) : Promise.resolve();
@@ -1158,7 +1431,7 @@ function renderRepositories() {
     const url = document.createElement("code"); url.textContent = repository.url;
     content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
-    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("links", t("Repository links")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
+    actions.append(repositoryButton("history", rct("history")), repositoryButton("graphs", t("Execution graphs")), repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("links", t("Repository links")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
     elements["repository-list"].append(card);
   }
@@ -1186,7 +1459,9 @@ async function repositoryAction(event) {
   if (!button || !card) return;
   const repository = state.repositories.find((item) => item.name === card.dataset.name);
   if (!repository) return;
-  if (button.dataset.action === "copy") {
+  if (["history", "graphs"].includes(button.dataset.action)) {
+    navigateRepositorySection(button.dataset.action === "history" ? "pipelines" : "graphs", repository.url);
+  } else if (button.dataset.action === "copy") {
     try { await navigator.clipboard.writeText(repository.url); toast(t("dynamic.urlCopied"), "success"); }
     catch (_) { toast(t("dynamic.copyFailed"), "error"); }
   } else if (button.dataset.action === "config") {
@@ -1255,12 +1530,7 @@ async function saveRepositoryPipelineBranches(event) {
 }
 
 function openRepositoryLinks(repository) {
-  state.repositoryLinksName = repository.name;
-  if (window.location.hash === "#repository-links") {
-    void showSection("repository-links");
-  } else {
-    window.location.hash = "repository-links";
-  }
+  navigateRepositorySection("repository-links", repository.url);
 }
 
 async function loadRepositoryLinksPage(preferredName, notify = false) {
@@ -1344,7 +1614,7 @@ function repositoryLinkPreference(value) {
 async function prioritizeRepositoryLinkRepositories() {
   let summary = [];
   try { summary = await api("/api/v1/repository-links/summary"); } catch (_) { /* Keep the page usable if the index is unavailable. */ }
-  return state.repositories.map((repository, index) => {
+  return scopedRepositories().map((repository, index) => {
     const branches = summary.filter(row => repositoryIdentifier(row.resource_id) === repositoryIdentifier(repository.id) && row.count > 0);
     return { repository, index, hasLinks: branches.length > 0, branch: (branches.find(row => row.branch === "main") ?? branches[0])?.branch };
   }).sort((left, right) => Number(right.hasLinks) - Number(left.hasLinks) || left.index - right.index);
@@ -1680,15 +1950,11 @@ async function repositoryLinkAction(event) {
 }
 
 function openRepositoryConfig(repository) {
-  state.repositoryConfigName = repository.name;
-  if (window.location.hash === "#ci-settings") {
-    void showSection("ci-settings");
-  } else {
-    window.location.hash = "ci-settings";
-  }
+  navigateRepositorySection("ci-settings", repository.url);
 }
 
 async function loadCiSettings(notify) {
+  const scope = state.repositoryScope;
   const preferredName = state.repositoryConfigName;
   resetRepositoryConfig();
   elements["repository-config-repository"].replaceChildren();
@@ -1696,15 +1962,16 @@ async function loadCiSettings(notify) {
   state.repositoryConfigStatus = "loading";
   renderRepositoryConfig();
   await loadRepositories(false);
-  if (state.section !== "ci-settings") return;
-  state.ciSettingsRepositories = await prioritizeCiSettingsRepositories();
-  if (state.section !== "ci-settings") return;
+  if (state.section !== "ci-settings" || scope !== state.repositoryScope) return;
+  const candidates = await prioritizeCiSettingsRepositories();
+  if (state.section !== "ci-settings" || scope !== state.repositoryScope) return;
+  state.ciSettingsRepositories = candidates;
   await loadRepositoryConfigPage(preferredName);
   if (notify && state.repositoryConfigStatus !== "error") toast(t("dynamic.configRefreshed"), "success");
 }
 
 async function prioritizeCiSettingsRepositories() {
-  const candidates = await Promise.all(state.repositories.map(async (repository, index) => {
+  const candidates = await Promise.all(scopedRepositories().map(async (repository, index) => {
     try {
       const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
       const branch = branches.find(item => item.name === "main") ?? branches[0];
@@ -1762,6 +2029,7 @@ async function loadRepositoryConfig() {
   const name = state.repositoryConfigName;
   const branch = elements["repository-config-branch"].value;
   if (!name || !branch) return;
+  ciElement("ci-list-search").value = "";
   const request = ++state.repositoryConfigRequest;
   state.repositoryConfigRevision = null;
   state.repositoryConfigContent = null;
@@ -1792,6 +2060,7 @@ async function loadRepositoryConfig() {
 }
 
 function renderRepositoryConfig() {
+  updateCiWorkspaceControl();
   syncCiEditor();
   const editing = state.repositoryConfigEditing;
   const ready = state.repositoryConfigStatus === "ready";
@@ -1922,6 +2191,8 @@ async function saveRepositoryConfig(event) {
 }
 
 function resetRepositoryConfig() {
+  closeCiWorkspace(false);
+  ciElement("ci-list-search").value = "";
   resetCiEditor();
   state.repositoryConfigRequest += 1;
   state.repositoryConfigName = null;
@@ -1978,10 +2249,12 @@ function renderRepositoryConfigVisual() {
   elements["repository-config-pipeline-count"].textContent = String(entries.length);
   elements["repository-config-add-pipeline"].hidden = !state.repositoryConfigEditing;
   if (!entries.length) {
+    filterCiPipelineList();
     graph.append(configEmptyState(t("No CI configuration"), t("Select Edit to create a pipeline graph.")));
     inspector.append(configEmptyState(t("Nothing selected"), t("Select a pipeline, stage, or job.")));
     elements["repository-config-graph-title"].textContent = t("Pipeline");
     elements["repository-config-inspector-title"].textContent = t("Pipeline settings");
+    updateCiRevealControl();
     return;
   }
 
@@ -2005,16 +2278,19 @@ function renderRepositoryConfigVisual() {
       ciVisual.scope = "detail";
       state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: entry.pipelineIndex };
       renderRepositoryConfigVisual();
+      window.requestAnimationFrame(() => revealCiSelection(false));
     });
     list.append(button);
   }
 
+  filterCiPipelineList();
   elements["repository-config-add-pipeline"].textContent = selected.legacy ? t("Convert to auto pipeline") : t("Add pipeline");
   if (ciVisual.scope === "overview") {
     renderCiOverview(entries);
     renderConfigInspector(selected, model);
     decorateCiAnalysis();
     setCiSavingState();
+    updateCiRevealControl();
     return;
   }
   elements["repository-config-graph-title"].textContent = selected.pipeline.name;
@@ -2074,6 +2350,7 @@ function renderRepositoryConfigVisual() {
   renderConfigInspector(selected, model);
   decorateCiAnalysis();
   setCiSavingState();
+  updateCiRevealControl();
   window.requestAnimationFrame(() => renderConfigDependencyEdges(selected.pipeline));
 }
 
@@ -2523,23 +2800,21 @@ function renderStats() {
 }
 
 function filteredPipelines() {
-  return state.pipelines.filter((pipeline) => {
-    const isActive = ["queued", "running"].includes(pipeline.status);
-    const statusMatch = state.filter === "all" || (state.filter === "running" && isActive) || (state.filter === "finished" && !isActive);
-    const queryMatch = !state.query || [pipeline.id, pipeline.repository_url, pipeline.branch || "", pipeline.revision, pipeline.status, pipeline.pipeline_name || "", pipeline.runner_os || "", pipeline.sparse_view_name || ""].some((value) => String(value).toLowerCase().includes(state.query));
-    const detailFiltersActive = state.section === "pipelines";
-    const repositoryMatch = !detailFiltersActive || !state.pipelineRepositoryFilter || repositoryName(pipeline.repository_url) === state.pipelineRepositoryFilter;
-    const branchMatch = !detailFiltersActive || !state.pipelineBranchFilter || pipeline.branch === state.pipelineBranchFilter;
-    const pipelineMatch = !detailFiltersActive || !state.pipelineNameFilter || pipeline.pipeline_name === state.pipelineNameFilter;
-    return statusMatch && queryMatch && repositoryMatch && branchMatch && pipelineMatch;
-  });
+  return state.pipelines;
 }
 
 function renderPipelines() {
   updatePipelineFilterOptions();
   const pipelines = filteredPipelines();
+  const loading = state.pipelineLoading || Boolean(state.pipelineSearchTimer);
+  const filtered = ["q", "branch", "pipeline_name", "status"].some(key => pipelineHistoryParameters().has(key));
+  const empty = elements["empty-state"];
+  empty.querySelector("h3").textContent = filtered ? rct("noMatches") : t("파이프라인이 없습니다");
+  empty.querySelector("p").textContent = filtered ? rct("changeFilters") : t("Lore repository와 revision을 지정해 첫 실행을 시작하세요.");
+  empty.querySelector("button").hidden = filtered;
+  document.querySelectorAll(".status-tab").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.status === state.filter)));
   elements["pipeline-table-body"].replaceChildren();
-  elements["empty-state"].hidden = pipelines.length !== 0;
+  elements["empty-state"].hidden = loading || pipelines.length !== 0;
   document.querySelector(".table-wrap").hidden = pipelines.length === 0;
   for (const pipeline of pipelines) {
     const row = document.createElement("tr");
@@ -2560,33 +2835,26 @@ function renderPipelines() {
   const label = pipelines.length === state.pipelines.length
     ? tc("dynamic.countPipelines", pipelines.length)
     : t("dynamic.countFilteredPipelines", { shown: pipelines.length, total: state.pipelines.length });
-  elements["pipeline-count"].textContent = label;
+  elements["pipeline-count"].textContent = loading ? t("dynamic.loading") : label;
 }
 
 function updatePipelineFilterOptions() {
-  const repositoryValues = uniquePipelineValues(state.pipelines, (pipeline) => repositoryName(pipeline.repository_url));
+  const repositoryValues = [...new Set([...state.repositories.map(repo => repo.url), ...state.pipelines.map(pipeline => pipeline.repository_url), ...(state.repositoryScope ? [state.repositoryScope] : [])])].sort();
   replacePipelineFilterOptions(
     elements["pipeline-repository-filter"],
     t("All repositories"),
-    repositoryValues.map((name) => ({ value: name, label: name })),
+    repositoryValues.map((url) => ({ value: url, label: repositoryName(url) })),
     "pipelineRepositoryFilter",
   );
-  const repositoryPipelines = state.pipelines.filter((pipeline) => !state.pipelineRepositoryFilter || repositoryName(pipeline.repository_url) === state.pipelineRepositoryFilter);
+  const repositoryPipelines = state.pipelines.filter((pipeline) => !state.pipelineRepositoryFilter || pipeline.repository_url === state.pipelineRepositoryFilter);
   const branchValues = uniquePipelineValues(repositoryPipelines, (pipeline) => pipeline.branch);
-  replacePipelineFilterOptions(
-    elements["pipeline-branch-filter"],
-    t("All branches"),
-    branchValues.map((branch) => ({ value: branch, label: branch })),
-    "pipelineBranchFilter",
-  );
+  elements["pipeline-branch-filter"].value = state.pipelineBranchFilter;
+  document.getElementById("pipeline-branch-suggestions").replaceChildren(...branchValues.map(value => new Option(value, value)));
   const branchPipelines = repositoryPipelines.filter((pipeline) => !state.pipelineBranchFilter || pipeline.branch === state.pipelineBranchFilter);
   const pipelineValues = uniquePipelineValues(branchPipelines, (pipeline) => pipeline.pipeline_name);
-  replacePipelineFilterOptions(
-    elements["pipeline-name-filter"],
-    t("All pipelines"),
-    pipelineValues.map((name) => ({ value: name, label: name })),
-    "pipelineNameFilter",
-  );
+  elements["pipeline-name-filter"].value = state.pipelineNameFilter;
+  document.getElementById("pipeline-name-suggestions").replaceChildren(...pipelineValues.map(value => new Option(value, value)));
+  document.getElementById("pipeline-search-hint").textContent = rct("searchHint");
 }
 
 function uniquePipelineValues(pipelines, valueFor) {
@@ -2628,6 +2896,7 @@ function statusBadge(status) {
 
 async function openNewPipeline(repositoryUrl = "") {
   if (typeof repositoryUrl !== "string") repositoryUrl = "";
+  repositoryUrl ||= state.repositoryScope;
   elements["pipeline-form"].reset();
   elements["repository-url"].disabled = true;
   elements.branch.disabled = true;
@@ -2652,9 +2921,7 @@ async function openNewPipeline(repositoryUrl = "") {
     for (const repository of state.repositories) {
       elements["repository-url"].append(new Option(repository.name, repository.url));
     }
-    elements["repository-url"].value = state.repositories.some((item) => item.url === repositoryUrl)
-      ? repositoryUrl
-      : state.repositories[0].url;
+    elements["repository-url"].value = repositoryUrl || state.repositories[0].url;
     elements["repository-url"].disabled = false;
     await loadPipelineBranches();
     window.setTimeout(() => elements["repository-url"].focus(), 0);
@@ -2774,32 +3041,82 @@ function setSubmitting(submitting) {
   elements["run-pipeline-button"].querySelector(".button-spinner").hidden = !submitting;
 }
 
-async function openPipeline(id) {
-  if (state.selectedId !== id) {
-    state.detailLogs = [];
-    state.detailLogsPipelineId = id;
-  }
+const detailLogCopy = {
+  more: ["로그 500건 더 보기", "Load 500 more records", "再加载 500 条记录"],
+  retry: ["로그 다시 시도", "Retry logs", "重试日志"],
+  follow: ["새 출력 따라가기", "Follow new output", "跟随新输出"],
+  restart: ["처음부터 보기", "Start from the beginning", "从头查看"],
+  detailRetry: ["상세 다시 시도", "Retry detail", "重试详情"],
+  copyLink: ["실행 링크 복사", "Copy run link", "复制运行链接"],
+  openLink: ["실행 링크 열기", "Open run link", "打开运行链接"],
+  paused: ["자동 갱신과 스크롤이 일시 정지되었습니다.", "Automatic updates and scrolling are paused.", "已暂停自动更新和滚动。"],
+  pending: ["뒤에 로그가 더 있을 수 있습니다. 더 보기를 눌러 계속 읽으세요.", "More records may follow. Load more to continue reading.", "后面可能还有日志，请继续加载。"],
+  trimmed: ["화면에는 최근에 읽은 로그 일부만 유지합니다. 이전 부분은 ‘처음부터 보기’로 다시 읽을 수 있습니다.", "Only the most recently loaded output is kept on screen. Restart to read earlier output again.", "仅保留最近加载的输出，可从头重新查看较早的内容。"],
+};
+function dlt(key) { return detailLogCopy[key][state.locale === "ko" ? 0 : state.locale === "zh-CN" ? 2 : 1]; }
+
+function resetDetailLogs(id, prunedAt = null) {
+  state.detailLogView = { id, prunedAt, rows: [], after: 0, more: true, started: false, busy: false, follow: true, trimmed: false, error: null };
+  return state.detailLogView;
+}
+
+async function restartDetailLogs() {
+  const cache = state.detailLogView;
+  if (!cache || cache.busy) return;
+  resetDetailLogs(cache.id, cache.prunedAt).follow = false;
+  elements["pipeline-log"].scrollTop = 0;
+  await loadPipelineLogs(cache.id);
+}
+
+function clearPipelineDetail(message) {
+  state.detailLogView = null;
+  elements["detail-title"].textContent = "";
+  elements["detail-repository"].textContent = "";
+  elements["detail-summary"].replaceChildren();
+  elements["execution-graph"].replaceChildren();
+  elements["execution-graph-section"].hidden = true;
+  elements["job-list"].replaceChildren(textNode(message, "job-empty"));
+  elements["job-count"].textContent = "";
+  elements["cancel-pipeline-button"].hidden = true;
+  renderLogs([], null);
+}
+
+async function openPipeline(id, { fromLocation = false } = {}) {
+  if (!fromLocation) recordPipelineLocation(id);
   state.selectedId = id;
+  clearPipelineDetail(t("dynamic.loading"));
+  resetDetailLogs(id);
+  elements["detail-retry"].hidden = true;
   if (!elements["pipeline-detail-dialog"].open) elements["pipeline-detail-dialog"].showModal();
   elements["detail-title"].textContent = t("dynamic.loading");
-  elements["job-list"].replaceChildren(textNode(t("dynamic.loading"), "job-empty"));
-  elements["pipeline-log"].replaceChildren(textNode(t("dynamic.loadingLogs"), "terminal-muted"));
+  renderPipelinePermalink(id);
   try { await loadPipelineDetail(id); } catch (error) { toast(error.message, "error"); }
+}
+
+function renderPipelinePermalink(id) {
+  elements["detail-copy-link"].textContent = dlt("copyLink");
+  elements["detail-permalink"].textContent = dlt("openLink");
+  elements["detail-permalink"].href = pipelinePermalink(id);
 }
 
 async function loadPipelineDetail(id) {
   const request = ++executionDetailRequest;
-  const detail = await api(`/api/v1/pipelines/${encodeURIComponent(id)}`);
-  if (state.selectedId !== id || request !== executionDetailRequest) return;
-  if (state.detailLogsPipelineId !== id) {
-    state.detailLogs = [];
-    state.detailLogsPipelineId = id;
+  let detail;
+  try { detail = await api(`/api/v1/pipelines/${encodeURIComponent(id)}`); }
+  catch (error) {
+    if (state.selectedId !== id || request !== executionDetailRequest) return;
+    clearPipelineDetail(error.message);
+    elements["detail-title"].textContent = t("dynamic.requestFailed", { status: error.status || "—" });
+    elements["detail-retry"].hidden = false;
+    elements["detail-retry"].textContent = dlt("detailRetry");
+    throw error;
   }
-  const after = state.detailLogs.at(-1)?.id || 0;
-  const logs = await loadPipelineLogs(id, after);
   if (state.selectedId !== id || request !== executionDetailRequest) return;
-  state.detailLogs.push(...logs);
+  renderPipelinePermalink(id);
   const pipeline = detail.pipeline;
+  const prunedAt = pipeline.logs_pruned_at || null;
+  if (state.detailLogView?.id !== id || state.detailLogView.prunedAt !== prunedAt) resetDetailLogs(id, prunedAt);
+  elements["detail-retry"].hidden = true;
   elements["detail-repository"].textContent = [
     repositoryName(pipeline.repository_url),
     pipeline.branch,
@@ -2809,20 +3126,55 @@ async function loadPipelineDetail(id) {
   renderDetailSummary(pipeline, detail.sparse_view_rules);
   renderExecutionGraph(pipeline, detail.jobs, detail.graph, detail.queue_reason);
   renderJobs(detail.jobs);
-  renderLogs(state.detailLogs);
   const cancellable = ["queued", "running"].includes(pipeline.status) && !pipeline.cancel_requested;
   elements["cancel-pipeline-button"].hidden = !cancellable;
   elements["cancel-pipeline-button"].disabled = false;
+  const cache = state.detailLogView;
+  renderLogs(cache.rows, cache.prunedAt);
+  // Summary and jobs are visible before the first log page resolves. A full page
+  // requires an explicit next-page request instead of draining an unbounded log.
+  if (!cache.started || (cache.follow && !cache.more && !cache.error)) await loadPipelineLogs(id);
 }
 
-async function loadPipelineLogs(id, after) {
-  const logs = [];
-  let cursor = after;
-  while (true) {
-    const page = await api(`/api/v1/pipelines/${encodeURIComponent(id)}/logs?after=${encodeURIComponent(cursor)}&limit=500`);
-    logs.push(...page);
-    if (page.length < 500) return logs;
-    cursor = page.at(-1).id;
+function appendDetailLogs(cache, rows) {
+  cache.after = rows.at(-1)?.id ?? cache.after;
+  cache.more = rows.length === 500;
+  cache.started = true;
+  cache.rows.push(...rows);
+  let size = cache.rows.reduce((total, row) => total + row.content.length, 0);
+  while (cache.rows.length > 1 && (cache.rows.length > 2000 || size > 512000)) {
+    size -= cache.rows.shift().content.length;
+    cache.trimmed = true;
+  }
+  if (size > 512000) {
+    cache.rows[0] = { ...cache.rows[0], content: cache.rows[0].content.slice(-512000) };
+    cache.trimmed = true;
+  }
+}
+
+async function loadPipelineLogs(id) {
+  const cache = state.detailLogView;
+  if (!cache || cache.id !== id || state.selectedId !== id || cache.busy) return;
+  cache.busy = true;
+  cache.error = null;
+  renderLogs(cache.rows, cache.prunedAt);
+  try {
+    const rows = await api(`/api/v1/pipelines/${encodeURIComponent(id)}/logs?after=${cache.after}&limit=500`);
+    if (state.detailLogView !== cache || state.selectedId !== id) return;
+    appendDetailLogs(cache, rows);
+  } catch (error) {
+    if (state.detailLogView !== cache || state.selectedId !== id) return;
+    if ([403, 404].includes(error.status)) {
+      clearPipelineDetail(error.message);
+      elements["detail-retry"].hidden = false;
+      elements["detail-retry"].textContent = dlt("detailRetry");
+      return;
+    }
+    cache.error = error.message;
+    cache.started = true;
+  } finally {
+    cache.busy = false;
+    if (state.detailLogView === cache && state.selectedId === id) renderLogs(cache.rows, cache.prunedAt);
   }
 }
 
@@ -2895,19 +3247,31 @@ function renderJobs(jobs) {
   }
 }
 
-function renderLogs(logs) {
-  elements["pipeline-log"].replaceChildren();
-  if (!logs.length) {
-    elements["pipeline-log"].append(textNode(t("dynamic.noLogs"), "terminal-muted"));
-    return;
-  }
+function renderLogs(logs, prunedAt) {
+  const terminal = elements["pipeline-log"];
+  const scroll = terminal.scrollTop;
+  const cache = state.detailLogView;
+  terminal.replaceChildren();
+  if (prunedAt) terminal.append(textNode(t("dynamic.logsPruned"), "terminal-muted"));
+  if (!logs.length && !prunedAt) terminal.append(textNode(t(cache?.busy ? "dynamic.loadingLogs" : "dynamic.noLogs"), "terminal-muted"));
   for (const log of logs) {
     const line = document.createElement("span");
     line.className = log.stream === "stderr" ? "terminal-stderr" : log.stream === "system" ? "terminal-system" : "";
     line.textContent = log.content;
-    elements["pipeline-log"].append(line);
+    terminal.append(line);
   }
-  elements["pipeline-log"].scrollTop = elements["pipeline-log"].scrollHeight;
+  terminal.scrollTop = cache?.follow ? terminal.scrollHeight : scroll;
+  const more = elements["detail-log-more"];
+  more.hidden = !cache || (!cache.more && !cache.error);
+  more.disabled = !cache || cache.busy;
+  more.textContent = dlt(cache?.error ? "retry" : "more");
+  const follow = elements["detail-log-follow"];
+  follow.disabled = !cache;
+  follow.textContent = dlt("follow");
+  follow.setAttribute("aria-pressed", String(Boolean(cache?.follow)));
+  elements["detail-log-restart"].disabled = !cache || cache.busy;
+  elements["detail-log-restart"].textContent = dlt("restart");
+  elements["detail-log-note"].textContent = cache ? [cache.error, cache.trimmed && dlt("trimmed"), !cache.follow && dlt("paused"), cache.more && dlt("pending")].filter(Boolean).join(" ") : "";
 }
 
 async function cancelPipeline() {
@@ -2932,6 +3296,13 @@ async function logout() {
 }
 
 async function refreshActiveViews() {
+  if (!document.hidden && state.section === "operations") {
+    if (Date.now() - operations.lastAttempt >= 30000) await loadOperations();
+    if (state.selectedId && elements["pipeline-detail-dialog"].open) {
+      try { await loadPipelineDetail(state.selectedId); } catch (_) { /* next poll retries */ }
+    }
+    return;
+  }
   if (document.hidden || isManagement()) return;
   if (state.section === "repository-links") {
     if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) await loadRepositoryLinkOperations();
@@ -2942,7 +3313,7 @@ async function refreshActiveViews() {
     return;
   }
   if (state.section === "repositories" && !elements["pipeline-detail-dialog"].open) return;
-  await loadPipelines(false);
+  if (!state.pipelineHasOlderPages && !state.pipelineSearchTimer) await loadPipelines(false);
   if (state.section === "graphs") {
     await loadPipelineGraphs(false);
   }

@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use lorehub::{
     ci::{config::PipelineFile, db},
     runner::{CoordinatorClient, Worker},
@@ -22,59 +22,62 @@ struct Cli {
     command: Action,
 }
 
+#[derive(Args)]
+struct ServeArgs {
+    #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
+    database_url: String,
+    #[arg(long, env = "GOOGLE_CLIENT_ID", hide_env_values = true)]
+    google_client_id: String,
+    #[arg(long, env = "GOOGLE_CLIENT_SECRET", hide_env_values = true)]
+    google_client_secret: String,
+    #[arg(
+        long,
+        env = "LOREHUB_PUBLIC_URL",
+        default_value = "http://127.0.0.1:8080"
+    )]
+    public_url: String,
+    #[arg(long, env = "LORE_BIN", default_value = "lore")]
+    lore_bin: String,
+    #[arg(
+        long,
+        env = "LORE_SERVER_URL",
+        default_value = "lores://127.0.0.1:41337"
+    )]
+    lore_server_url: String,
+    #[arg(long, env = "LORE_SERVER_PUBLIC_URL")]
+    lore_server_public_url: Option<String>,
+    #[arg(long, env = "LORE_LOCAL_SERVER_URL")]
+    lore_local_server_url: Option<String>,
+    #[arg(long, env = "LORE_LOCAL_SERVER_PUBLIC_URL")]
+    lore_local_server_public_url: Option<String>,
+    #[arg(
+        long,
+        env = "LORE_JWT_PRIVATE_KEY",
+        default_value = "deploy/secrets/lore-jwt-private.pem"
+    )]
+    lore_jwt_private_key: PathBuf,
+    #[arg(
+        long,
+        env = "LORE_JWT_JWKS",
+        default_value = "deploy/secrets/lore-jwks.json"
+    )]
+    lore_jwt_jwks: PathBuf,
+    #[arg(
+        long,
+        env = "LOREHUB_RUNNER_RELEASES_DIR",
+        default_value = "deploy/runner-releases"
+    )]
+    runner_releases_dir: PathBuf,
+    #[arg(long, env = "LOREHUB_AUTH_BIND", default_value = "127.0.0.1:8081")]
+    auth_bind: SocketAddr,
+    #[arg(long, env = "LOREHUB_BIND", default_value = "127.0.0.1:8080")]
+    bind: SocketAddr,
+}
+
 #[derive(Subcommand)]
 enum Action {
     /// Run the HTTP coordinator with Google Workspace authentication.
-    Serve {
-        #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
-        database_url: String,
-        #[arg(long, env = "GOOGLE_CLIENT_ID", hide_env_values = true)]
-        google_client_id: String,
-        #[arg(long, env = "GOOGLE_CLIENT_SECRET", hide_env_values = true)]
-        google_client_secret: String,
-        #[arg(
-            long,
-            env = "LOREHUB_PUBLIC_URL",
-            default_value = "http://127.0.0.1:8080"
-        )]
-        public_url: String,
-        #[arg(long, env = "LORE_BIN", default_value = "lore")]
-        lore_bin: String,
-        #[arg(
-            long,
-            env = "LORE_SERVER_URL",
-            default_value = "lores://127.0.0.1:41337"
-        )]
-        lore_server_url: String,
-        #[arg(long, env = "LORE_SERVER_PUBLIC_URL")]
-        lore_server_public_url: Option<String>,
-        #[arg(long, env = "LORE_LOCAL_SERVER_URL")]
-        lore_local_server_url: Option<String>,
-        #[arg(long, env = "LORE_LOCAL_SERVER_PUBLIC_URL")]
-        lore_local_server_public_url: Option<String>,
-        #[arg(
-            long,
-            env = "LORE_JWT_PRIVATE_KEY",
-            default_value = "deploy/secrets/lore-jwt-private.pem"
-        )]
-        lore_jwt_private_key: PathBuf,
-        #[arg(
-            long,
-            env = "LORE_JWT_JWKS",
-            default_value = "deploy/secrets/lore-jwks.json"
-        )]
-        lore_jwt_jwks: PathBuf,
-        #[arg(
-            long,
-            env = "LOREHUB_RUNNER_RELEASES_DIR",
-            default_value = "deploy/runner-releases"
-        )]
-        runner_releases_dir: PathBuf,
-        #[arg(long, env = "LOREHUB_AUTH_BIND", default_value = "127.0.0.1:8081")]
-        auth_bind: SocketAddr,
-        #[arg(long, env = "LOREHUB_BIND", default_value = "127.0.0.1:8080")]
-        bind: SocketAddr,
-    },
+    Serve(Box<ServeArgs>),
     /// Run one trusted shell worker. Start more processes for pipeline concurrency.
     Worker {
         #[arg(long, env = "LOREHUB_WORK_DIR", default_value = ".work")]
@@ -116,6 +119,19 @@ enum Action {
         #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
         database_url: String,
     },
+    /// Preview expired logs; --apply deletes one bounded batch. Keeps execution history.
+    PruneLogs {
+        #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
+        database_url: String,
+        /// Retain logs until this many days after pipeline completion.
+        #[arg(long, env = "LOREHUB_LOG_RETENTION_DAYS", value_parser = clap::value_parser!(u32).range(1..=36500))]
+        keep_days: u32,
+        /// Maximum log rows to delete in one transaction.
+        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=10000))]
+        batch_size: u32,
+        #[arg(long)]
+        apply: bool,
+    },
     /// Configure the Windows scheduled task after MSI file installation.
     #[command(hide = true)]
     InstallWindowsRunner {
@@ -141,22 +157,23 @@ async fn main() -> Result<()> {
     let shutdown = CancellationToken::new();
     install_shutdown_handler(shutdown.clone());
     match cli.command {
-        Action::Serve {
-            database_url,
-            google_client_id,
-            google_client_secret,
-            public_url,
-            lore_bin,
-            lore_server_url,
-            lore_server_public_url,
-            lore_local_server_url,
-            lore_local_server_public_url,
-            lore_jwt_private_key,
-            lore_jwt_jwks,
-            runner_releases_dir,
-            auth_bind,
-            bind,
-        } => {
+        Action::Serve(args) => {
+            let ServeArgs {
+                database_url,
+                google_client_id,
+                google_client_secret,
+                public_url,
+                lore_bin,
+                lore_server_url,
+                lore_server_public_url,
+                lore_local_server_url,
+                lore_local_server_public_url,
+                lore_jwt_private_key,
+                lore_jwt_jwks,
+                runner_releases_dir,
+                auth_bind,
+                bind,
+            } = *args;
             server::serve(
                 &database_url,
                 server::ServeConfig {
@@ -235,6 +252,18 @@ async fn main() -> Result<()> {
         }
         Action::Migrate { database_url } => {
             db::connect(&database_url).await?;
+        }
+        Action::PruneLogs {
+            database_url,
+            keep_days,
+            batch_size,
+            apply,
+        } => {
+            // Maintenance never implicitly migrates the target database.
+            let pool = db::connect_existing(&database_url).await?;
+            let report =
+                lorehub::ci::retention::prune_logs(&pool, keep_days, batch_size, apply).await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Action::InstallWindowsRunner {
             install_directory,

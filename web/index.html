@@ -13,6 +13,8 @@
     <script src="/assets/execution-graph.js" defer></script>
     <script src="/assets/execution-analysis.js" defer></script>
     <script src="/assets/management.js" defer></script>
+    <script src="/assets/operations.js" defer></script>
+    <script src="/assets/repository-context.js" defer></script>
   </head>
   <body>
     <div id="loading-view" class="loading-view" aria-live="polite">
@@ -116,7 +118,7 @@
         </nav>
         <div class="sidebar-spacer"></div>
         <div class="sidebar-status"><span class="pulse"></span><span>Coordinator online</span></div>
-        <p class="sidebar-version">LoreHub v0.2.20</p>
+        <p class="sidebar-version">LoreHub v0.2.21</p>
       </aside>
 
       <div class="content-shell">
@@ -213,6 +215,7 @@
                 <button class="status-tab is-active" type="button" data-status="all">All</button>
                 <button class="status-tab" type="button" data-status="running">Active</button>
                 <button class="status-tab" type="button" data-status="finished">Finished</button>
+                <button class="status-tab" type="button" data-status="failed">Failed</button>
               </div>
             </div>
             <div class="pipeline-filters pipelines-view" aria-label="파이프라인 상세 필터" hidden>
@@ -224,17 +227,16 @@
               </label>
               <label class="pipeline-filter-field" for="pipeline-branch-filter">
                 <span>Branch</span>
-                <select id="pipeline-branch-filter">
-                  <option value="">All branches</option>
-                </select>
+                <input id="pipeline-branch-filter" type="search" list="pipeline-branch-suggestions" maxlength="512" placeholder="All branches" autocomplete="off" aria-describedby="pipeline-search-hint">
+                <datalist id="pipeline-branch-suggestions"></datalist>
               </label>
               <label class="pipeline-filter-field" for="pipeline-name-filter">
                 <span>Pipeline</span>
-                <select id="pipeline-name-filter">
-                  <option value="">All pipelines</option>
-                </select>
+                <input id="pipeline-name-filter" type="search" list="pipeline-name-suggestions" maxlength="512" placeholder="All pipelines" autocomplete="off" aria-describedby="pipeline-search-hint">
+                <datalist id="pipeline-name-suggestions"></datalist>
               </label>
               <button id="pipeline-filter-reset" class="button button--ghost pipeline-filter-reset" type="button">Reset filters</button>
+              <p id="pipeline-search-hint" class="pipeline-search-hint"></p>
             </div>
             <div class="table-wrap">
               <table>
@@ -340,6 +342,7 @@
               <div class="repository-config-page-header">
                 <div><p class="eyebrow">CI CONFIGURATION</p><h2>.lore-ci.toml</h2><p>선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.</p></div>
                 <div class="repository-config-actions">
+                  <button id="ci-workspace-toggle" class="button button--secondary" type="button" aria-controls="ci-workspace-dialog" aria-expanded="false">Expand workspace</button>
                   <button id="ci-undo" class="button button--ghost" type="button" hidden>Undo</button>
                   <button id="ci-redo" class="button button--ghost" type="button" hidden>Redo</button>
                   <button id="ci-review" class="button button--secondary" type="button" hidden>Review changes</button>
@@ -377,9 +380,15 @@
                   <div id="ci-diff-body" class="ci-diff-body" tabindex="0" aria-label="Configuration changes"></div>
                 </details>
                 <div id="repository-config-visual" class="repository-config-visual" aria-live="polite">
-                  <aside class="config-pipeline-sidebar">
+                  <aside id="ci-list-panel" class="config-pipeline-sidebar">
                     <div class="config-panel-heading"><div><span>PIPELINES</span><strong>Pipeline list</strong></div><span id="repository-config-pipeline-count" class="config-count">0</span></div>
+                    <div class="ci-list-search">
+                      <label class="field"><span class="sr-only">Search pipelines</span><input id="ci-list-search" type="search" placeholder="Name, category, OS" autocomplete="off" maxlength="200" aria-controls="repository-config-pipeline-list" aria-describedby="ci-list-status"></label>
+                      <button id="ci-list-clear" type="button" aria-label="Clear pipeline search" hidden>×</button>
+                    </div>
+                    <span id="ci-list-status" class="sr-only" role="status"></span>
                     <div id="repository-config-pipeline-list" class="config-pipeline-list"></div>
+                    <p id="ci-list-empty" class="ci-list-empty" hidden>No matching pipelines</p>
                     <button id="repository-config-add-pipeline" class="config-add-button" type="button">＋ Add pipeline</button>
                   </aside>
                   <section class="config-graph-panel">
@@ -390,13 +399,16 @@
                       <button id="ci-zoom-reset" type="button" aria-label="Reset zoom">100%</button>
                       <button id="ci-zoom-in" type="button" aria-label="Zoom in">＋</button>
                       <button id="ci-zoom-fit" type="button">Fit graph</button>
+                      <button id="ci-reveal-selection" type="button" aria-controls="ci-graph-viewport" disabled>Reveal selection</button>
+                      <button id="ci-toggle-list" type="button" aria-controls="ci-list-panel" aria-expanded="true">Hide pipeline list</button>
+                      <button id="ci-toggle-inspector" type="button" aria-controls="ci-inspector-panel" aria-expanded="true">Hide settings</button>
                       <span>Drag empty space to pan</span>
                     </div>
                     <div id="ci-graph-viewport" class="ci-graph-viewport" tabindex="0" aria-label="Pipeline graph">
                       <div id="repository-config-stage-graph" class="config-stage-graph"></div>
                     </div>
                   </section>
-                  <aside class="config-inspector-panel">
+                  <aside id="ci-inspector-panel" class="config-inspector-panel">
                     <div class="config-panel-heading"><div><span>SETTINGS</span><strong id="repository-config-inspector-title">Pipeline settings</strong></div></div>
                     <div id="repository-config-inspector" class="config-inspector"></div>
                   </aside>
@@ -497,6 +509,7 @@
                 <div><h2>Registered runners</h2><p>5초 간격으로 상태가 갱신됩니다</p></div>
                 <span id="runner-count" class="repository-total">0 runners</span>
               </div>
+              <p class="management-note">배정 중지는 현재 작업을 마친 뒤 새 작업을 받지 않습니다. 점검 후 배정 재개를 누르세요.</p>
               <div class="table-wrap runner-table-wrap">
                 <table class="runner-table">
                   <thead><tr><th>Status</th><th>Runner</th><th>Operating system</th><th>Architecture</th><th>Version</th><th>Docker</th><th>Last seen</th><th>Current job</th><th>Actions</th></tr></thead>
@@ -514,6 +527,8 @@
         </main>
       </div>
     </div>
+
+    <dialog id="ci-workspace-dialog" class="ci-workspace-dialog" aria-label="CI configuration"></dialog>
 
     <dialog id="new-pipeline-dialog" class="modal">
       <form id="pipeline-form" method="dialog">
@@ -609,6 +624,16 @@
       </form>
     </dialog>
 
+    <dialog id="runner-diagnostics-dialog" class="modal" aria-labelledby="runner-diagnostics-title">
+      <form method="dialog">
+        <div class="modal-header"><h2 id="runner-diagnostics-title"></h2><button class="button button--ghost" type="submit">Close</button></div>
+        <p id="runner-diagnostics-freshness" class="runner-diagnostic-note" role="status"></p>
+        <h3 id="runner-diagnostics-status"></h3>
+        <p id="runner-diagnostics-hint" class="modal-intro"></p>
+        <dl id="runner-diagnostics-facts" class="runner-diagnostic-facts"></dl>
+      </form>
+    </dialog>
+
     <dialog id="lore-token-dialog" class="modal">
       <form method="dialog">
         <div class="modal-header">
@@ -629,14 +654,25 @@
           <button class="drawer-close icon-button" type="button" aria-label="닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
         </div>
         <div id="detail-summary" class="detail-summary"></div>
+        <div class="detail-log-controls">
+          <button id="detail-copy-link" class="button button--ghost" type="button"></button>
+          <a id="detail-permalink" class="button button--ghost" target="_blank" rel="noopener"></a>
+        </div>
         <section id="execution-graph-section" class="execution-graph-section" aria-labelledby="execution-graph-title" hidden>
           <div class="drawer-section-heading"><h3 id="execution-graph-title">Execution graph</h3></div>
           <div id="execution-graph" class="execution-graph"></div>
         </section>
         <div class="drawer-section-heading"><h3>Jobs</h3><span id="job-count"></span></div>
         <div id="job-list" class="job-list"></div>
-        <div class="drawer-section-heading"><h3>Job log</h3><span class="live-indicator"><i></i> live</span></div>
+        <div class="drawer-section-heading"><h3>Job log</h3></div>
+        <div class="detail-log-controls">
+          <button id="detail-log-more" class="button button--ghost" type="button" hidden></button>
+          <button id="detail-log-follow" class="button button--ghost" type="button" aria-pressed="true"></button>
+          <button id="detail-log-restart" class="button button--ghost" type="button"></button>
+        </div>
+        <p id="detail-log-note" class="detail-log-note" role="status"></p>
         <pre id="pipeline-log" class="terminal" tabindex="0"><span class="terminal-muted">로그를 불러오는 중…</span></pre>
+        <button id="detail-retry" class="button button--ghost" type="button" hidden></button>
         <div class="drawer-actions"><button id="cancel-pipeline-button" class="button button--danger" type="button">Cancel pipeline</button><button class="button button--ghost drawer-close" type="button">Close</button></div>
       </div>
     </dialog>

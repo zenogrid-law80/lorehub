@@ -11,6 +11,8 @@ pub mod authz;
 mod execution;
 mod links;
 mod management;
+mod operations;
+mod pipeline_access;
 pub mod releases;
 pub mod repositories;
 pub(crate) mod repository_access;

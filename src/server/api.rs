@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::{
     auth::{self, AuthService, AuthSession, User},
     management,
+    pipeline_access::PipelineAccess,
     releases::RunnerReleases,
     repositories::{
         Branch, CommandError as RepositoryCommandError, Repository, RepositoryService,
@@ -76,6 +77,7 @@ pub fn router_with_releases(
         .route("/api/v1/pipelines/{id}/logs", get(logs))
         .route("/api/v1/runners", get(list_runners))
         .route("/api/v1/runners/{id}", delete(remove_runner))
+        .route("/api/v1/runners/{id}/drain", post(set_runner_draining))
         .route("/downloads/runners/linux-x86_64", get(web::linux_runner))
         .route(
             "/downloads/runners/windows-x86_64",
@@ -162,6 +164,10 @@ pub fn router_with_releases(
         .route("/api/v1/runner/stop", post(runner_stop))
         .route("/api/v1/runner/claim", post(runner_claim))
         .route(
+            "/api/v1/runner/claim/{request_id}",
+            post(runner_claim_with_request),
+        )
+        .route(
             "/api/v1/runner/pipelines/{id}/heartbeat",
             post(runner_pipeline_heartbeat),
         )
@@ -193,6 +199,11 @@ pub fn router_with_releases(
             get(web::execution_analysis_script),
         )
         .route("/assets/management.js", get(web::management_script))
+        .route("/assets/operations.js", get(web::operations_script))
+        .route(
+            "/assets/repository-context.js",
+            get(web::repository_context_script),
+        )
         .route("/healthz", get(health))
         .route("/.well-known/openid-configuration", get(oidc_discovery))
         .route("/.well-known/jwks.json", get(jwks))
@@ -350,7 +361,20 @@ async fn runner_claim(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let worker = require_runner_token(&state, &headers)?;
-    let Some(pipeline) = db::claim(&state.pool, worker).await? else {
+    runner_claim_response(db::claim(&state.pool, worker).await?)
+}
+
+async fn runner_claim_with_request(
+    State(state): State<AppState>,
+    Path(request_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let worker = require_runner_token(&state, &headers)?;
+    runner_claim_response(db::claim_with_request(&state.pool, worker, request_id).await?)
+}
+
+fn runner_claim_response(pipeline: Option<Pipeline>) -> Result<Json<serde_json::Value>, ApiError> {
+    let Some(pipeline) = pipeline else {
         return Ok(Json(serde_json::Value::Null));
     };
     let rules = pipeline.sparse_view_rules.clone();
@@ -1605,6 +1629,11 @@ fn page_size() -> i64 {
 #[derive(Deserialize)]
 struct PipelinePage {
     before: Option<Uuid>,
+    repository_url: Option<String>,
+    branch: Option<String>,
+    pipeline_name: Option<String>,
+    status: Option<String>,
+    q: Option<String>,
     #[serde(default = "page_size")]
     limit: i64,
 }
@@ -1615,11 +1644,20 @@ struct PipelinePageResponse {
     next_before: Option<Uuid>,
 }
 
-async fn list(State(state): State<AppState>) -> Result<Json<Vec<Pipeline>>, ApiError> {
+async fn list(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+) -> Result<Json<Vec<Pipeline>>, ApiError> {
     let page = pipeline_page(
         &state,
+        &session,
         PipelinePage {
             before: None,
+            repository_url: None,
+            branch: None,
+            pipeline_name: None,
+            status: None,
+            q: None,
             limit: page_size(),
         },
     )
@@ -1629,48 +1667,139 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<Pipeline>>, ApiE
 
 async fn pipeline_history(
     State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
     Query(page): Query<PipelinePage>,
 ) -> Result<Json<PipelinePageResponse>, ApiError> {
-    Ok(Json(pipeline_page(&state, page).await?))
+    Ok(Json(pipeline_page(&state, &session, page).await?))
 }
 
 async fn pipeline_page(
     state: &AppState,
+    session: &AuthSession,
     page: PipelinePage,
 ) -> Result<PipelinePageResponse, ApiError> {
+    validate_repository_filter(page.repository_url.as_deref())?;
+    for (name, value, limit) in [
+        ("branch", page.branch.as_deref(), 512),
+        ("pipeline_name", page.pipeline_name.as_deref(), 512),
+        ("q", page.q.as_deref(), 256),
+    ] {
+        if value.is_some_and(|value| {
+            value.chars().count() > limit || value.chars().any(char::is_control)
+        }) {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "{name} must contain at most {limit} characters without control characters"
+                ),
+            ));
+        }
+    }
+    if page.status.as_deref().is_some_and(|status| {
+        !matches!(
+            status,
+            "" | "all"
+                | "active"
+                | "finished"
+                | "queued"
+                | "running"
+                | "succeeded"
+                | "failed"
+                | "canceled"
+        )
+    }) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid history status".into(),
+        ));
+    }
     if !(1..=500).contains(&page.limit) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "limit must be 1..500".into(),
         ));
     }
+    let access = PipelineAccess::new(&state.repositories, session.user.id);
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("SET LOCAL statement_timeout = '5s'")
+        .execute(&mut *tx)
+        .await?;
     let cursor_created_at = match page.before {
-        Some(id) => sqlx::query_scalar("SELECT created_at FROM pipelines WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "unknown pipeline cursor".into()))?,
+        Some(id) => {
+            access
+                .query_as::<(DateTime<Utc>,)>(&PipelineAccess::sql(
+                    "SELECT created_at FROM accessible_pipelines WHERE id = $4 AND ($5::text IS NULL OR repository_url = $5)",
+                ))
+                .bind(id)
+                .bind(&page.repository_url)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "unknown pipeline cursor".into()))?
+                .0
+        }
         None => Utc::now(),
     };
-    let mut pipelines: Vec<Pipeline> = sqlx::query_as(
-        "SELECT * FROM pipelines WHERE ($1::uuid IS NULL OR (created_at, id) < ($2, $1)) ORDER BY created_at DESC, id DESC LIMIT $3",
-    )
+    // Resolve legacy branch IDs before filtering, with the same unambiguous
+    // revision-first fallback as execution detail. Search terms are literal text.
+    let mut rows: Vec<HistoryPipeline> = access.query_as(&PipelineAccess::sql(
+        ", history_pipelines AS (
+            SELECT p.*, CASE WHEN p.branch ~ '^[0-9a-fA-F]{32}$' THEN COALESCE(
+                (SELECT CASE WHEN count(DISTINCT r.branch) = 1 THEN min(r.branch) END
+                 FROM ci_pipeline_routes r WHERE r.repository_url = p.repository_url
+                   AND r.pipeline_name = p.pipeline_name AND r.revision = p.revision),
+                (SELECT CASE WHEN count(DISTINCT r.branch) = 1 THEN min(r.branch) END
+                 FROM ci_pipeline_routes r WHERE r.repository_url = p.repository_url
+                   AND r.pipeline_name = p.pipeline_name), p.branch) ELSE p.branch END AS history_branch
+            FROM accessible_pipelines p
+            WHERE ($4::uuid IS NULL OR (p.created_at, p.id) < ($5, $4))
+              AND ($7::text IS NULL OR p.repository_url = $7)
+              AND (NULLIF($9::text, '') IS NULL OR p.pipeline_name = $9)
+              AND (COALESCE($10::text, '') IN ('', 'all') OR p.status = $10
+                   OR ($10 = 'active' AND p.status IN ('queued', 'running'))
+                   OR ($10 = 'finished' AND p.status IN ('succeeded', 'failed', 'canceled')))
+        ) SELECT * FROM history_pipelines p
+          WHERE (NULLIF($8::text, '') IS NULL OR history_branch = $8)
+            AND (NULLIF($11::text, '') IS NULL OR EXISTS (
+                SELECT 1 FROM unnest(ARRAY[p.id::text, p.repository_url, p.history_branch,
+                    p.revision, p.status, p.pipeline_name, p.runner_os, p.sparse_view_name]) value
+                WHERE strpos(lower(value), lower($11)) > 0))
+          ORDER BY created_at DESC, id DESC LIMIT $6",
+    ))
     .bind(page.before)
     .bind(cursor_created_at)
     .bind(page.limit + 1)
-    .fetch_all(&state.pool)
+    .bind(&page.repository_url)
+    .bind(&page.branch)
+    .bind(&page.pipeline_name)
+    .bind(&page.status)
+    .bind(&page.q)
+    .fetch_all(&mut *tx)
     .await?;
-    let next_before = if pipelines.len() > page.limit as usize {
-        pipelines.truncate(page.limit as usize);
-        pipelines.last().map(|pipeline| pipeline.id)
+    tx.commit().await?;
+    let next_before = if rows.len() > page.limit as usize {
+        rows.truncate(page.limit as usize);
+        rows.last().map(|row| row.pipeline.id)
     } else {
         None
     };
-    normalize_legacy_pipeline_branches(&state.pool, &mut pipelines).await?;
+    let pipelines = rows
+        .into_iter()
+        .map(|row| Pipeline {
+            branch: row.history_branch,
+            ..row.pipeline
+        })
+        .collect();
     Ok(PipelinePageResponse {
         pipelines,
         next_before,
     })
+}
+
+#[derive(sqlx::FromRow)]
+struct HistoryPipeline {
+    #[sqlx(flatten)]
+    pipeline: Pipeline,
+    history_branch: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -1739,8 +1868,50 @@ fn unique_route_branch<'a>(
     branch
 }
 
-async fn list_runners(State(state): State<AppState>) -> Result<Json<Vec<Runner>>, ApiError> {
-    Ok(Json(db::list_runners(&state.pool).await?))
+async fn list_runners(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+) -> Result<Json<Vec<Runner>>, ApiError> {
+    let mut runners = db::list_runners(&state.pool).await?;
+    let active: Vec<_> = runners
+        .iter()
+        .filter_map(|runner| runner.current_pipeline_id)
+        .collect();
+    if !active.is_empty() {
+        let access = PipelineAccess::new(&state.repositories, session.user.id);
+        let visible: Vec<(Uuid,)> = access
+            .query_as(&PipelineAccess::sql(
+                "SELECT id FROM accessible_pipelines WHERE id = ANY($4)",
+            ))
+            .bind(active)
+            .fetch_all(&state.pool)
+            .await?;
+        let visible: std::collections::HashSet<_> = visible.into_iter().map(|(id,)| id).collect();
+        for runner in &mut runners {
+            runner.current_pipeline_id =
+                runner.current_pipeline_id.filter(|id| visible.contains(id));
+        }
+    }
+    Ok(Json(runners))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RunnerDrain {
+    draining: bool,
+}
+
+async fn set_runner_draining(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RunnerDrain>,
+) -> Result<StatusCode, ApiError> {
+    require_admin(&session)?;
+    if !db::set_runner_draining(&state.pool, id, input.draining).await? {
+        return Err(ApiError(StatusCode::NOT_FOUND, "runner not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn remove_runner(
@@ -1801,12 +1972,32 @@ struct PipelineGraphRoute {
     latest_created_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Deserialize)]
+struct RepositoryFilter {
+    repository_url: Option<String>,
+}
+
+fn validate_repository_filter(url: Option<&str>) -> Result<(), ApiError> {
+    if url.is_some_and(|value| value.is_empty() || value.len() > 2048) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "repository_url must be 1..2048 bytes".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn pipeline_graphs(
     State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Query(filter): Query<RepositoryFilter>,
 ) -> Result<Json<Vec<PipelineGraphRoute>>, ApiError> {
-    let rows: Vec<PipelineGraphRow> = sqlx::query_as(
-        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.category, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route LEFT JOIN LATERAL (SELECT id, status, created_at FROM pipelines WHERE repository_url = route.repository_url AND pipeline_name = route.pipeline_name AND (branch = route.branch OR (branch ~ '^[0-9a-fA-F]{32}$' AND revision = route.revision)) ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true ORDER BY route.repository_url, route.branch, route.category, route.pipeline_name",
-    )
+    validate_repository_filter(filter.repository_url.as_deref())?;
+    let access = PipelineAccess::new(&state.repositories, session.user.id);
+    let rows: Vec<PipelineGraphRow> = access.query_as(&PipelineAccess::sql(
+        "SELECT route.repository_url, route.branch, route.revision, route.revision_number, route.pipeline_name, route.category, route.runner_os, route.trigger_patterns, route.working_directory, route.graph_definition, route.updated_at, latest.id AS latest_pipeline_id, latest.status AS latest_status, latest.created_at AS latest_created_at FROM ci_pipeline_routes route JOIN accessible_repositories repository ON repository.resource_id = route.resource_id AND repository.repository_url = route.repository_url LEFT JOIN LATERAL (SELECT id, status, created_at FROM accessible_pipelines WHERE repository_url = route.repository_url AND pipeline_name = route.pipeline_name AND (branch = route.branch OR (branch ~ '^[0-9a-fA-F]{32}$' AND revision = route.revision)) ORDER BY created_at DESC, id DESC LIMIT 1) latest ON true WHERE ($4::text IS NULL OR route.repository_url=$4) ORDER BY route.repository_url, route.branch, route.category, route.pipeline_name",
+    ))
+    .bind(&filter.repository_url)
     .fetch_all(&state.pool)
     .await?;
     let routes = rows
@@ -1850,13 +2041,11 @@ struct Detail {
 }
 async fn detail(
     State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Detail>, ApiError> {
-    let mut pipeline: Pipeline = sqlx::query_as("SELECT * FROM pipelines WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "pipeline not found".into()))?;
+    let access = PipelineAccess::new(&state.repositories, session.user.id);
+    let mut pipeline = access.pipeline(&state.pool, id).await?;
     let execution_branch = pipeline.branch.clone();
     normalize_legacy_pipeline_branches(&state.pool, std::slice::from_mut(&mut pipeline)).await?;
     let jobs = sqlx::query_as("SELECT * FROM jobs WHERE pipeline_id = $1 ORDER BY position")
@@ -1883,9 +2072,9 @@ async fn detail(
     } else if pipeline.cancel_requested {
         Some("canceling")
     } else {
-        let blocked: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM unnest($1::text[]) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = $2 AND upstream.branch IS NOT DISTINCT FROM $3 AND upstream.revision = $4 AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded')",
-        )
+        let (blocked,): (bool,) = access.query_as(&PipelineAccess::sql(
+            "SELECT EXISTS(SELECT 1 FROM unnest($4::text[]) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM accessible_pipelines upstream WHERE upstream.repository_url = $5 AND upstream.branch IS NOT DISTINCT FROM $6 AND upstream.revision = $7 AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded')",
+        ))
         .bind(&pipeline.pipeline_needs)
         .bind(&pipeline.repository_url)
         .bind(&execution_branch)
@@ -1914,13 +2103,10 @@ async fn cancel(
     Extension(session): Extension<AuthSession>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Pipeline>, ApiError> {
-    let submitted_by: Option<Option<Uuid>> =
-        sqlx::query_scalar("SELECT submitted_by FROM pipelines WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?;
-    let submitted_by =
-        submitted_by.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "pipeline not found".into()))?;
+    let pipeline = PipelineAccess::new(&state.repositories, session.user.id)
+        .pipeline(&state.pool, id)
+        .await?;
+    let submitted_by = pipeline.submitted_by;
     if session.user.role != "admin" && submitted_by != Some(session.user.id) {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
@@ -1945,6 +2131,7 @@ fn require_admin(session: &AuthSession) -> Result<(), ApiError> {
 
 async fn logs(
     State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
     Path(id): Path<Uuid>,
     Query(page): Query<LogPage>,
 ) -> Result<Json<Vec<Log>>, ApiError> {
@@ -1954,13 +2141,9 @@ async fn logs(
             "after must be >= 0; limit must be 1..500".into(),
         ));
     }
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pipelines WHERE id = $1)")
-        .bind(id)
-        .fetch_one(&state.pool)
+    PipelineAccess::new(&state.repositories, session.user.id)
+        .pipeline(&state.pool, id)
         .await?;
-    if !exists {
-        return Err(ApiError(StatusCode::NOT_FOUND, "pipeline not found".into()));
-    }
     Ok(Json(
         sqlx::query_as(
             "SELECT * FROM logs WHERE pipeline_id = $1 AND id > $2 AND ($4::uuid IS NULL OR job_id = $4) ORDER BY id LIMIT $3",

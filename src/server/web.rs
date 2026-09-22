@@ -10,6 +10,8 @@ const CI_SCRIPT: &str = include_str!("../../web/ci-visual.js");
 const CI_EDITOR_SCRIPT: &str = include_str!("../../web/ci-editor.js");
 const EXECUTION_SCRIPT: &str = include_str!("../../web/execution-graph.js");
 const EXECUTION_ANALYSIS_SCRIPT: &str = include_str!("../../web/execution-analysis.js");
+const REPOSITORY_CONTEXT_SCRIPT: &str = include_str!("../../web/repository-context.js");
+const OPERATIONS_SCRIPT: &str = include_str!("../../web/operations.js");
 const MANAGEMENT_SCRIPT: &str = include_str!("../../web/management.js");
 #[cfg(feature = "embedded-runner-installers")]
 const LINUX_RUNNER: &[u8] =
@@ -18,12 +20,12 @@ const LINUX_RUNNER: &[u8] =
 const LINUX_RUNNER: &[u8] = &[];
 #[cfg(feature = "embedded-runner-installers")]
 const WINDOWS_RUNNER: &[u8] =
-    include_bytes!("../../deploy/downloads/lorehub-runner-windows-x86_64-v0.2.20.msi");
+    include_bytes!("../../deploy/downloads/lorehub-runner-windows-x86_64-v0.2.21.msi");
 #[cfg(not(feature = "embedded-runner-installers"))]
 const WINDOWS_RUNNER: &[u8] = &[];
 #[cfg(feature = "embedded-runner-installers")]
 const MACOS_RUNNER: &[u8] =
-    include_bytes!("../../deploy/downloads/lorehub-runner-macos-aarch64-v0.2.11.tar.gz");
+    include_bytes!("../../deploy/downloads/lorehub-runner-macos-aarch64-v0.2.21.tar.gz");
 #[cfg(not(feature = "embedded-runner-installers"))]
 const MACOS_RUNNER: &[u8] = &[];
 
@@ -65,6 +67,18 @@ pub async fn theme_script() -> Response {
     asset(THEME_SCRIPT, "text/javascript; charset=utf-8", false)
 }
 
+pub async fn repository_context_script() -> Response {
+    asset(
+        REPOSITORY_CONTEXT_SCRIPT,
+        "text/javascript; charset=utf-8",
+        false,
+    )
+}
+
+pub async fn operations_script() -> Response {
+    asset(OPERATIONS_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
 pub async fn management_script() -> Response {
     asset(MANAGEMENT_SCRIPT, "text/javascript; charset=utf-8", false)
 }
@@ -81,7 +95,7 @@ pub async fn windows_runner() -> Response {
     download(
         WINDOWS_RUNNER,
         "application/x-msi",
-        "lorehub-runner-windows-x86_64-v0.2.20.msi",
+        "lorehub-runner-windows-x86_64-v0.2.21.msi",
     )
 }
 
@@ -89,7 +103,7 @@ pub async fn macos_runner() -> Response {
     download(
         MACOS_RUNNER,
         "application/gzip",
-        "lorehub-runner-macos-aarch64-v0.2.11.tar.gz",
+        "lorehub-runner-macos-aarch64-v0.2.21.tar.gz",
     )
 }
 
@@ -227,14 +241,14 @@ mod tests {
         );
         assert_eq!(
             response.headers()[header::CONTENT_DISPOSITION],
-            "attachment; filename=\"lorehub-runner-windows-x86_64-v0.2.20.msi\""
+            "attachment; filename=\"lorehub-runner-windows-x86_64-v0.2.21.msi\""
         );
 
         let response = macos_runner().await;
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/gzip");
         assert_eq!(
             response.headers()[header::CONTENT_DISPOSITION],
-            "attachment; filename=\"lorehub-runner-macos-aarch64-v0.2.11.tar.gz\""
+            "attachment; filename=\"lorehub-runner-macos-aarch64-v0.2.21.tar.gz\""
         );
     }
 }

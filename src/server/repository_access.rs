@@ -1,7 +1,7 @@
 //! Repository authorization uses the current account role, including for existing CLI tokens.
 use sqlx::PgPool;
 
-const ACCESS: &str = "(
+pub(super) const ACCESS: &str = "(
     owner_subject = $1
     OR EXISTS (SELECT 1 FROM users WHERE id::text = $1 AND role = 'admin')
     OR EXISTS (

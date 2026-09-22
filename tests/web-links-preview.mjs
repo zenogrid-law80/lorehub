@@ -7,7 +7,31 @@ const source = { id: "urc-source", name: "developer", url: "lores://fixture/deve
 const root = { id: "urc-root", name: "game", url: "lores://fixture/game", storage_backend: "dynamodb_s3" };
 const links = [{ path: "Test", source_repository_id: source.id, source_path: "Test", source_branch_id: "source-main-id", source_branch_name: "main", source_revision: revision, latest_revision: "b".repeat(64), auto_update: true, tracking: true, status: "outdated", last_success_at: new Date().toISOString() }];
 const operations = [];
+const pipelines = [source, root].map(repository => ({
+  id: `${repository.name}-run`, pipeline_name: `${repository.name}-build`, repository_url: repository.url,
+  branch: "main", revision, revision_number: 1, runner_os: "linux", status: "succeeded",
+  created_at: new Date().toISOString(), started_at: new Date().toISOString(), finished_at: new Date().toISOString(),
+  pipeline_needs: [], trigger_patterns: [],
+}));
+pipelines.push(...Array.from({ length: 120 }, (_, i) => ({ ...pipelines[1], id: `recent-${i}`, status: "queued", started_at: null, finished_at: null })));
+pipelines.push({ ...pipelines[1], id: "archive-run", pipeline_name: "Archive_100%", branch: "release", status: "failed", created_at: new Date(Date.now() - 86400000).toISOString() });
+function historyPage(params) {
+  const before = params.get("before");
+  const cursorIndex = before ? pipelines.findIndex(row => row.id === before) : -1;
+  const rows = pipelines.filter((row, i) => {
+    if (before && i <= cursorIndex) return false;
+    for (const key of ["repository_url", "branch", "pipeline_name"]) if (params.get(key) && params.get(key) !== row[key]) return false;
+    const status = params.get("status");
+    if (status && status !== "all" && !(status === "active" ? ["queued", "running"].includes(row.status) : status === "finished" ? ["succeeded", "failed", "canceled"].includes(row.status) : row.status === status)) return false;
+    const q = (params.get("q") || "").toLowerCase();
+    return !q || [row.id, row.repository_url, row.branch, row.revision, row.status, row.pipeline_name, row.runner_os].some(value => String(value).toLowerCase().includes(q));
+  });
+  const limit = Number(params.get("limit") || 100);
+  return { pipelines: rows.slice(0, limit), next_before: rows.length > limit ? rows[limit - 1].id : null };
+}
 const assets = { "/": ["index.html", "text/html"], "/app.js": ["app.js", "text/javascript"], "/ci-visual.js": ["ci-visual.js", "text/javascript"], "/ci-editor.js": ["ci-editor.js", "text/javascript"], "/app.css": ["app.css", "text/css"], "/theme.js": ["theme.js", "text/javascript"], "/management.js": ["management.js", "text/javascript"] };
+assets["/repository-context.js"] = ["repository-context.js", "text/javascript"];
+assets["/operations.js"] = ["operations.js", "text/javascript"];
 assets["/execution-graph.js"] = ["execution-graph.js", "text/javascript"];
 assets["/execution-analysis.js"] = ["execution-analysis.js", "text/javascript"];
 createServer(async (req, res) => {
@@ -25,7 +49,9 @@ createServer(async (req, res) => {
     let status = 200;
     if (url.pathname === "/api/v1/me") data = { id: "fixture-user", name: "Link UI test", email: "fixture@example.test", role: "user" };
     else if (url.pathname === "/api/v1/repositories") data = { repositories: [source, root], server_url: "lores://fixture", storage_backends: ["dynamodb_s3"] };
-    else if (url.pathname === "/api/v1/pipeline-history") data = { pipelines: [], next_before: null };
+    else if (url.pathname === "/api/v1/pipeline-history") data = historyPage(url.searchParams);
+    else if (url.pathname === "/api/v1/pipeline-graphs") data = pipelines.filter(row => !url.searchParams.has("repository_url") || row.repository_url === url.searchParams.get("repository_url")).map(row => ({ ...row, graph: { stages: [{ name: "build", jobs: ["compile"] }] }, latest_pipeline_id: null }));
+    else if (url.pathname.endsWith("/ci-config")) data = { revision, content: null, configuration: null };
     else if (url.pathname === "/api/v1/repository-links/summary") data = [{ resource_id: root.id, branch: "main", count: links.length }];
     else if (url.pathname.endsWith("/branches")) data = [{ name: "main", revision }, { name: "release", revision }];
     else if (url.pathname.endsWith("/link-operations")) data = url.pathname.includes("/game/") && url.searchParams.get("branch") === "main" ? operations : [];
