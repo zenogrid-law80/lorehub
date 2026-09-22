@@ -8,15 +8,21 @@ const DEFAULT_CI_CONFIG = `stages = ["build"]
 [[jobs]]
 name = "build"
 stage = "build"
-script = ["echo \\"Configure your CI job\\""]
+script = ["echo Configure your CI job"]
 `;
 const DEFAULT_CI_MODEL = {
   stages: ["build"],
-  jobs: [{ name: "build", stage: "build", needs: [], script: ["echo \"Configure your CI job\""], timeout_seconds: 3600 }],
+  jobs: [{ name: "build", stage: "build", needs: [], script: ["echo Configure your CI job"], timeout_seconds: 3600 }],
   pipelines: [],
 };
 const I18N = {
   en: {
+    "Create .lore-ci.toml": "Create .lore-ci.toml",
+    "Use template": "Use template",
+    "This repository has no CI configuration. Start with a build template, edit the commands, then save.": "This repository has no CI configuration. Start with a build template, edit the commands, then save.",
+    "CI settings are unavailable for Lore link source repositories.": "CI settings are unavailable for Lore link source repositories.",
+    "Select a repository and open CI settings to create a pipeline run.": "Select a repository and open CI settings to create a pipeline run.",
+    "Selected branch is no longer available. Refresh CI settings.": "Selected branch is no longer available. Refresh CI settings.",
     "워크스페이스를 불러오는 중…": "Loading workspace…", "LoreHub 홈": "LoreHub home", "코드에서 배포까지,": "From code to deployment,", "하나의 흐름으로.": "in one workflow.",
     "Lore revision을 안전하게 실행하고 파이프라인의 모든 단계를 한곳에서 확인하세요.": "Run Lore revisions safely and see every pipeline stage in one place.", "LoreHub에 로그인": "Sign in to LoreHub", "조직 계정으로 로그인해 프로젝트와 CI 파이프라인을 관리합니다.": "Sign in with your organization account to manage projects and CI pipelines.", "Google 계정으로 계속": "Continue with Google", "@zenogrid.co.kr 계정만 사용할 수 있습니다": "Only @zenogrid.co.kr accounts are supported", "Lore VCS 기반 개발 플랫폼": "Development platform built on Lore VCS",
     "주 메뉴": "Main menu", "파이프라인 검색": "Search pipelines", "새로고침": "Refresh", "로그아웃": "Sign out", "현재 워크스페이스의 파이프라인 상태입니다.": "Pipeline status for the current workspace.", "파이프라인 요약": "Pipeline summary", "최근 100건": "Latest 100", "성공률 —": "Success rate —", "최신 Lore revision 실행 내역": "Latest Lore revision runs", "상태 필터": "Status filter", "파이프라인이 없습니다": "No pipelines", "Lore repository와 revision을 지정해 첫 실행을 시작하세요.": "Choose a Lore repository and revision to start the first run.", "업데이트 대기 중": "Waiting for update",
@@ -30,12 +36,24 @@ const I18N = {
     "status.configured": "Configured", "status.queued": "Queued", "status.running": "Running", "status.succeeded": "Passed", "status.failed": "Failed", "status.canceled": "Canceled", "status.skipped": "Skipped", "status.online": "Online", "status.offline": "Offline"
   },
   ko: {
+    "Create .lore-ci.toml": ".lore-ci.toml 생성",
+    "Use template": "템플릿으로 시작",
+    "This repository has no CI configuration. Start with a build template, edit the commands, then save.": "CI 설정 파일이 없습니다. 빌드 템플릿으로 시작해 실행 명령을 수정한 뒤 저장하세요.",
+    "CI settings are unavailable for Lore link source repositories.": "다른 저장소에서 Lore 링크 원본(Source Repository)으로 참조하는 저장소는 CI settings를 사용할 수 없습니다.",
+    "Select a repository and open CI settings to create a pipeline run.": "저장소를 선택한 뒤 CI settings에서 새 실행을 생성하세요.",
+    "Selected branch is no longer available. Refresh CI settings.": "선택한 브랜치가 더 이상 없습니다. CI settings를 새로고침하세요.",
     "Language": "언어", "LORE NATIVE DEV PLATFORM": "LORE 네이티브 개발 플랫폼", "ZENOGRID WORKSPACE": "ZENOGRID 워크스페이스", "Overview": "개요", "Pipelines": "파이프라인", "Graphs": "그래프", "Repositories": "저장소", "Runners": "Runner", "Workspace": "워크스페이스", "Internal": "내부", "Coordinator online": "Coordinator 온라인", "Search pipelines…": "파이프라인 검색…", "Total pipelines": "전체 파이프라인", "Succeeded": "성공", "Active": "활성", "Queued + running": "대기 + 실행 중", "Needs attention": "확인 필요", "Failed pipelines": "실패한 파이프라인", "Recent pipelines": "최근 파이프라인", "All": "전체", "Finished": "완료", "Status": "상태", "Pipeline": "파이프라인", "Revision": "Revision", "Created": "생성 시각", "Duration": "소요 시간", "Actions": "작업", "New pipeline": "새 파이프라인", "CI routing": "CI 라우팅", "Pipeline graphs": "파이프라인 그래프", "Routes": "경로", "Folder rules": "폴더 규칙", "Runner targets": "Runner 대상", "Folder routing map": "폴더 라우팅 맵", "Lore server": "Lore 서버", "New repository": "새 저장소", "Current Lore server": "현재 Lore 서버", "CLI access token": "CLI 액세스 토큰", "Online": "온라인", "Repository list": "저장소 목록", "CI infrastructure": "CI 인프라", "Runner 다운로드": "Runner 다운로드", "Total runners": "전체 Runner", "Offline": "오프라인", "Registered runners": "등록된 Runner", "Runner": "Runner", "Operating system": "운영체제", "Architecture": "아키텍처", "Version": "버전", "Last seen": "마지막 연결", "Current job": "현재 작업", "RUN CI": "CI 실행", "Repository URL": "저장소 URL", "Cancel": "취소", "Run pipeline": "파이프라인 실행", "LORE SERVER": "LORE 서버", "Repository name": "저장소 이름", "Storage Backend": "Storage Backend", "DynamoDB + S3": "DynamoDB + S3", "Local File": "Local File", "Description": "설명", "optional": "선택", "Repository purpose": "저장소 용도", "Create repository": "저장소 생성", "DANGER ZONE": "위험 구역", "Delete repository": "저장소 삭제", "CLI AUTHENTICATION": "CLI 인증", "Lore access token": "Lore 액세스 토큰", "Access token": "액세스 토큰", "Copy token": "토큰 복사", "Close": "닫기", "Execution graph": "실행 그래프", "folder routing": "폴더 라우팅", "Jobs": "작업", "Job log": "작업 로그", "live": "실시간", "Cancel pipeline": "파이프라인 취소",
     "dynamic.errorUser": "로그인 정보를 불러오지 못했습니다.", "dynamic.sessionExpired": "세션이 만료되었습니다.", "dynamic.requestFailed": "요청에 실패했습니다 ({status}).", "dynamic.updated": "방금 업데이트 · {time}", "dynamic.refreshPipelines": "파이프라인을 새로고침했습니다.", "dynamic.refreshRepositories": "저장소를 새로고침했습니다.", "dynamic.refreshRunners": "Runner 상태를 새로고침했습니다.", "dynamic.refreshGraphs": "파이프라인 그래프를 새로고침했습니다.", "dynamic.beforeRun": "{branch} · 실행 전", "dynamic.viewRun": "실행 보기", "dynamic.noRuns": "실행 이력 없음", "dynamic.idle": "대기", "dynamic.copyUrl": "URL 복사", "dynamic.runPipeline": "파이프라인 실행", "dynamic.delete": "삭제", "dynamic.urlCopied": "저장소 URL을 복사했습니다.", "dynamic.copyFailed": "클립보드에 복사하지 못했습니다.", "dynamic.repositoryCreated": "저장소를 생성했습니다.", "dynamic.repositoryDeleted": "저장소를 삭제했습니다.", "dynamic.nameMismatch": "저장소 이름이 일치해야 합니다.", "dynamic.tokenCopied": "Lore 액세스 토큰을 복사했습니다.", "dynamic.pipelineQueued": "새 파이프라인을 큐에 추가했습니다.", "dynamic.starting": "시작 중…", "dynamic.loading": "불러오는 중…", "dynamic.loadingLogs": "로그를 불러오는 중…", "dynamic.workerPreparing": "Worker가 작업 구성을 준비하고 있습니다.", "dynamic.noLogs": "아직 출력된 로그가 없습니다.", "dynamic.logsPruned": "보존 기간이 지난 로그가 삭제되었습니다. 남아 있는 출력은 아래에 표시됩니다.\n", "dynamic.cancelRequested": "파이프라인 취소를 요청했습니다.",
     "dynamic.successRate": "성공률 {rate}", "dynamic.successRateEmpty": "성공률 —", "dynamic.countPipelines": "파이프라인 {count}개", "dynamic.countFilteredPipelines": "파이프라인 {shown} / {total}개", "dynamic.countRoutes": "경로 {count}개", "dynamic.countFilteredRoutes": "경로 {shown} / {total}개", "dynamic.countRepositories": "저장소 {count}개", "dynamic.countFilteredRepositories": "저장소 {shown} / {total}개", "dynamic.countRunners": "Runner {count}개", "dynamic.countFilteredRunners": "Runner {shown} / {total}개", "dynamic.pipelineTitle": "파이프라인 #{id}", "dynamic.jobs": "작업 {count}개", "dynamic.matchingPaths": "일치 경로 {count}개", "dynamic.pathRule": "경로 규칙", "dynamic.changedFolder": "변경 폴더", "dynamic.runsIn": "{directory}에서 실행", "dynamic.repositoryRoot": "저장소 루트", "dynamic.assigned": "{os} · 배정됨", "dynamic.target": "{os} 대상", "dynamic.waiting": "{os} 대기 중", "dynamic.stage": "단계 · {status}", "dynamic.graphAria": "{patterns} 변경이 {pipeline} 파이프라인과 {os} Runner를 거쳐 {stages} 단계를 실행합니다.", "dynamic.greetingMorning": "좋은 아침입니다, {name}님.", "dynamic.greetingAfternoon": "안녕하세요, {name}님.", "dynamic.greetingEvening": "좋은 저녁입니다, {name}님.", "dynamic.detail": "상세 보기",
     "status.configured": "설정됨", "status.queued": "대기 중", "status.running": "실행 중", "status.succeeded": "성공", "status.failed": "실패", "status.canceled": "취소됨", "status.skipped": "건너뜀", "status.online": "온라인", "status.offline": "오프라인"
   },
   "zh-CN": {
+    "Create .lore-ci.toml": "创建 .lore-ci.toml",
+    "Use template": "使用模板",
+    "This repository has no CI configuration. Start with a build template, edit the commands, then save.": "此仓库没有 CI 配置。使用构建模板，修改命令后保存。",
+    "CI settings are unavailable for Lore link source repositories.": "作为其他仓库 Lore 链接源的仓库无法使用 CI 设置。",
+    "Select a repository and open CI settings to create a pipeline run.": "选择仓库，然后在 CI 设置中创建流水线运行。",
+    "Selected branch is no longer available. Refresh CI settings.": "所选分支已不存在。请刷新 CI 设置。",
     "Language": "语言", "워크스페이스를 불러오는 중…": "正在加载工作区…", "LoreHub 홈": "LoreHub 首页", "LORE NATIVE DEV PLATFORM": "LORE 原生开发平台", "코드에서 배포까지,": "从代码到部署，", "하나의 흐름으로.": "尽在一个工作流。", "Lore revision을 안전하게 실행하고 파이프라인의 모든 단계를 한곳에서 확인하세요.": "安全运行 Lore 修订，并在一处查看流水线的每个阶段。", "ZENOGRID WORKSPACE": "ZENOGRID 工作区", "LoreHub에 로그인": "登录 LoreHub", "조직 계정으로 로그인해 프로젝트와 CI 파이프라인을 관리합니다.": "使用组织账号登录并管理项目与 CI 流水线。", "Google 계정으로 계속": "使用 Google 账号继续", "@zenogrid.co.kr 계정만 사용할 수 있습니다": "仅支持 @zenogrid.co.kr 账号", "Lore VCS 기반 개발 플랫폼": "基于 Lore VCS 的开发平台",
     "주 메뉴": "主菜单", "Overview": "概览", "Pipelines": "流水线", "Graphs": "图表", "Repositories": "仓库", "Runners": "Runner", "Workspace": "工作区", "Internal": "内部", "Coordinator online": "Coordinator 在线", "파이프라인 검색": "搜索流水线", "Search pipelines…": "搜索流水线…", "새로고침": "刷新", "로그아웃": "退出登录", "CI workspace": "CI 工作区", "현재 워크스페이스의 파이프라인 상태입니다.": "当前工作区的流水线状态。", "New pipeline": "新建流水线", "파이프라인 요약": "流水线摘要", "Total pipelines": "流水线总数", "최근 100건": "最近 100 条", "Succeeded": "成功", "성공률 —": "成功率 —", "Active": "运行中", "Queued + running": "排队 + 运行中", "Needs attention": "需要关注", "Failed pipelines": "失败的流水线", "Recent pipelines": "最近的流水线", "최신 Lore revision 실행 내역": "最新 Lore 修订运行记录", "상태 필터": "状态筛选", "All": "全部", "Finished": "已完成", "Status": "状态", "Pipeline": "流水线", "Revision": "修订", "Created": "创建时间", "Duration": "耗时", "Actions": "操作", "파이프라인이 없습니다": "暂无流水线", "Lore repository와 revision을 지정해 첫 실행을 시작하세요.": "选择 Lore 仓库和修订以开始首次运行。", "업데이트 대기 중": "等待更新",
     "CI routing": "CI 路由", "Pipeline graphs": "流水线图表", "폴더 변경이 어떤 파이프라인과 Runner, stage를 실행하는지 확인합니다.": "查看每个文件夹变更会触发哪个流水线、Runner 和阶段。", "Pipeline graph 요약": "流水线图表摘要", "Routes": "路由", "최근 pipeline별 경로": "当前修订的路由", "Folder rules": "文件夹规则", "고유한 changes 규칙": "唯一变更规则", "Runner targets": "Runner 目标", "대상 운영체제": "目标操作系统", "Folder routing map": "文件夹路由图", "각 pipeline의 가장 최근 실행 snapshot을 표시합니다": "显示每条流水线的最近运行快照", "표시할 routing graph가 없습니다": "暂无路由图", "changes와 runner_os가 있는 pipeline이 실행되면 여기에 표시됩니다.": "包含 changes 和 runner_os 的流水线会显示在此处。", "그래프를 선택하면 실행 상세를 엽니다.": "选择图表以打开运行详情。",
@@ -324,7 +342,8 @@ document.addEventListener("DOMContentLoaded", () => {
   for (const id of [
     "loading-view", "login-view", "app-view", "pipeline-search", "refresh-button",
     "user-menu-button", "user-menu", "theme-select", "logout-button", "user-name", "user-email",
-    "user-picture", "user-initials", "welcome-heading",
+    "user-picture", "user-initials", "welcome-heading", "ci-new-pipeline-button",
+    "ci-config-template", "ci-config-template-source", "ci-config-use-template",
     "new-pipeline-dialog", "pipeline-form", "repository-url", "branch", "revision", "pipeline-name", "run-pipeline-button",
     "pipeline-table-body", "empty-state", "pipeline-count", "load-more-pipelines", "last-updated", "nav-active-count",
     "pipeline-repository-filter", "pipeline-branch-filter", "pipeline-name-filter", "pipeline-filter-reset",
@@ -469,7 +488,13 @@ function bindEvents() {
   document.querySelectorAll('a[href="/auth/google/login"]').forEach(link => link.addEventListener("click", rememberPipelineLogin));
   elements["new-repository-button"].addEventListener("click", openNewRepository);
   document.querySelectorAll(".js-open-repository").forEach((button) => button.addEventListener("click", openNewRepository));
-  document.querySelectorAll(".js-open-pipeline").forEach((button) => button.addEventListener("click", openNewPipeline));
+  elements["ci-new-pipeline-button"].addEventListener("click", () => {
+    if (elements["ci-new-pipeline-button"].disabled) return;
+    void openNewPipeline(state.repositoryScope, state.repositoryBranch);
+  });
+  elements["ci-config-use-template"].addEventListener("click", () => {
+    if (state.repositoryConfigStatus === "ready" && state.repositoryConfigContent === null) setRepositoryConfigEditing(true);
+  });
   document.querySelectorAll(".modal-close, .modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-pipeline-dialog"].close()));
   document.querySelectorAll(".drawer-close").forEach((button) => button.addEventListener("click", () => elements["pipeline-detail-dialog"].close()));
   elements["pipeline-detail-dialog"].addEventListener("close", () => {
@@ -2009,20 +2034,7 @@ async function loadCiSettings(notify) {
 }
 
 async function prioritizeCiSettingsRepositories() {
-  const candidates = await Promise.all(scopedRepositories().map(async (repository, index) => {
-    try {
-      const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
-      const branch = branches.find(item => item.name === "main") ?? branches[0];
-      if (!branch) return { repository, index, hasConfig: false };
-      const config = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/ci-config?branch=${encodeURIComponent(branch.name)}`);
-      return { repository, index, hasConfig: config.content !== null };
-    } catch (_) {
-      return { repository, index, hasConfig: false };
-    }
-  }));
-  return candidates
-    .sort((left, right) => Number(right.hasConfig) - Number(left.hasConfig) || left.index - right.index)
-    .map(candidate => candidate.repository);
+  return scopedRepositories();
 }
 
 async function loadRepositoryConfigPage(preferredName) {
@@ -2087,7 +2099,7 @@ async function loadRepositoryConfig() {
     state.repositoryConfigModel = config.configuration;
     state.repositoryConfigMode = config.configuration || config.content === null ? "visual" : "toml";
     state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
-    state.repositoryConfigStatus = "ready";
+    state.repositoryConfigStatus = config.is_link_source ? "link-source" : "ready";
     renderRepositoryConfig();
   } catch (error) {
     if (request !== state.repositoryConfigRequest) return;
@@ -2103,7 +2115,11 @@ function renderRepositoryConfig() {
   syncCiEditor();
   const editing = state.repositoryConfigEditing;
   const ready = state.repositoryConfigStatus === "ready";
-  const visual = ready && state.repositoryConfigMode === "visual";
+  const missing = ready && state.repositoryConfigContent === null;
+  elements["ci-config-template"].hidden = !missing || editing;
+  elements["ci-config-template-source"].textContent = DEFAULT_CI_CONFIG;
+  elements["ci-new-pipeline-button"].disabled = !ready || !state.repositoryScope || !state.repositoryBranch || editing || state.repositoryConfigSaving || state.repositoryConfigContent === null;
+  const visual = ready && (!missing || editing) && state.repositoryConfigMode === "visual";
   const visualAvailable = ready && (state.repositoryConfigModel !== null || state.repositoryConfigContent === null || editing);
   const viewer = elements["repository-config-viewer"];
   let contents = "";
@@ -2111,13 +2127,14 @@ function renderRepositoryConfig() {
   else if (state.repositoryConfigStatus === "no-repositories") contents = t("dynamic.noRepositories");
   else if (state.repositoryConfigStatus === "no-branches") contents = t("dynamic.noRemoteBranches");
   else if (state.repositoryConfigStatus === "error") contents = state.repositoryConfigError;
+  else if (state.repositoryConfigStatus === "link-source") contents = t("CI settings are unavailable for Lore link source repositories.");
   else if (state.repositoryConfigContent === null) contents = t("dynamic.noCiConfig");
   else contents = state.repositoryConfigContent;
   viewer.textContent = contents;
   viewer.classList.toggle("is-empty", !ready || state.repositoryConfigContent === null);
-  viewer.hidden = visual || editing;
+  viewer.hidden = visual || editing || missing;
   elements["repository-config-editor-field"].hidden = visual || !editing;
-  elements["repository-config-mode"].hidden = !ready;
+  elements["repository-config-mode"].hidden = !ready || (missing && !editing);
   elements["repository-config-visual"].hidden = !visual;
   elements["repository-config-visual-tab"].classList.toggle("is-active", visual);
   elements["repository-config-visual-tab"].setAttribute("aria-selected", String(visual));
@@ -2128,7 +2145,7 @@ function renderRepositoryConfig() {
   elements["repository-config-branch"].disabled = editing || state.repositoryConfigStatus === "loading" || state.repositoryConfigStatus === "no-branches";
   elements["repository-config-revision"].textContent = state.repositoryConfigRevision ?? "—";
   elements["repository-config-revision"].title = state.repositoryConfigRevision ?? "";
-  elements["repository-config-edit"].hidden = editing;
+  elements["repository-config-edit"].hidden = editing || missing;
   elements["repository-config-edit"].disabled = !ready;
   elements["repository-config-edit"].textContent = t("Edit");
   elements["repository-config-cancel-edit"].hidden = !editing;
@@ -2842,8 +2859,7 @@ function renderPipelines() {
   const filtered = ["q", "branch", "pipeline_name", "status"].some(key => pipelineHistoryParameters().has(key));
   const empty = elements["empty-state"];
   empty.querySelector("h3").textContent = filtered ? rct("noMatches") : t("파이프라인이 없습니다");
-  empty.querySelector("p").textContent = filtered ? rct("changeFilters") : t("Lore repository와 revision을 지정해 첫 실행을 시작하세요.");
-  empty.querySelector("button").hidden = filtered;
+  empty.querySelector("p").textContent = filtered ? rct("changeFilters") : t("Select a repository and open CI settings to create a pipeline run.");
   document.querySelectorAll(".status-tab").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.status === state.filter)));
   elements["pipeline-table-body"].replaceChildren();
   elements["empty-state"].hidden = loading || pipelines.length !== 0;
@@ -2926,7 +2942,7 @@ function statusBadge(status) {
   return badge;
 }
 
-async function openNewPipeline(repositoryUrl = "") {
+async function openNewPipeline(repositoryUrl = "", preferredBranch = "") {
   if (typeof repositoryUrl !== "string") repositoryUrl = "";
   repositoryUrl ||= state.repositoryScope;
   elements["pipeline-form"].reset();
@@ -2957,14 +2973,14 @@ async function openNewPipeline(repositoryUrl = "") {
     }
     elements["repository-url"].value = repositoryUrl || state.repositories[0].url;
     elements["repository-url"].disabled = false;
-    await loadPipelineBranches();
+    await loadPipelineBranches(preferredBranch);
     window.setTimeout(() => elements["repository-url"].focus(), 0);
   } catch (error) {
     toast(error.message, "error");
   }
 }
 
-async function loadPipelineBranches() {
+async function loadPipelineBranches(preferredBranch = "") {
   const repositoryUrl = elements["repository-url"].value;
   const repository = state.repositories.find((item) => item.url === repositoryUrl);
   elements.branch.replaceChildren(new Option(t("dynamic.loadingBranches"), ""));
@@ -2988,7 +3004,13 @@ async function loadPipelineBranches() {
       option.dataset.revision = branch.revision;
       elements.branch.append(option);
     }
-    elements.branch.value = branches.some((branch) => branch.name === "main") ? "main" : branches[0].name;
+    if (preferredBranch && !branches.some(branch => branch.name === preferredBranch)) {
+      elements.branch.value = "";
+      toast(t("Selected branch is no longer available. Refresh CI settings."), "error");
+      return;
+    }
+    const preferred = preferredBranch || repositoryBranchFor(repositoryUrl);
+    elements.branch.value = branches.some(branch => branch.name === preferred) ? preferred : branches.some(branch => branch.name === "main") ? "main" : branches[0].name;
     elements.branch.disabled = false;
     await selectPipelineBranch();
   } catch (error) {

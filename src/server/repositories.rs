@@ -838,13 +838,19 @@ impl RepositoryService {
                     .flatten()
             })
         });
-        if completion_status == Some(3) {
+        let error_message = lore_error_message(&stdout)
+            .or_else(|| first_line(&String::from_utf8_lossy(&output.stderr)));
+        if completion_status == Some(3)
+            || ((!output.status.success() || completion_status.is_some_and(|status| status != 0))
+                && error_message.as_deref().is_some_and(|message| {
+                    message.eq_ignore_ascii_case("file not found: .lore-ci.toml")
+                }))
+        {
             return Ok(None);
         }
         if !output.status.success() || completion_status != Some(0) {
             return Err(CommandError {
-                message: lore_error_message(&stdout)
-                    .or_else(|| first_line(&String::from_utf8_lossy(&output.stderr)))
+                message: error_message
                     .unwrap_or_else(|| format!("unable to read {PIPELINE_FILE_NAME}")),
             });
         }
@@ -1393,6 +1399,13 @@ case "$8" in
     [ "${14}" = .lore-ci.toml ]
     [ "${15}" = --revision ]
     [ "${17}" = --output ]
+    case "${16}" in
+      b*) printf '%s\n' '{"tagName":"complete","data":{"status":1,"error":{"message":"file not found: .lore-ci.toml"}}}'; exit 1 ;;
+      c*) printf '%s\n' '{"tagName":"complete","data":{"status":1,"error":{"message":"permission denied"}}}'; exit 1 ;;
+      d*) printf '%s\n' '{"tagName":"complete","data":{"status":1,"error":{"message":"file not found: another-file"}}}'; exit 1 ;;
+      e*) printf '%s\n' 'file not found: .lore-ci.toml' >&2; exit 1 ;;
+      f*) printf '%s\n' '{"tagName":"complete","data":{"status":3}}'; exit 0 ;;
+    esac
     [ "${16}" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]
     # Like Lore, refuse to overwrite a file created by clone.
     [ ! -e "${18}" ]
@@ -1425,6 +1438,23 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
             .unwrap();
         assert_eq!(file.pipelines.len(), 1);
         assert_eq!(file.pipelines[0].name, "build");
+        for revision in ["b", "e", "f"] {
+            assert!(
+                service
+                    .pipeline_file("project", &revision.repeat(64), "test-token")
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        for revision in ["c", "d"] {
+            assert!(
+                service
+                    .pipeline_file("project", &revision.repeat(64), "test-token")
+                    .await
+                    .is_err()
+            );
+        }
     }
 
     #[cfg(unix)]
@@ -1443,6 +1473,7 @@ set -eu
 [ "$1" = --json ]
 [ "$4" = --identity-token ]
 [ "$6" = --access-token ]
+test_token="$5"
 shift 7
 case "${{1:-}}:${{2:-}}" in
   repository:clone)
@@ -1457,7 +1488,9 @@ case "${{1:-}}:${{2:-}}" in
   clone:--revision)
     [ "$3" = {old_revision} ]
     mkdir -p "$6"
-    printf '%s\n' 'stages = ["old"]' > "$6/.lore-ci.toml"
+    if [ "$test_token" != missing-token ]; then
+      printf '%s\n' 'stages = ["old"]' > "$6/.lore-ci.toml"
+    fi
     ;;
   stage:.lore-ci.toml)
     [ -f .lore-ci.toml ]
@@ -1515,6 +1548,24 @@ printf '%s\n' '{{"tagName":"complete","data":{{"status":0}}}}'
             .await
             .unwrap_err();
         assert!(error.message.contains("has changed"));
+        // The same guarded save can create the root file when none exists.
+        std::fs::remove_file(&pushed).unwrap();
+        let revision = service
+            .update_pipeline_source_on(
+                "project",
+                "main",
+                &"a".repeat(64),
+                source,
+                StorageBackend::DynamoDbS3,
+                "missing-token",
+            )
+            .await
+            .unwrap();
+        assert_eq!(revision, "b".repeat(64));
+        assert_eq!(
+            std::fs::read_to_string(format!("{}.content", pushed.display())).unwrap(),
+            source
+        );
     }
 
     #[cfg(unix)]

@@ -28,6 +28,11 @@
 .overview-summary .stat-card--success { border-top-color: var(--green); }
 .overview-summary .stat-card--active { border-top-color: var(--amber); }
 .overview-summary .stat-card:hover { background: var(--canvas); }
+#ci-new-pipeline-button { font-size: 12px; justify-self: start; }
+.ci-config-template { margin-bottom: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); }
+.ci-config-template h3 { margin: 0 0 8px; font-size: 16px; }
+.ci-config-template p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.ci-config-template pre { overflow: auto; margin: 16px 0; font-size: 12px; }
 .overview-panel { margin-bottom: 22px; }
 .overview-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; color: var(--red); font-size: 12px; }
 .overview-alert-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 20px; padding: 18px 22px; }

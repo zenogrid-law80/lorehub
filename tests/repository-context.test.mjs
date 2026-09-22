@@ -40,6 +40,36 @@ function historySetup(api) {
   return { context, get };
 }
 
+test("new runs use the CI branch and cannot silently switch to main if it was deleted", async () => {
+  const errors = [];
+  let selected = "";
+  const { context, get } = setup({
+    state: { repositoryScope: "lores://host/game", repositoryBranch: "release", repositories: [{ url: "lores://host/game", name: "game" }] },
+    elements: {
+      "repository-url": { value: "lores://host/game" },
+      branch: { value: "", replaceChildren() {}, append() {} },
+      revision: { value: "" },
+      "pipeline-name": { dataset: {}, replaceChildren() {} },
+      "run-pipeline-button": {},
+    },
+    Option: function(text, value) { return { text, value, dataset: {} }; },
+    api: async () => [{ name: "main", revision: "main-revision" }, { name: "release", revision: "release-revision" }],
+    selectPipelineBranch: async () => { selected = get("elements.branch.value"); },
+    toast: message => errors.push(message), t: key => key,
+  });
+  vm.runInContext(fn("async function loadPipelineBranches(", "async function selectPipelineBranch("), context);
+  await get("loadPipelineBranches('release')");
+  assert.equal(selected, "release");
+  assert.equal(get("elements.branch.disabled"), false);
+  selected = "";
+  context.api = async () => [{ name: "main", revision: "main-revision" }];
+  await get("loadPipelineBranches('release')");
+  assert.equal(selected, "");
+  assert.equal(get("elements.branch.disabled"), true);
+  assert.equal(get("elements['run-pipeline-button'].disabled"), true);
+  assert.equal(errors.length, 1);
+});
+
 test("Overview requests only five recent runs and never appends history", async () => {
   const requests = [];
   const { get } = historySetup(async url => {

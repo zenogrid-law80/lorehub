@@ -23,6 +23,69 @@ const LOCAL: &str = "lores://local.example:41338";
 
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn ci_settings_disable_incoming_link_sources_not_link_roots(pool: PgPool) {
+    let f = fixture(&pool).await;
+    // The root is inaccessible to the source's owner; tracking and automatic
+    // updates are off, and the reference is on a different branch.
+    sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES('hidden','release','revision')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES('hidden','release','revision','Shared','main','release-id',$1,false)")
+        .bind("a".repeat(64)).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,auto_update) VALUES('hidden','release','Shared',false)").execute(&pool).await.unwrap();
+    let path = "/api/v1/repositories/main/ci-config?branch=main";
+    let (status, body) = request(&f.app, Some(f.owner), "GET", path).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["is_link_source"], true);
+    assert!(body["content"].is_null());
+    assert!(!body.to_string().contains("hidden"));
+    assert_eq!(
+        request(&f.app, Some(f.outsider), "GET", path).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    async fn attempt_save(app: &Router, user: Uuid, name: &str) -> (StatusCode, Value) {
+        let response = app.clone().oneshot(Request::builder()
+            .uri(format!("/api/v1/repositories/{name}/ci-config"))
+            .method("POST").header("content-type", "application/json")
+            .header("cookie", format!("lorehub_session={user}; lorehub_csrf=test-csrf"))
+            .header("x-csrf-token", "test-csrf")
+            .body(Body::from(json!({"branch":"main", "expected_revision":"a".repeat(64), "content":"invalid template"}).to_string())).unwrap()).await.unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+    let (status, body) = attempt_save(&f.app, f.owner, "main").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("source repositories")
+    );
+    // Owning a link does not block CI settings: this reaches content validation.
+    let (status, body) = attempt_save(&f.app, f.outsider, "hidden").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid .lore-ci.toml")
+    );
+    sqlx::query("DELETE FROM repository_link_dependencies WHERE source_resource_id='main'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = attempt_save(&f.app, f.owner, "main").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid .lore-ci.toml")
+    );
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
 async fn overview_counts_all_accessible_runs_and_hides_revoked_and_stale_alerts(pool: PgPool) {
     let f = fixture(&pool).await;
     sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,status,created_at) SELECT gen_random_uuid(),$1,'revision','main','queued',now()-interval '10 minutes' FROM generate_series(1,120)")

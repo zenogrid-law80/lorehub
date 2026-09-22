@@ -55,7 +55,7 @@ createServer(async (req, res) => {
     else if (url.pathname === "/api/v1/pipeline-history") data = historyPage(url.searchParams);
     else if (url.pathname === "/api/v1/overview") data = { observed_at: new Date().toISOString(), summary: { repositories: 2, running: 0, queued: 120, online_runners: 0, failed: 1, waiting: 0, link_errors: 1 }, failed: [pipelines.at(-1)], waiting: [], links: [{ repository_url: root.url, branch: "main", path: "Test" }] };
     else if (url.pathname === "/api/v1/pipeline-graphs") data = pipelines.filter(row => !url.searchParams.has("repository_url") || row.repository_url === url.searchParams.get("repository_url")).map(row => ({ ...row, graph: { stages: [{ name: "build", jobs: ["compile"] }] }, latest_pipeline_id: null }));
-    else if (url.pathname.endsWith("/ci-config")) data = { revision, content: null, configuration: null };
+    else if (url.pathname.endsWith("/ci-config")) data = { revision, content: null, configuration: null, is_link_source: url.pathname.includes("/developer/") };
     else if (url.pathname === "/api/v1/repository-links/summary") data = [{ resource_id: root.id, branch: "main", count: links.length }];
     else if (url.pathname.endsWith("/tree")) {
       const path = url.searchParams.get("path") || "";

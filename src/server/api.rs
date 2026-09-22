@@ -1181,9 +1181,17 @@ struct RepositoryCiConfigQuery {
 #[derive(Serialize)]
 struct RepositoryCiConfig {
     branch: String,
-    revision: String,
+    revision: Option<String>,
     content: Option<String>,
     configuration: Option<PipelineFile>,
+    is_link_source: bool,
+}
+
+async fn repository_is_link_source(pool: &PgPool, resource: &str) -> Result<bool, sqlx::Error> {
+    // Incoming references determine eligibility, regardless of branch, tracking,
+    // auto-update policy, or the caller's access to the referencing repository.
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_link_dependencies WHERE source_resource_id=$1 AND root_resource_id<>$1)")
+        .bind(resource).fetch_one(pool).await
 }
 
 async fn repository_ci_config(
@@ -1192,7 +1200,21 @@ async fn repository_ci_config(
     Path(name): Path<String>,
     Query(query): Query<RepositoryCiConfigQuery>,
 ) -> Result<(HeaderMap, Json<RepositoryCiConfig>), ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
+    let resource = require_repository_access(&state.pool, &name, &session).await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if repository_is_link_source(&state.pool, &resource).await? {
+        return Ok((
+            headers,
+            Json(RepositoryCiConfig {
+                branch: query.branch,
+                revision: None,
+                content: None,
+                configuration: None,
+                is_link_source: true,
+            }),
+        ));
+    }
     let access_token = user_access_token(&state, &session).await?;
     let backend = state
         .repositories
@@ -1217,15 +1239,14 @@ async fn repository_ci_config(
     let configuration = content
         .as_deref()
         .and_then(|source| PipelineFile::parse(source).ok());
-    let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     Ok((
         headers,
         Json(RepositoryCiConfig {
             branch: branch.name,
-            revision: branch.revision,
+            revision: Some(branch.revision),
             content,
             configuration,
+            is_link_source: false,
         }),
     ))
 }
@@ -1243,7 +1264,13 @@ async fn update_repository_ci_config(
     Path(name): Path<String>,
     Json(input): Json<UpdateRepositoryCiConfig>,
 ) -> Result<Json<RepositoryCiConfig>, ApiError> {
-    require_repository_access(&state.pool, &name, &session).await?;
+    let resource = require_repository_access(&state.pool, &name, &session).await?;
+    if repository_is_link_source(&state.pool, &resource).await? {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "CI settings are unavailable for Lore link source repositories.".into(),
+        ));
+    }
     let configuration = PipelineFile::parse(&input.content).map_err(|error| {
         ApiError(
             StatusCode::BAD_REQUEST,
@@ -1268,9 +1295,10 @@ async fn update_repository_ci_config(
         .await?;
     Ok(Json(RepositoryCiConfig {
         branch: input.branch,
-        revision,
+        revision: Some(revision),
         content: Some(input.content),
         configuration: Some(configuration),
+        is_link_source: false,
     }))
 }
 

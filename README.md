@@ -75,7 +75,15 @@ Repository and branch selection are stored in URLs such as `#repository-tree?rep
 
 ## CI settings and execution graphs
 
+### CI settings
+
 **CI settings** provides Visual and TOML editing for the selected repository and branch, dependency edges, change-path preview, server validation, undo/redo, and line-based diffs. Preview and analysis do not commit, push, or run pipelines.
+
+Repositories used as a Lore link's **Source Repository** are read-only in CI settings so their source content remains controlled by the link relationship. When `.lore-ci.toml` is missing, LoreHub offers a starter build template; editing and saving the template creates the configuration in a new revision. New pipeline runs are started from this page after reviewing the selected branch configuration.
+
+![CI settings page](./web/CISettings.png)
+
+### Execution graphs
 
 **Execution graphs** keeps each run's recorded snapshot separate from the current configuration. Historical OS, paths, and stages are never replaced by new settings. Selecting a job shows status, duration, exit code, and paged logs. Wait reasons are derived from server claim evidence; the UI does not invent a dependency blocker when no corresponding run exists.
 
