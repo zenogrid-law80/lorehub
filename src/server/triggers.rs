@@ -992,50 +992,16 @@ async fn update_root_links(
     let url = repository_service
         .command_repository_url_for(backend, &root.root_name)
         .map_err(|error| anyhow::anyhow!(error.message))?;
-    let workspace = tempfile::tempdir()?;
-    let checkout = workspace.path().join("repository");
-    let mut clone = command(binary, &token, None);
-    clone
-        .args([
-            "clone",
-            "--revision",
-            root_head.revision.as_str(),
-            "--",
-            url.as_str(),
-        ])
-        .arg(&checkout)
-        .current_dir(workspace.path());
-    success(clone).await?;
-
-    let mut changed = false;
-    let mut applied = Vec::with_capacity(pending.len());
-    for (path, branch, desired_revision) in pending {
-        let mut update = command(binary, &token, Some(&checkout));
-        update.args(["link", "update", "--", path.as_str()]);
-        let events = success(update).await?;
-        let revision = match link_change_revision(&events)? {
-            Some(revision) => {
-                changed = true;
-                // Lore requires a clean working tree before updating another
-                // link. Commit each changed link independently, then push the
-                // resulting commit chain once after all updates succeed.
-                let message = format!("Update Lore link {path} from {}", source.name);
-                let mut commit = command(binary, &token, Some(&checkout));
-                commit.args(["commit", message.as_str()]);
-                success(commit).await?;
-                revision
-            }
-            None => desired_revision,
-        };
-        applied.push((path, branch, revision));
-    }
-
-    let pushed_root_revision = if changed {
-        let mut push = command(binary, &token, Some(&checkout));
-        // A concurrent user push must be re-indexed rather than auto-merged
-        // over potentially changed link metadata.
-        push.arg("push");
-        let revision = pushed_revision(&success(push).await?)?;
+    let (applied, pushed_root_revision) = push_link_updates(
+        binary,
+        &token,
+        &url,
+        &root_head.revision,
+        &source.name,
+        pending,
+    )
+    .await?;
+    if let Some(revision) = &pushed_root_revision {
         tracing::info!(
             source = %source.name,
             root = %root.root_name,
@@ -1044,10 +1010,7 @@ async fn update_root_links(
             links = applied.len(),
             "repository links updated and pushed"
         );
-        Some(revision)
-    } else {
-        None
-    };
+    }
 
     for (path, branch, revision) in applied {
         sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_success_at) VALUES($1,$2,$3,now()) ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET last_success_at=now(),last_error=NULL,updated_at=now()")
@@ -1073,6 +1036,85 @@ async fn update_root_links(
     }
     tx.commit().await?;
     Ok(())
+}
+
+fn link_update_view(paths: impl IntoIterator<Item = impl AsRef<str>>) -> Result<String> {
+    let mut view = String::new();
+    for path in paths {
+        let path = path.as_ref();
+        ensure!(
+            valid_relative_path(path) && !path.chars().any(char::is_control),
+            "invalid link update path"
+        );
+        // Anchor and escape literal paths: names must not become view rules.
+        view.push('/');
+        for character in path.chars() {
+            if matches!(character, '*' | '?' | '[' | ']') {
+                view.push('\\');
+            }
+            view.push(character);
+        }
+        view.push_str("/**\n");
+    }
+    Ok(view)
+}
+
+async fn push_link_updates(
+    binary: &str,
+    token: &str,
+    url: &str,
+    root_revision: &str,
+    source_name: &str,
+    pending: Vec<(String, String, String)>,
+) -> Result<(Vec<(String, String, String)>, Option<String>)> {
+    let workspace = tempfile::tempdir()?;
+    let checkout = workspace.path().join("repository");
+    // Lore's filesystem check rejects a second staged link update in a full
+    // checkout. Keep the link nodes in view, but exclude their contents so we
+    // can stage all pin changes and commit one root revision without file edits.
+    let view = workspace.path().join("link-update.view");
+    tokio::fs::write(&view, link_update_view(pending.iter().map(|item| &item.0))?).await?;
+    let mut clone = command(binary, token, None);
+    clone
+        .args(["clone", "--view"])
+        .arg(&view)
+        .args(["--revision", root_revision, "--", url])
+        .arg(&checkout)
+        .current_dir(workspace.path());
+    success(clone).await?;
+
+    let mut changed = false;
+    let mut applied = Vec::with_capacity(pending.len());
+    for (path, branch, desired_revision) in pending {
+        let mut update = command(binary, token, Some(&checkout));
+        update.args(["link", "update", "--", path.as_str()]);
+        let events = success(update).await?;
+        let revision = match link_change_revision(&events)? {
+            Some(revision) => {
+                changed = true;
+                revision
+            }
+            None => desired_revision,
+        };
+        applied.push((path, branch, revision));
+    }
+
+    let pushed_root_revision = if changed {
+        let message = format!("Update Lore links from {source_name}");
+        let mut commit = command(binary, token, Some(&checkout));
+        commit.args(["commit", message.as_str()]);
+        success(commit).await?;
+        let mut push = command(binary, token, Some(&checkout));
+        // A concurrent user push must be re-indexed rather than auto-merged
+        // over potentially changed link metadata.
+        push.arg("push");
+        let revision = pushed_revision(&success(push).await?)?;
+        Some(revision)
+    } else {
+        None
+    };
+
+    Ok((applied, pushed_root_revision))
 }
 
 async fn read_pipeline_config(
@@ -1286,6 +1328,129 @@ pub async fn enqueue(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_update_view_excludes_contents_and_escapes_literal_paths() {
+        assert_eq!(
+            link_update_view(["Server", "Dir/Test [1]*?", "!Test", "#Test"]).unwrap(),
+            "/Server/**\n/Dir/Test \\[1\\]\\*\\?/**\n/!Test/**\n/#Test/**\n"
+        );
+        for path in ["../outside", "/absolute", "Test\n!**", "Test\rOther"] {
+            assert!(link_update_view([path]).is_err());
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn link_update_batch_commits_once_and_never_pushes_partial_updates() {
+        use std::os::unix::fs::PermissionsExt;
+
+        for scenario in [
+            "changed",
+            "unchanged",
+            "mixed",
+            "update-failure",
+            "commit-failure",
+        ] {
+            let workspace = tempfile::tempdir().unwrap();
+            let binary = workspace.path().join("lore");
+            std::fs::write(workspace.path().join("scenario"), scenario).unwrap();
+            std::fs::write(&binary, r#"#!/bin/sh
+set -eu
+fixture=$(dirname "$0")
+scenario=$(cat "$fixture/scenario")
+while [ "$#" -gt 0 ]; do
+    case "$1" in clone|link|commit|push) break;; esac
+    shift
+done
+printf '%s\n' "$1" >> "$fixture/commands"
+case "$1" in
+    clone)
+        [ "$2" = '--view' ]
+        cp "$3" "$fixture/view"
+        for checkout in "$@"; do :; done
+        mkdir "$checkout"
+        ;;
+    link)
+        [ "$2" = 'update' ] && [ "$3" = '--' ]
+        printf '%s\n' "$4" >> "$fixture/paths"
+        if [ "$scenario" = 'update-failure' ] && [ "$4" = 'Test2' ]; then
+            printf '%s\n' '{"tagName":"complete","data":{"status":1}}'
+            exit 1
+        fi
+        revision='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        if [ "$scenario" = 'unchanged' ] || { [ "$scenario" = 'mixed' ] && [ "$4" = 'Test2' ]; }; then
+            revision='0000000000000000000000000000000000000000000000000000000000000000'
+        fi
+        printf '{"tagName":"linkChange","data":{"revision":"%s"}}\n' "$revision"
+        ;;
+    commit)
+        [ "$2" = 'Update Lore links from developer' ]
+        [ "$(wc -l < "$fixture/paths" | tr -d ' ')" = '6' ]
+        if [ "$scenario" = 'commit-failure' ]; then
+            printf '%s\n' '{"tagName":"complete","data":{"status":1}}'
+            exit 1
+        fi
+        ;;
+    push)
+        printf '%s\n' '{"tagName":"branchPushRevisionPushEnd","data":{"newRemoteRevision":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}'
+        ;;
+    *) exit 1;;
+esac
+printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
+"#).unwrap();
+            std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let paths = ["Server", "Test", "Test2", "Test3", "Test4", "Test6"];
+            let pending = paths
+                .iter()
+                .map(|path| (path.to_string(), "main".into(), "a".repeat(64)))
+                .collect();
+            let result = push_link_updates(
+                binary.to_str().unwrap(),
+                "token",
+                "lores://example.test/root",
+                &"d".repeat(64),
+                "developer",
+                pending,
+            )
+            .await;
+            let commands = std::fs::read_to_string(workspace.path().join("commands")).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(workspace.path().join("view")).unwrap(),
+                link_update_view(paths).unwrap()
+            );
+            if scenario.ends_with("failure") {
+                assert!(result.is_err(), "{scenario}");
+                assert!(!commands.lines().any(|command| command == "push"));
+                if scenario == "update-failure" {
+                    assert!(!commands.lines().any(|command| command == "commit"));
+                }
+            } else {
+                let (applied, revision) = result.unwrap();
+                assert_eq!(applied.len(), paths.len());
+                let changed = scenario != "unchanged";
+                assert_eq!(revision, changed.then(|| "c".repeat(64)));
+                assert_eq!(
+                    commands
+                        .lines()
+                        .filter(|command| *command == "commit")
+                        .count(),
+                    usize::from(changed)
+                );
+                assert_eq!(
+                    commands
+                        .lines()
+                        .filter(|command| *command == "push")
+                        .count(),
+                    usize::from(changed)
+                );
+                for (path, _, revision) in applied {
+                    let unchanged = !changed || (scenario == "mixed" && path == "Test2");
+                    assert_eq!(revision, if unchanged { "a" } else { "b" }.repeat(64));
+                }
+            }
+        }
+    }
 
     #[sqlx::test]
     #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
