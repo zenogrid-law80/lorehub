@@ -23,6 +23,88 @@ const LOCAL: &str = "lores://local.example:41338";
 
 #[sqlx::test]
 #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn overview_counts_all_accessible_runs_and_hides_revoked_and_stale_alerts(pool: PgPool) {
+    let f = fixture(&pool).await;
+    sqlx::query("INSERT INTO pipelines(id,repository_url,revision,branch,status,created_at) SELECT gen_random_uuid(),$1,'revision','main','queued',now()-interval '10 minutes' FROM generate_series(1,120)")
+        .bind(format!("{PRIMARY}/main")).execute(&pool).await.unwrap();
+    sqlx::query("UPDATE pipelines SET status='failed',finished_at=now() WHERE id IN ($1,$2)")
+        .bind(f.main)
+        .bind(f.hidden)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let old = run(&pool, &format!("{PRIMARY}/main"), "expired-failure", 3600).await;
+    sqlx::query(
+        "UPDATE pipelines SET status='failed',finished_at=now()-interval '25 hours' WHERE id=$1",
+    )
+    .bind(old)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let canceled = run(&pool, &format!("{PRIMARY}/main"), "canceling", 600).await;
+    sqlx::query("UPDATE pipelines SET cancel_requested=true WHERE id=$1")
+        .bind(canceled)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // An execution from before this repository existed must not be inherited.
+    run(&pool, &format!("{PRIMARY}/main"), "before-creation", 90000).await;
+    for resource in ["main", "hidden"] {
+        sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,'main','revision')")
+            .bind(resource).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,'main','revision','Shared','source','branch',$2,true)")
+            .bind(resource).bind("a".repeat(64)).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,last_error) VALUES($1,'main','Shared','private diagnostic'),($1,'main','Removed','private diagnostic')")
+            .bind(resource).execute(&pool).await.unwrap();
+    }
+    let path = "/api/v1/overview";
+    assert_eq!(
+        request(&f.app, None, "GET", path).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, body) = request(&f.app, Some(f.member), "GET", path).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["summary"],
+        json!({ "repositories": 2, "running": 0, "queued": 122, "online_runners": 0, "failed": 1, "waiting": 120, "link_errors": 1 })
+    );
+    assert_eq!(body["failed"][0]["id"], json!(f.main));
+    assert_eq!(body["failed"].as_array().unwrap().len(), 1);
+    assert_eq!(body["waiting"].as_array().unwrap().len(), 5);
+    assert_eq!(
+        body["links"],
+        json!([{ "repository_url": format!("{PRIMARY}/main"), "branch": "main", "path": "Shared" }])
+    );
+    assert!(!body.to_string().contains("private diagnostic"));
+    let (_, admin) = request(&f.app, Some(f.admin), "GET", path).await;
+    assert_eq!(admin["summary"]["repositories"], 3);
+    assert_eq!(admin["summary"]["failed"], 2);
+    assert_eq!(admin["summary"]["link_errors"], 2);
+    sqlx::query("DELETE FROM account_group_members WHERE group_id=$1 AND user_id=$2")
+        .bind(f.group)
+        .bind(f.member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, revoked) = request(&f.app, Some(f.member), "GET", path).await;
+    assert_eq!(status, StatusCode::OK, "{revoked}");
+    for key in [
+        "repositories",
+        "running",
+        "queued",
+        "failed",
+        "waiting",
+        "link_errors",
+    ] {
+        assert_eq!(revoked["summary"][key], 0, "{key}: {revoked}");
+    }
+    for key in ["failed", "waiting", "links"] {
+        assert!(revoked[key].as_array().unwrap().is_empty());
+    }
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
 async fn history_search_filters_all_runs_before_pagination_and_keeps_live_permissions(
     pool: PgPool,
 ) {

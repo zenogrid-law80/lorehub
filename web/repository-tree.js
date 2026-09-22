@@ -2,7 +2,7 @@
 
 const repositoryTree = { request: 0, repository: "", branches: [], branch: "", revision: "", nodes: new Map(), entries: [], loading: false, error: "" };
 const repositoryTreeCopy = {
-  title: ["폴더 보기", "Folder view", "文件夹视图"],
+  title: ["파일·폴더", "Files and folders", "文件与文件夹"],
   description: ["폴더를 클릭해 하위 노드를 펼치거나 접습니다. LINK는 연결된 폴더입니다.", "Click a folder to expand or collapse its child nodes. LINK marks a linked folder.", "点击文件夹展开或折叠子节点。LINK 表示链接文件夹。"],
   repository: ["저장소", "Repository", "仓库"], branch: ["브랜치", "Branch", "分支"],
   folder: ["일반 폴더", "Folder", "普通文件夹"], link: ["링크 폴더", "Linked folder", "链接文件夹"], file: ["파일", "File", "文件"],
@@ -35,8 +35,9 @@ async function loadRepositoryTreePage() {
     const branches = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/branches`);
     if (!treeCurrent(request, scope)) return;
     repositoryTree.branches = branches;
-    repositoryTree.branch = branches[0]?.name || "";
-    repositoryTree.revision = branches[0]?.revision || "";
+    const branch = selectRepositoryBranch(branches, repository.url);
+    repositoryTree.branch = branch?.name || "";
+    repositoryTree.revision = branch?.revision || "";
     if (branches.length) await loadRepositoryTreePath("");
   } catch (error) { if (treeCurrent(request, scope)) repositoryTree.error = error.message; }
   finally { if (treeCurrent(request, scope)) { repositoryTree.loading = false; renderRepositoryTree(); } }
@@ -146,7 +147,7 @@ function renderRepositoryTreePage(page) {
     ["branch", repositoryTree.branches.map(item => item.name), repositoryTree.branch, value => {
       const branch = repositoryTree.branches.find(item => item.name === value);
       if (!branch) return;
-      repositoryTree.branch = branch.name; repositoryTree.revision = branch.revision; void loadRepositoryTreePath("");
+      repositoryTree.branch = branch.name; repositoryTree.revision = branch.revision; rememberRepositoryBranch(branch.name); void loadRepositoryTreePath("");
     }],
   ]) {
     const label = treeNode("label", rtt(key)); const select = document.createElement("select"); select.setAttribute("aria-label", rtt(key)); select.dataset.focusKey = key;

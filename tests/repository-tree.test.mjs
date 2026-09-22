@@ -2,9 +2,12 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 import assert from "node:assert/strict";
+const navigation = await readFile(new URL("../web/repository-context.js", import.meta.url), "utf8");
 const source = await readFile(new URL("../web/repository-tree.js", import.meta.url), "utf8");
 function setup(api) {
   const context = vm.createContext({ URLSearchParams, api, state: { locale: "ko", section: "repository-tree", repositoryScope: "lores://host/game", repositories: [] }, scopedRepositories() { return context.state.repositories.filter(r => r.url === context.state.repositoryScope); } });
+  vm.runInContext(navigation + "\nrenderRepositoryContext = () => {};", context);
+  context.window = { location: { hash: "#repository-tree" } };
   vm.runInContext(source + "\nrenderRepositoryTree = () => {};", context);
   const get = code => vm.runInContext(code, context);
   get("Object.assign(repositoryTree, {repository:'game', revision:'a'.repeat(64)})");
@@ -101,4 +104,18 @@ test("page load selects the branch revision and loads its root", async () => {
   assert.equal(calls.length, 3);
   assert.equal(new URL(calls[2], "http://test").searchParams.get("revision"), "c".repeat(64));
   assert.equal(get("repositoryTree.loading"), false);
+});
+
+test("opening files and folders keeps the shared selected branch revision", async () => {
+  const urls = [];
+  const { get } = setup(async url => {
+    urls.push(url);
+    if (url.endsWith('/repositories')) return { repositories: [{name:'game',url:'lores://host/game'}] };
+    if (url.endsWith('/branches')) return [{name:'main',revision:'a'.repeat(64)}, {name:'release',revision:'b'.repeat(64)}];
+    return [];
+  });
+  get("state.repositoryBranch='release'");
+  await get("loadRepositoryTreePage()");
+  assert.equal(get("repositoryTree.branch"), "release");
+  assert.equal(new URL(urls.at(-1),'http://test').searchParams.get('revision'), 'b'.repeat(64));
 });

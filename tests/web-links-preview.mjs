@@ -30,9 +30,11 @@ function historyPage(params) {
   return { pipelines: rows.slice(0, limit), next_before: rows.length > limit ? rows[limit - 1].id : null };
 }
 const assets = { "/": ["index.html", "text/html"], "/app.js": ["app.js", "text/javascript"], "/ci-visual.js": ["ci-visual.js", "text/javascript"], "/ci-editor.js": ["ci-editor.js", "text/javascript"], "/app.css": ["app.css", "text/css"], "/theme.js": ["theme.js", "text/javascript"], "/management.js": ["management.js", "text/javascript"] };
+assets["/lore-logo.svg"] = ["lore-logo.svg", "image/svg+xml"];
 assets["/repository-tree.js"] = ["repository-tree.js", "text/javascript"];
 assets["/repository-context.js"] = ["repository-context.js", "text/javascript"];
 assets["/operations.js"] = ["operations.js", "text/javascript"];
+assets["/overview.js"] = ["overview.js", "text/javascript"];
 assets["/execution-graph.js"] = ["execution-graph.js", "text/javascript"];
 assets["/execution-analysis.js"] = ["execution-analysis.js", "text/javascript"];
 createServer(async (req, res) => {
@@ -51,6 +53,7 @@ createServer(async (req, res) => {
     if (url.pathname === "/api/v1/me") data = { id: "fixture-user", name: "Link UI test", email: "fixture@example.test", role: "user" };
     else if (url.pathname === "/api/v1/repositories") data = { repositories: [source, root], server_url: "lores://fixture", storage_backends: ["dynamodb_s3"] };
     else if (url.pathname === "/api/v1/pipeline-history") data = historyPage(url.searchParams);
+    else if (url.pathname === "/api/v1/overview") data = { observed_at: new Date().toISOString(), summary: { repositories: 2, running: 0, queued: 120, online_runners: 0, failed: 1, waiting: 0, link_errors: 1 }, failed: [pipelines.at(-1)], waiting: [], links: [{ repository_url: root.url, branch: "main", path: "Test" }] };
     else if (url.pathname === "/api/v1/pipeline-graphs") data = pipelines.filter(row => !url.searchParams.has("repository_url") || row.repository_url === url.searchParams.get("repository_url")).map(row => ({ ...row, graph: { stages: [{ name: "build", jobs: ["compile"] }] }, latest_pipeline_id: null }));
     else if (url.pathname.endsWith("/ci-config")) data = { revision, content: null, configuration: null };
     else if (url.pathname === "/api/v1/repository-links/summary") data = [{ resource_id: root.id, branch: "main", count: links.length }];

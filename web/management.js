@@ -4,7 +4,7 @@ const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "repository-access", 
 const management = { accounts: [], groups: [], repositories: [], repositoryAccess: { repositories: [], groups: [] }, views: [], assignments: [], groupId: "", resourceId: "", loaded: false, request: 0, dirty: false };
 const managementCopy = {
   operationsMenu: ["운영 상태", "Operations", "运行状态"],
-  accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], repositoryAccess: ["Repository 접근 권한", "Repository access", "仓库访问权限"], views: ["Sparse Workspace View 설정", "Sparse Workspace Views", "稀疏工作区视图设置"],
+  accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], repositoryAccess: ["Repository 접근 권한", "Repository access", "仓库访问权限"], views: ["Sparse View", "Sparse View", "稀疏视图"],
   accountMenu: ["계정", "Accounts", "账号"], groupMenu: ["계정 그룹", "Account groups", "账号组"], accessMenu: ["Repository 권한", "Repository access", "仓库权限"], viewMenu: ["Sparse View", "Sparse View", "稀疏视图"],
   accountIntro: ["조직 계정을 확인하고 관리자는 계정 등급을 변경할 수 있습니다.", "Browse organization accounts. Administrators can change account roles.", "查看组织账号。管理员可以更改账号等级。"],
   groupIntro: ["함께 작업할 계정을 그룹으로 묶고 구성원을 관리합니다. 관리자는 모든 그룹을 볼 수 있습니다.", "Organize accounts into groups and manage membership. Administrators can view every group.", "将账号整理为组并管理成员。管理员可以查看所有组。"],
@@ -73,10 +73,10 @@ function initManagement() {
   const mobile = mn("select", "mobile-page-select"); mobile.id = "mobile-page-select";
   for (const group of nav.querySelectorAll(".nav-group")) {
     const options = document.createElement("optgroup"); options.label = group.querySelector(".nav-group-label").textContent.trim(); options.dataset.navGroup = group.dataset.navGroup;
-    for (const link of group.querySelectorAll("a")) options.append(new Option(link.textContent.trim(), link.dataset.section));
+    for (const link of group.querySelectorAll("a")) options.append(new Option(link.textContent.trim(), link.dataset.navScope === "repository" ? `repository:${link.dataset.section}` : link.dataset.section));
     mobile.append(options);
   }
-  mobile.addEventListener("change", () => { navigateRepositorySection(mobile.value); });
+  mobile.addEventListener("change", () => { const local = mobile.value.startsWith("repository:"); navigateRepositorySection(local ? mobile.value.slice(11) : mobile.value, local ? selectedRepository() : ""); });
   document.querySelector(".page-content").prepend(mobile);
   window.addEventListener("beforeunload", (event) => { if (management.dirty) { event.preventDefault(); event.returnValue = ""; } });
 }
@@ -105,7 +105,7 @@ function managementLocale() {
     options.label = document.querySelector(`.nav-group[data-nav-group="${options.dataset.navGroup}"] .nav-group-label`).textContent.trim();
   }
   for (const link of document.querySelectorAll(".primary-nav a[data-section]")) {
-    const option = [...mobile.options].find(item => item.value === link.dataset.section);
+    const option = [...mobile.options].find(item => item.value === (link.dataset.navScope === "repository" ? `repository:${link.dataset.section}` : link.dataset.section));
     if (option) option.textContent = (link.querySelector(".management-nav-label") || link.querySelector("span")).textContent;
   }
   // Preserve authored drafts when changing language.
@@ -114,7 +114,7 @@ function managementLocale() {
 function managementShell(section, titleKey, introKey) {
   const page = document.getElementById(`${section}-page`); page.replaceChildren();
   const heading = mn("header", "page-heading"); const copy = mn("div");
-  copy.append(mn("p", "breadcrumb", "Zenogrid / Workspace"), mn("h1", "", mt(titleKey)), mn("p", "", mt(introKey)));
+  copy.append(mn("h1", "", mt(titleKey)), mn("p", "", mt(introKey)));
   heading.append(copy); page.append(heading); return page;
 }
 async function loadManagement() {

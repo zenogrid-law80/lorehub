@@ -12,6 +12,7 @@ mod execution;
 mod links;
 mod management;
 mod operations;
+mod overview;
 mod pipeline_access;
 pub mod releases;
 pub mod repositories;

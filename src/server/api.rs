@@ -65,6 +65,7 @@ pub fn router_with_releases(
     let private = Router::new()
         .merge(management::router())
         .route("/api/v1/me", get(me))
+        .route("/api/v1/overview", get(super::overview::overview))
         .route("/api/v1/pipelines", post(submit).get(list))
         .route("/api/v1/pipeline-history", get(pipeline_history))
         .route("/api/v1/pipeline-graphs", get(pipeline_graphs))
@@ -190,6 +191,7 @@ pub fn router_with_releases(
     Router::new()
         .route("/", get(web::index))
         .route("/assets/app.css", get(web::styles))
+        .route("/assets/lore-logo.svg", get(web::logo))
         .route("/assets/theme.js", get(web::theme_script))
         .route("/assets/app.js", get(web::script))
         .route("/assets/ci-visual.js", get(web::ci_script))
@@ -201,6 +203,7 @@ pub fn router_with_releases(
         )
         .route("/assets/management.js", get(web::management_script))
         .route("/assets/operations.js", get(web::operations_script))
+        .route("/assets/overview.js", get(web::overview_script))
         .route(
             "/assets/repository-context.js",
             get(web::repository_context_script),

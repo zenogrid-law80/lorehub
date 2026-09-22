@@ -35,6 +35,14 @@ pub async fn index() -> Response {
     asset(INDEX, "text/html; charset=utf-8", true)
 }
 
+pub async fn logo() -> Response {
+    asset(
+        include_str!("../../web/lore-logo.svg"),
+        "image/svg+xml",
+        false,
+    )
+}
+
 pub async fn styles() -> Response {
     asset(STYLES, "text/css; charset=utf-8", false)
 }
@@ -77,6 +85,14 @@ pub async fn repository_context_script() -> Response {
 
 pub async fn operations_script() -> Response {
     asset(OPERATIONS_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn overview_script() -> Response {
+    asset(
+        include_str!("../../web/overview.js"),
+        "text/javascript; charset=utf-8",
+        false,
+    )
 }
 
 pub async fn management_script() -> Response {
@@ -183,11 +199,11 @@ mod tests {
         assert!(SCRIPT.contains("updatePipelineFilterOptions"));
         assert!(INDEX.contains("Execution graphs"));
         let workspace_group = INDEX.find("data-nav-group=\"workspace\"").unwrap();
-        let runtime_group = INDEX.find("data-nav-group=\"runtime\"").unwrap();
+        let repository_group = INDEX.find("data-nav-group=\"repository\"").unwrap();
         let management_group = INDEX.find("data-nav-group=\"management\"").unwrap();
-        assert!(workspace_group < runtime_group && runtime_group < management_group);
+        assert!(workspace_group < repository_group && repository_group < management_group);
         assert!(MANAGEMENT_SCRIPT.contains("viewMenu"));
-        assert!(MANAGEMENT_SCRIPT.contains("Sparse Workspace View 설정"));
+        assert!(MANAGEMENT_SCRIPT.contains("views: [\"Sparse View\", \"Sparse View\""));
         assert!(MANAGEMENT_SCRIPT.contains("/api/v1/sparse-views"));
         assert!(SCRIPT.contains("/api/v1/runners"));
         assert!(SCRIPT.contains("runner.docker_available"));

@@ -15,18 +15,19 @@
     <script src="/assets/management.js" defer></script>
     <script src="/assets/operations.js" defer></script>
     <script src="/assets/repository-context.js" defer></script>
+    <script src="/assets/overview.js" defer></script>
     <script src="/assets/repository-tree.js" defer></script>
   </head>
   <body>
     <div id="loading-view" class="loading-view" aria-live="polite">
-      <div class="brand-mark brand-mark--large" aria-hidden="true">L</div>
+      <img class="brand-mark brand-mark--large" src="/assets/lore-logo.svg" alt="" aria-hidden="true">
       <p>워크스페이스를 불러오는 중…</p>
     </div>
 
     <main id="login-view" class="login-view" hidden>
       <section class="login-panel">
         <a class="brand brand--login" href="/" aria-label="LoreHub 홈">
-          <span class="brand-mark" aria-hidden="true">L</span>
+          <img class="brand-mark" src="/assets/lore-logo.svg" alt="" aria-hidden="true">
           <span>LoreHub</span>
         </a>
         <div class="login-copy">
@@ -71,49 +72,54 @@
     <div id="app-view" class="app-shell" hidden>
       <aside class="sidebar">
         <a class="brand" href="/" aria-label="LoreHub 홈">
-          <span class="brand-mark" aria-hidden="true">L</span>
+          <img class="brand-mark" src="/assets/lore-logo.svg" alt="" aria-hidden="true">
           <span>LoreHub</span>
         </a>
         <nav class="primary-nav" aria-label="주 메뉴">
           <div class="nav-group" data-nav-group="workspace">
             <p class="nav-group-label">Workspace</p>
-            <a class="nav-item is-active" href="#overview" data-section="overview">
+            <a class="nav-item is-active" href="#overview" data-section="overview" data-nav-scope="global">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
               <span>Overview</span>
             </a>
-            <a class="nav-item" href="#pipelines" data-section="pipelines">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 9-3-3m3 3-3 3"/></svg>
-              <span>Pipelines</span>
-              <span id="nav-active-count" class="nav-count" hidden>0</span>
-            </a>
-            <a class="nav-item" href="#graphs" data-section="graphs">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v3.5h6V15m6-6v3.5h-6"/></svg>
-              <span>Execution graphs</span>
-              <span id="nav-graph-count" class="nav-count nav-count--neutral" hidden>0</span>
-            </a>
-          </div>
-          <div class="nav-group" data-nav-group="runtime">
-            <p class="nav-group-label">Sources and runtime</p>
-            <a class="nav-item" href="#repositories" data-section="repositories">
+            <a class="nav-item" href="#repositories" data-section="repositories" data-nav-scope="global">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5C5 4.12 8.13 3 12 3s7 1.12 7 2.5S15.87 8 12 8 5 6.88 5 5.5Zm0 0v6C5 12.88 8.13 14 12 14s7-1.12 7-2.5v-6m-14 6v6C5 18.88 8.13 20 12 20s7-1.12 7-2.5v-6"/></svg>
               <span>Repositories</span>
               <span id="nav-repository-count" class="nav-count nav-count--neutral" hidden>0</span>
             </a>
-            <a class="nav-item" href="#ci-settings" data-section="ci-settings">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4"/></svg>
-              <span>CI settings</span>
+            <a class="nav-item" href="#pipelines" data-section="pipelines" data-nav-scope="global">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 9-3-3m3 3-3 3"/></svg>
+              <span>All run history</span>
+              <span id="nav-active-count" class="nav-count" hidden>0</span>
             </a>
-            <a class="nav-item" href="#repository-tree" data-section="repository-tree">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg><span>Folder view</span>
-            </a>
-            <a class="nav-item" href="#repository-links" data-section="repository-links">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg>
-              <span>Repository links</span>
-            </a>
-            <a class="nav-item" href="#runners" data-section="runners">
+            <a class="nav-item" href="#runners" data-section="runners" data-nav-scope="global">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/></svg>
               <span>Runners</span>
               <span id="nav-runner-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+          </div>
+          <div class="nav-group repository-nav" data-nav-group="repository">
+            <p class="nav-group-label">Selected repository</p>
+            <div id="repository-picker-slot"></div>
+            <a class="nav-item" href="#repository-tree" data-section="repository-tree" data-nav-scope="repository">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg><span>Files and folders</span>
+            </a>
+            <a class="nav-item" href="#repository-links" data-section="repository-links" data-nav-scope="repository">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg>
+              <span>Links</span>
+            </a>
+            <a class="nav-item" href="#pipelines" data-section="pipelines" data-nav-scope="repository">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 9-3-3m3 3-3 3"/></svg>
+              <span>Run history</span>
+            </a>
+            <a class="nav-item" href="#graphs" data-section="graphs" data-nav-scope="repository">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v3.5h6V15m6-6v3.5h-6"/></svg>
+              <span>Execution graphs</span>
+              <span id="nav-graph-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+            <a class="nav-item" href="#ci-settings" data-section="ci-settings" data-nav-scope="repository">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4"/></svg>
+              <span>CI settings</span>
             </a>
           </div>
           <div class="nav-group" data-nav-group="management">
@@ -127,7 +133,7 @@
 
       <div class="content-shell">
         <header class="topbar">
-          <div class="mobile-brand"><span class="brand-mark" aria-hidden="true">L</span><strong>LoreHub</strong></div>
+          <div class="mobile-brand"><img class="brand-mark" src="/assets/lore-logo.svg" alt="" aria-hidden="true"><strong>LoreHub</strong></div>
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
             <span class="sr-only">파이프라인 검색</span>
@@ -171,19 +177,13 @@
         <main class="page-content">
           <section id="overview-heading" class="page-heading overview-view">
             <div>
-              <p class="breadcrumb">Zenogrid <span>/</span> CI workspace</p>
-              <h1 id="welcome-heading">Good morning, Developer.</h1>
-              <p>현재 워크스페이스의 파이프라인 상태입니다.</p>
+              <h1 id="welcome-heading">Overview</h1>
+              <p id="overview-description"></p>
             </div>
-            <button id="new-pipeline-button" class="button button--primary" type="button">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
-              New pipeline
-            </button>
           </section>
 
           <section id="pipelines-heading" class="page-heading pipelines-view" hidden>
             <div>
-              <p class="breadcrumb">Zenogrid <span>/</span> CI workspace</p>
               <h1>Pipelines</h1>
               <p>워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.</p>
             </div>
@@ -193,29 +193,18 @@
             </button>
           </section>
 
-          <section class="stats-grid overview-view" aria-label="파이프라인 요약">
-            <article class="stat-card stat-card--total">
-              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12a4 4 0 0 0 4 4h8M6 7h11m0 0-3-3m3 3-3 3m4 12-3-3m3 3-3 3"/></svg></div>
-              <div><p>Total pipelines</p><strong id="stat-total">—</strong><small>최근 100건</small></div>
-            </article>
-            <article class="stat-card stat-card--success">
-              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></div>
-              <div><p>Succeeded</p><strong id="stat-success">—</strong><small id="success-rate">성공률 —</small></div>
-            </article>
-            <article class="stat-card stat-card--active">
-              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7L8 5Z"/></svg></div>
-              <div><p>Active</p><strong id="stat-active">—</strong><small>Queued + running</small></div>
-            </article>
-            <article class="stat-card stat-card--failed">
-              <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3h.01M10 3 2.8 16a2 2 0 0 0 1.75 3h14.9a2 2 0 0 0 1.75-3L14 3a2 2 0 0 0-4 0Z"/></svg></div>
-              <div><p>Needs attention</p><strong id="stat-failed">—</strong><small>Failed pipelines</small></div>
-            </article>
-          </section>
+          <div id="overview-workspace" class="overview-view">
+            <div id="overview-notice" class="overview-notice" role="status" hidden></div>
+            <section id="overview-summary" class="stats-grid overview-summary"></section>
+            <section id="overview-attention" class="pipeline-panel overview-panel" hidden></section>
+            <section id="overview-repositories" class="pipeline-panel overview-panel"></section>
+          </div>
 
           <section class="pipeline-panel overview-view" id="pipelines">
             <div class="panel-header">
-              <div><h2>Recent pipelines</h2><p>최신 Lore revision 실행 내역</p></div>
-              <div class="status-tabs" role="group" aria-label="상태 필터">
+              <div><h2 id="pipeline-panel-title">Recent pipelines</h2><p id="pipeline-panel-description">최신 Lore revision 실행 내역</p></div>
+              <a id="overview-history-link" class="button button--ghost overview-view" href="#pipelines"></a>
+              <div class="status-tabs pipelines-view" role="group" aria-label="상태 필터" hidden>
                 <button class="status-tab is-active" type="button" data-status="all">All</button>
                 <button class="status-tab" type="button" data-status="running">Active</button>
                 <button class="status-tab" type="button" data-status="finished">Finished</button>
@@ -262,8 +251,7 @@
           <section id="graphs-page" class="graphs-page" hidden>
             <div class="page-heading">
               <div>
-                <p class="breadcrumb">Zenogrid <span>/</span> CI routing</p>
-                <h1>Pipeline graphs</h1>
+                <h1>Execution graphs</h1>
                 <p>Inspect run status, waiting reasons, and job logs against the execution snapshot.</p>
               </div>
             </div>
@@ -301,7 +289,6 @@
           <section id="repositories-page" class="repositories-page" hidden>
             <div class="page-heading">
               <div>
-                <p class="breadcrumb">Zenogrid <span>/</span> Lore server</p>
                 <h1>Repositories</h1>
                 <p>현재 Lore 서버의 repository를 생성하고 연결 주소를 관리합니다.</p>
               </div>
@@ -337,8 +324,7 @@
           <section id="ci-settings-page" class="ci-settings-page" hidden>
             <div class="page-heading">
               <div>
-                <p class="breadcrumb">Zenogrid <span>/</span> CI workspace</p>
-                <h1>CI configuration</h1>
+                <h1>CI settings</h1>
                 <p>저장소와 branch별 CI 파이프라인을 편집합니다.</p>
               </div>
             </div>
@@ -431,8 +417,7 @@
           <section id="repository-links-page" class="repository-links-page" hidden>
             <div class="page-heading">
               <div>
-                <p class="breadcrumb">Zenogrid <span>/</span> Lore dependencies</p>
-                <h1>Repository links</h1>
+                <h1>Links</h1>
                 <p>Source changes flow into Root. Manage sync policies and recover unfinished links.</p>
               </div>
               <button id="new-repository-link-button" class="button button--primary" type="button" disabled>
@@ -470,7 +455,6 @@
           <section id="runners-page" class="runners-page" hidden>
             <div class="page-heading">
               <div>
-                <p class="breadcrumb">Zenogrid <span>/</span> CI infrastructure</p>
                 <h1>Runners</h1>
                 <p>등록된 runner의 운영체제, 연결 상태와 현재 작업을 확인합니다.</p>
               </div>
