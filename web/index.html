@@ -15,6 +15,7 @@
     <script src="/assets/management.js" defer></script>
     <script src="/assets/operations.js" defer></script>
     <script src="/assets/repository-context.js" defer></script>
+    <script src="/assets/repository-tree.js" defer></script>
   </head>
   <body>
     <div id="loading-view" class="loading-view" aria-live="polite">
@@ -101,6 +102,9 @@
             <a class="nav-item" href="#ci-settings" data-section="ci-settings">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4"/></svg>
               <span>CI settings</span>
+            </a>
+            <a class="nav-item" href="#repository-tree" data-section="repository-tree">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg><span>Folder view</span>
             </a>
             <a class="nav-item" href="#repository-links" data-section="repository-links">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg>
@@ -423,6 +427,7 @@
             </form>
           </section>
 
+          <section id="repository-tree-page" hidden></section>
           <section id="repository-links-page" class="repository-links-page" hidden>
             <div class="page-heading">
               <div>

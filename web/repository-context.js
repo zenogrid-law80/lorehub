@@ -1,6 +1,6 @@
 "use strict";
 
-const REPOSITORY_SECTIONS = ["pipelines", "graphs", "ci-settings", "repository-links"];
+const REPOSITORY_SECTIONS = ["pipelines", "graphs", "ci-settings", "repository-links", "repository-tree"];
 const repositoryContextCopy = {
   scope: ["선택한 저장소", "Selected repository", "所选仓库"],
   history: ["실행 이력", "Run history", "运行历史"],
@@ -54,7 +54,7 @@ function renderRepositoryContext() {
   const identity = document.createElement("div");
   identity.append(textNode(rct("scope"), "repository-context-label"), textNode(repositoryName(scope), "repository-context-name"), textNode(scope, "repository-context-url"));
   const nav = document.createElement("nav"); nav.setAttribute("aria-label", rct("scope"));
-  for (const [target, label] of [["pipelines", rct("history")], ["graphs", t("Execution graphs")], ["ci-settings", t("CI configuration")], ["repository-links", t("Repository links")]]) {
+  for (const [target, label] of [["repository-tree", t("Folder view")], ["pipelines", rct("history")], ["graphs", t("Execution graphs")], ["ci-settings", t("CI configuration")], ["repository-links", t("Repository links")]]) {
     const link = document.createElement("a"); link.className = "button button--ghost";
     link.href = repositorySectionHash(target, scope); link.textContent = label;
     if (target === state.section) link.setAttribute("aria-current", "page");

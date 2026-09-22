@@ -77,6 +77,24 @@ web/                  내장 CI 대시보드 HTML, CSS, JavaScript
 
 executor는 **신뢰할 수 있는 저장소를 위한 플랫폼 shell executor**입니다. Linux에서는 POSIX shell, Windows에서는 PowerShell로 실행됩니다. 스크립트는 워커 계정의 파일·네트워크 권한을 갖습니다. 전용 계정/VM에서 실행하세요. Runner에는 PostgreSQL 접속 정보가 없으며 Google OAuth 자격 증명도 자식 환경변수로 전달하지 않지만, 이것이 프로세스나 파일 접근 격리를 제공하는 것은 아닙니다.
 
+## 저장소 폴더 보기
+
+사이드바 또는 저장소 카드의 **폴더 보기** (`#repository-tree`)에서 저장소와 브랜치를 선택합니다.
+폴더 이름이나 화살표를 클릭하면 바로 아래 파일·폴더가 들여쓰기된 트리로 펼쳐지고 다시 클릭하면 접힙니다.
+여러 폴더를 동시에 펼칠 수 있으며, 링크 폴더 이름 옆에는 **LINK** 배지를 표시합니다.
+펼칠 때 하위 노드를 조회하고, 빈 폴더·로딩·오류 및 재시도는 해당 폴더 아래에 표시합니다.
+조회는 선택한 브랜치의 revision에 고정되며 링크 내부는 원본의 고정 revision을 따릅니다.
+새로고침하면 브랜치 정보를 다시 불러옵니다. 링크 원본에 접근할 수 없으면 오류를 표시합니다.
+
+`GET /api/v1/repositories/{name}/tree?revision=HASH&path=PATH`는 로그인과 저장소 접근 권한을
+확인하고 바로 아래 노드의 `name`, `kind`, `is_link`를 반환합니다. 루트는 빈 `path`입니다.
+Lore CLI의 bare clone과 깊이가 제한된 JSON tree 조회를 사용하며 파일 본문은 내려받지 않습니다.
+DB migration은 없으며 웹 자산과 API가 바이너리에 포함되므로 Coordinator 재빌드·배포가 필요합니다.
+
+검증: `node --test tests/repository-tree.test.mjs tests/repository-context.test.mjs`,
+`cargo test --locked --no-default-features --lib server::repositories`.
+로컬 화면 확인: `node tests/web-links-preview.mjs` 실행 후 `http://127.0.0.1:4179/#repository-tree`.
+
 ## CI 설정 시각화
 
 `CI 설정`에서 저장소와 branch를 선택하면 **전체 파이프라인** 의존성 개요가 기본으로 표시됩니다. 카드를 선택하면 설정을 확인할 수 있고, **단계·작업**으로 전환하면 기존 stage/job 편집기를 사용합니다. 연결선은 `needs` 관계이며, 한 파이프라인 안의 작업은 병렬이 아닌 순차 실행입니다.
@@ -681,7 +699,7 @@ CLI 기본 릴리스 디렉터리는 `deploy/runner-releases`이며 `LOREHUB_RUN
 
 `.lore-ci.toml`의 `script`는 Linux/macOS에서 POSIX shell, Windows에서 PowerShell 문법으로 해석됩니다. 이름이 있는 자동 파이프라인은 `runner_os`로 해당 OS의 Runner만 선택합니다. 기존 루트 `stages`/`jobs` 형식에는 OS 조건이 없으므로 먼저 claim한 Runner에서 실행됩니다.
 
-Runner는 JWT로 인증된 coordinator HTTP API를 통해 등록, claim, heartbeat, 상태 및 로그를 처리하며 PostgreSQL에 직접 연결하지 않습니다. 저장소 파일 탐색, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 실행 메타데이터 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
+Runner는 JWT로 인증된 coordinator HTTP API를 통해 등록, claim, heartbeat, 상태 및 로그를 처리하며 PostgreSQL에 직접 연결하지 않습니다. 파일 본문 미리보기, OS 외의 runner tag, container executor, job DAG/병렬 실행, artifact/cache 업로드, secret 관리 및 실행 메타데이터 보존 기간 정리는 아직 구현하지 않았습니다. 이 기능들은 각각 executor/트리거/스토리지 계층으로 확장할 수 있습니다.
 
 ### 계정, 계정 그룹, sparse workspace view
 

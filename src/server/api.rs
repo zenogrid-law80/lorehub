@@ -96,6 +96,7 @@ pub fn router_with_releases(
             "/api/v1/repositories/{name}/branches",
             get(list_repository_branches),
         )
+        .route("/api/v1/repositories/{name}/tree", get(repository_tree))
         .route(
             "/api/v1/repositories/{name}/links",
             get(repository_links).post(super::links::create),
@@ -203,6 +204,10 @@ pub fn router_with_releases(
         .route(
             "/assets/repository-context.js",
             get(web::repository_context_script),
+        )
+        .route(
+            "/assets/repository-tree.js",
+            get(web::repository_tree_script),
         )
         .route("/healthz", get(health))
         .route("/.well-known/openid-configuration", get(oidc_discovery))
@@ -805,6 +810,33 @@ async fn list_repository_branches(
             .branches_on(&name, backend, &access_token)
             .await?,
     ))
+}
+
+#[derive(Deserialize)]
+struct RepositoryTreeQuery {
+    revision: String,
+    #[serde(default)]
+    path: String,
+}
+
+async fn repository_tree(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Query(query): Query<RepositoryTreeQuery>,
+) -> Result<Response, ApiError> {
+    require_repository_access(&state.pool, &name, &session).await?;
+    let token = user_access_token(&state, &session).await?;
+    let backend = state.repositories.storage_backend(&name, &token).await?;
+    let entries = state
+        .repositories
+        .tree_on(&name, &query.revision, &query.path, backend, &token)
+        .await?;
+    Ok((
+        [(CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+        Json(entries),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]

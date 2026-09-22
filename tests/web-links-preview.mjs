@@ -30,6 +30,7 @@ function historyPage(params) {
   return { pipelines: rows.slice(0, limit), next_before: rows.length > limit ? rows[limit - 1].id : null };
 }
 const assets = { "/": ["index.html", "text/html"], "/app.js": ["app.js", "text/javascript"], "/ci-visual.js": ["ci-visual.js", "text/javascript"], "/ci-editor.js": ["ci-editor.js", "text/javascript"], "/app.css": ["app.css", "text/css"], "/theme.js": ["theme.js", "text/javascript"], "/management.js": ["management.js", "text/javascript"] };
+assets["/repository-tree.js"] = ["repository-tree.js", "text/javascript"];
 assets["/repository-context.js"] = ["repository-context.js", "text/javascript"];
 assets["/operations.js"] = ["operations.js", "text/javascript"];
 assets["/execution-graph.js"] = ["execution-graph.js", "text/javascript"];
@@ -53,6 +54,17 @@ createServer(async (req, res) => {
     else if (url.pathname === "/api/v1/pipeline-graphs") data = pipelines.filter(row => !url.searchParams.has("repository_url") || row.repository_url === url.searchParams.get("repository_url")).map(row => ({ ...row, graph: { stages: [{ name: "build", jobs: ["compile"] }] }, latest_pipeline_id: null }));
     else if (url.pathname.endsWith("/ci-config")) data = { revision, content: null, configuration: null };
     else if (url.pathname === "/api/v1/repository-links/summary") data = [{ resource_id: root.id, branch: "main", count: links.length }];
+    else if (url.pathname.endsWith("/tree")) {
+      const path = url.searchParams.get("path") || "";
+      const folders = {
+        "": [{ name: "src", kind: "directory", is_link: false }, { name: "Shared", kind: "directory", is_link: true }, { name: "empty", kind: "directory", is_link: false }, { name: "unavailable", kind: "directory", is_link: true }, { name: "README.md", kind: "file", is_link: false }],
+        src: [{ name: "app.js", kind: "file", is_link: false }],
+        Shared: [{ name: "Textures", kind: "directory", is_link: false }, { name: "shared.txt", kind: "file", is_link: false }],
+        "Shared/Textures": [{ name: "한국어 & texture.png", kind: "file", is_link: false }], empty: [],
+      };
+      if (path === "unavailable") { status = 403; data = { error: "Linked repository access denied (fixture)" }; }
+      else data = folders[path] || [];
+    }
     else if (url.pathname.endsWith("/branches")) data = [{ name: "main", revision }, { name: "release", revision }];
     else if (url.pathname.endsWith("/link-operations")) data = url.pathname.includes("/game/") && url.searchParams.get("branch") === "main" ? operations : [];
     else if (url.pathname.endsWith("/retry")) {

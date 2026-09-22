@@ -252,3 +252,11 @@ mod tests {
         );
     }
 }
+
+pub async fn repository_tree_script() -> Response {
+    asset(
+        include_str!("../../web/repository-tree.js"),
+        "text/javascript; charset=utf-8",
+        false,
+    )
+}

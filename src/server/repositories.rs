@@ -1,3 +1,5 @@
+pub mod tree;
+
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},

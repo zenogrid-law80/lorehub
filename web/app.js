@@ -205,6 +205,8 @@ function initialTheme() {
   return SUPPORTED_THEMES.includes(initial) ? initial : "system";
 }
 
+for (const [locale, label] of [["ko", "폴더 보기"], ["en", "Folder view"], ["zh-CN", "文件夹视图"]]) I18N[locale]["Folder view"] = label;
+
 function t(key, values = {}) {
   const template = I18N[state.locale]?.[key] ?? key;
   return template.replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "");
@@ -449,6 +451,7 @@ function applyLocale(rerender) {
   renderUpdatedLabels();
   if (state.section === "ci-settings") renderRepositoryConfig();
   if (state.section === "repository-links") renderRepositoryLinks();
+  if (state.section === "repository-tree") renderRepositoryTree();
   if (state.selectedId && elements["pipeline-detail-dialog"].open) void loadPipelineDetail(state.selectedId);
 }
 
@@ -630,7 +633,7 @@ function sectionFromHash() {
 }
 
 function availableSections() {
-  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
+  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "repository-tree", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
 }
 
 async function showSection(section) {
@@ -683,6 +686,8 @@ async function showSection(section) {
   elements["repositories-page"].hidden = section !== "repositories";
   elements["ci-settings-page"].hidden = section !== "ci-settings";
   elements["repository-links-page"].hidden = section !== "repository-links";
+  document.getElementById("repository-tree-page").hidden = section !== "repository-tree";
+  repositoryTree.request++;
   elements["runners-page"].hidden = section !== "runners";
   document.querySelectorAll(".nav-item[data-section]").forEach((link) => {
     const active = link.dataset.section === section;
@@ -696,6 +701,7 @@ async function showSection(section) {
   else if (section === "repositories") await loadRepositories(false);
   else if (section === "ci-settings") await loadCiSettings(false);
   else if (section === "repository-links") await loadRepositoryLinksPage(state.repositoryLinksName);
+  else if (section === "repository-tree") await loadRepositoryTreePage();
   else if (section === "runners") await loadRunners(false);
   else if (section === "graphs") await loadPipelineGraphs(false);
   else if (["overview", "pipelines"].includes(section)) await loadPipelines(false);
@@ -718,9 +724,9 @@ function updateSectionSearch() {
     elements["pipeline-search"].previousElementSibling.textContent = mt(key);
     return;
   }
-  if (["ci-settings", "repository-links"].includes(state.section)) {
+  if (["ci-settings", "repository-links", "repository-tree"].includes(state.section)) {
     elements["pipeline-search"].disabled = true;
-    const label = state.section === "ci-settings" ? t("CI configuration") : t("Repository links");
+    const label = state.section === "repository-tree" ? rtt("title") : state.section === "ci-settings" ? t("CI configuration") : t("Repository links");
     elements["pipeline-search"].placeholder = label;
     elements["pipeline-search"].previousElementSibling.textContent = label;
     return;
@@ -1395,6 +1401,7 @@ function refreshSection(notify) {
   if (state.section === "repositories") return loadRepositories(notify);
   if (state.section === "ci-settings") return discardRepositoryConfigEdit() ? loadCiSettings(notify) : Promise.resolve();
   if (state.section === "repository-links") return loadRepositoryLinksPage(state.repositoryLinksName, notify);
+  if (state.section === "repository-tree") return loadRepositoryTreePage();
   if (state.section === "runners") return loadRunners(notify);
   if (state.section === "graphs") return loadPipelines(false).then(() => loadPipelineGraphs(notify));
   return loadPipelines(notify);
@@ -1431,7 +1438,7 @@ function renderRepositories() {
     const url = document.createElement("code"); url.textContent = repository.url;
     content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
-    actions.append(repositoryButton("history", rct("history")), repositoryButton("graphs", t("Execution graphs")), repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("links", t("Repository links")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
+    actions.append(repositoryButton("folders", t("Folder view")), repositoryButton("history", rct("history")), repositoryButton("graphs", t("Execution graphs")), repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("links", t("Repository links")), repositoryButton("config", t("CI configuration")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
     elements["repository-list"].append(card);
   }
@@ -1459,7 +1466,9 @@ async function repositoryAction(event) {
   if (!button || !card) return;
   const repository = state.repositories.find((item) => item.name === card.dataset.name);
   if (!repository) return;
-  if (["history", "graphs"].includes(button.dataset.action)) {
+  if (button.dataset.action === "folders") {
+    navigateRepositorySection("repository-tree", repository.url);
+  } else if (["history", "graphs"].includes(button.dataset.action)) {
     navigateRepositorySection(button.dataset.action === "history" ? "pipelines" : "graphs", repository.url);
   } else if (button.dataset.action === "copy") {
     try { await navigator.clipboard.writeText(repository.url); toast(t("dynamic.urlCopied"), "success"); }
@@ -3303,7 +3312,7 @@ async function refreshActiveViews() {
     }
     return;
   }
-  if (document.hidden || isManagement()) return;
+  if (document.hidden || isManagement() || state.section === "repository-tree") return;
   if (state.section === "repository-links") {
     if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) await loadRepositoryLinkOperations();
     return;
