@@ -112,6 +112,11 @@ where
         .collect()
 }
 
+pub(crate) fn link_path_is_below(path: &str, parent: &str) -> bool {
+    path.strip_prefix(parent)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 enum LinkMutation<'a> {
     Add {
         path: &'a str,
@@ -652,8 +657,20 @@ impl RepositoryService {
                         access_token,
                     )
                     .await?;
+                let existing_links = parse_links(&output)?;
+                if let Some(parent) = existing_links
+                    .iter()
+                    .find(|link| link_path_is_below(path, &link.path))
+                {
+                    return Err(CommandError {
+                        message: format!(
+                            "link path '{path}' is inside existing link '{}'",
+                            parent.path
+                        ),
+                    });
+                }
                 let mut pin = source_revision.to_owned();
-                for link in parse_links(&output)? {
+                for link in existing_links {
                     if !repository_ids_equal(&link.source_repository_id, source_repository_id)
                         || link.source_branch_id != source_branch_id
                         || link.source_revision.eq_ignore_ascii_case(&pin)

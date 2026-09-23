@@ -272,7 +272,8 @@ const LINK_LABELS = {
   "Link details": ["링크 상세", "链接详情"], "Link actions": ["링크 작업", "链接操作"],
   "Retry": ["다시 시도", "重试"], "No files or folders": ["파일이나 폴더가 없습니다.", "没有文件或文件夹。"],
   "Loading folder…": ["폴더를 불러오는 중…", "正在加载文件夹…"],
-  "Delete link": ["링크 삭제", "删除链接"], "Only linked folders can be deleted here.": ["여기서는 LINK 폴더만 삭제할 수 있습니다.", "这里只能删除 LINK 文件夹。"]
+  "Delete link": ["링크 삭제", "删除链接"], "Only linked folders can be deleted here.": ["여기서는 LINK 폴더만 삭제할 수 있습니다.", "这里只能删除 LINK 文件夹。"],
+  "A LINK cannot be created below {path} because it is already a LINK.": ["{path}은(는) LINK 노드이므로 그 아래에 LINK를 만들 수 없습니다.", "{path} 已是 LINK 节点，无法在其下创建 LINK。"]
 };
 for (const [key, [ko, zh]] of Object.entries(LINK_LABELS)) {
   I18N.en[key] = key; I18N.ko[key] = ko; I18N["zh-CN"][key] = zh;
@@ -1761,6 +1762,9 @@ function repositoryLinkTree(links) {
 function repositoryLinkScopePath(path) {
   return `${state.repositoryLinksName}\0${state.repositoryLinksBranch}\0${path}`;
 }
+function repositoryLinkContainingPath(path, includeSelf = false) {
+  return state.repositoryLinks.find(link => (includeSelf && path === link.path) || path.startsWith(`${link.path}/`));
+}
 
 function toggleRepositoryLinkFolder(path) {
   const key = repositoryLinkScopePath(path);
@@ -1970,10 +1974,12 @@ function openRepositoryLinkContextMenu(event) {
   const kind = node.dataset.nodeKind;
   const targetFolder = kind === "file" ? path.slice(0, Math.max(0, path.lastIndexOf("/"))) : path;
   const link = kind === "link" ? state.repositoryLinks.find(item => item.path === path) : null;
+  const parentLink = repositoryLinkContainingPath(targetFolder, true);
   const menu = document.createElement("div"); menu.className = "repository-link-context-menu"; menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", path || state.repositoryLinksName);
   const add = document.createElement("button"); add.type = "button"; add.setAttribute("role", "menuitem");
-  add.textContent = t("Add link"); add.disabled = state.repositoryLinksBusy || state.repositories.length < 2;
+  add.textContent = t("Add link"); add.disabled = state.repositoryLinksBusy || state.repositories.length < 2 || Boolean(parentLink);
+  if (parentLink) add.title = t("A LINK cannot be created below {path} because it is already a LINK.", { path: parentLink.path });
   add.addEventListener("click", () => { closeRepositoryLinkContextMenu(); openNewRepositoryLink(targetFolder); });
   const actions = [add];
   if (link) {
@@ -1991,6 +1997,7 @@ function openRepositoryLinkContextMenu(event) {
     actions.push(remove);
   }
   menu.append(...actions);
+  if (parentLink) menu.append(textNode(add.title, "repository-link-context-note"));
   if (kind !== "root" && !link) menu.append(textNode(t("Only linked folders can be deleted here."), "repository-link-context-note"));
   document.body.append(menu);
   const rect = menu.getBoundingClientRect();
@@ -2031,6 +2038,7 @@ function renderRepositoryLinks() {
 
 function openNewRepositoryLink(folderPath = "") {
   if (state.repositoryLinksBusy || state.repositoryLinksStatus !== "ready" || !state.repositoryLinksRevision) return;
+  if (repositoryLinkContainingPath(folderPath, true)) return;
   const sources = state.repositories.filter(repository => repository.name !== state.repositoryLinksName);
   elements["repository-link-form"].reset();
   elements["repository-link-path"].value = folderPath ? `${folderPath}/` : "";
@@ -2168,6 +2176,11 @@ async function createRepositoryLink(event) {
     create_source_directory: elements["repository-link-create-source"].checked,
     auto_update: elements["repository-link-auto-update"].value === "true",
   };
+  const parentLink = repositoryLinkContainingPath(input.path);
+  if (parentLink) {
+    setRepositoryLinkFormError(t("A LINK cannot be created below {path} because it is already a LINK.", { path: parentLink.path }));
+    return;
+  }
   // A lost response must not turn a second submit into a second operation.
   const signature = JSON.stringify({ name, ...input });
   const id = state.repositoryLinkDraft?.signature === signature ? state.repositoryLinkDraft.id : crypto.randomUUID();

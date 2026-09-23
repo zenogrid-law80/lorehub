@@ -22,7 +22,7 @@ use super::{
     releases::RunnerReleases,
     repositories::{
         Branch, CommandError as RepositoryCommandError, Repository, RepositoryService,
-        StorageBackend,
+        StorageBackend, link_path_is_below,
     },
     tokens::{IssuedToken, TokenIssuer},
     triggers, web,
@@ -985,6 +985,19 @@ pub(super) async fn add_repository_link(
         return Err(ApiError(
             StatusCode::CONFLICT,
             "target path already has a link; inspect it before retrying".into(),
+        ));
+    }
+    if let Some(parent) = existing
+        .links
+        .iter()
+        .find(|link| link_path_is_below(&input.path, &link.path))
+    {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            format!(
+                "link path '{}' is inside existing link '{}'",
+                input.path, parent.path
+            ),
         ));
     }
     if !retry && existing.revision != input.expected_revision {
