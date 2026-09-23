@@ -223,10 +223,7 @@ function initialTheme() {
   return SUPPORTED_THEMES.includes(initial) ? initial : "system";
 }
 
-for (const [locale, label] of [["ko", "파일·폴더"], ["en", "Files and folders"], ["zh-CN", "文件与文件夹"]]) I18N[locale]["Folder view"] = label;
-
 for (const [key, labels] of Object.entries({
-  "Files and folders": ["파일·폴더", "Files and folders", "文件与文件夹"],
   "All run history": ["전체 실행 이력", "All run history", "全部运行历史"],
   "Run history": ["실행 이력", "Run history", "运行历史"],
   "Selected repository": ["선택한 저장소", "Selected repository", "所选仓库"],
@@ -489,7 +486,6 @@ function applyLocale(rerender) {
   renderUpdatedLabels();
   if (state.section === "ci-settings") renderRepositoryConfig();
   if (state.section === "repository-links") renderRepositoryLinks();
-  if (state.section === "repository-tree") renderRepositoryTree();
   if (state.selectedId && elements["pipeline-detail-dialog"].open) void loadPipelineDetail(state.selectedId);
 }
 
@@ -683,14 +679,14 @@ function sectionFromHash() {
 }
 
 function availableSections() {
-  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "repository-tree", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
+  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
 }
 
 async function showSection(section) {
   if (!availableSections().includes(section)) section = "overview";
   const route = repositoryRoute(window.location.hash);
   const scope = REPOSITORY_SECTIONS.includes(section) ? route.repository : "";
-  if (!scope && ["repository-tree", "repository-links", "ci-settings", "graphs"].includes(section)) { navigateRepositorySection("repositories", ""); return; }
+  if (!scope && ["repository-links", "ci-settings", "graphs"].includes(section)) { navigateRepositorySection("repositories", ""); return; }
   const branch = scope ? route.branch || repositoryBranchSelections.get(scope) || "" : "";
   const branchChanged = branch !== (state.repositoryBranch || "");
   const scopeChanged = scope !== state.repositoryScope;
@@ -747,8 +743,6 @@ async function showSection(section) {
   elements["repositories-page"].hidden = section !== "repositories";
   elements["ci-settings-page"].hidden = section !== "ci-settings";
   elements["repository-links-page"].hidden = section !== "repository-links";
-  document.getElementById("repository-tree-page").hidden = section !== "repository-tree";
-  repositoryTree.request++;
   elements["runners-page"].hidden = section !== "runners";
   invalidatePipelineHistory();
   restorePipelineHistoryFilters(window.location.hash);
@@ -760,7 +754,6 @@ async function showSection(section) {
   else if (section === "repositories") await loadRepositories(false);
   else if (section === "ci-settings") await loadCiSettings(false);
   else if (section === "repository-links") await loadRepositoryLinksPage(state.repositoryLinksName);
-  else if (section === "repository-tree") await loadRepositoryTreePage();
   else if (section === "runners") await loadRunners(false);
   else if (section === "graphs") await loadPipelineGraphs(false);
   else if (section === "overview") await Promise.all([loadOverview(), loadRepositories(false), loadPipelines(false)]);
@@ -790,9 +783,9 @@ function updateSectionSearch() {
     elements["pipeline-search"].previousElementSibling.textContent = mt(key);
     return;
   }
-  if (["ci-settings", "repository-links", "repository-tree"].includes(state.section)) {
+  if (["ci-settings", "repository-links"].includes(state.section)) {
     elements["pipeline-search"].disabled = true;
-    const label = state.section === "repository-tree" ? rtt("title") : state.section === "ci-settings" ? t("CI configuration") : t("Repository links");
+    const label = state.section === "ci-settings" ? t("CI configuration") : t("Repository links");
     elements["pipeline-search"].placeholder = label;
     elements["pipeline-search"].previousElementSibling.textContent = label;
     return;
@@ -1474,7 +1467,6 @@ function refreshSection(notify) {
   if (state.section === "repositories") return loadRepositories(notify);
   if (state.section === "ci-settings") return discardRepositoryConfigEdit() ? loadCiSettings(notify) : Promise.resolve();
   if (state.section === "repository-links") return loadRepositoryLinksPage(state.repositoryLinksName, notify);
-  if (state.section === "repository-tree") return loadRepositoryTreePage();
   if (state.section === "runners") return loadRunners(notify);
   if (state.section === "graphs") return loadPipelines(false).then(() => loadPipelineGraphs(notify));
   return loadPipelines(notify);
@@ -1496,7 +1488,7 @@ function renderRepositories() {
     content.className = "repository-card-content";
     const heading = document.createElement("div");
     heading.className = "repository-card-heading";
-    const name = document.createElement("a"); name.className = "repository-open"; name.href = repositorySectionHash("repository-tree", repository.url); name.textContent = repository.name;
+    const name = document.createElement("a"); name.className = "repository-open"; name.href = repositorySectionHash("repository-links", repository.url); name.textContent = repository.name;
     const id = document.createElement("span"); id.textContent = `ID ${repository.id.slice(0, 12)}`;
     heading.append(name);
     const meta = document.createElement("div");
@@ -1511,7 +1503,7 @@ function renderRepositories() {
     const url = document.createElement("code"); url.textContent = repository.url;
     content.append(heading, meta, url);
     const actions = document.createElement("div"); actions.className = "repository-actions";
-    actions.append(repositoryButton("folders", t("Folder view")), repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
+    actions.append(repositoryButton("copy", t("dynamic.copyUrl")), repositoryButton("pipeline", t("dynamic.runPipeline")), repositoryButton("branches", t("dynamic.pipelineBranches")), repositoryButton("delete", t("dynamic.delete"), "button--danger"));
     card.append(icon, content, actions);
     elements["repository-list"].append(card);
   }
@@ -1539,9 +1531,7 @@ async function repositoryAction(event) {
   if (!button || !card) return;
   const repository = state.repositories.find((item) => item.name === card.dataset.name);
   if (!repository) return;
-  if (button.dataset.action === "folders") {
-    navigateRepositorySection("repository-tree", repository.url);
-  } else if (["history", "graphs"].includes(button.dataset.action)) {
+  if (["history", "graphs"].includes(button.dataset.action)) {
     navigateRepositorySection(button.dataset.action === "history" ? "pipelines" : "graphs", repository.url);
   } else if (button.dataset.action === "copy") {
     try { await navigator.clipboard.writeText(repository.url); toast(t("dynamic.urlCopied"), "success"); }
@@ -3615,7 +3605,7 @@ async function refreshActiveViews() {
     }
     return;
   }
-  if (document.hidden || isManagement() || state.section === "repository-tree") return;
+  if (document.hidden || isManagement()) return;
   if (state.section === "overview" && Date.now() - workspaceOverview.lastAttempt >= 30000) await loadOverview();
   if (state.section === "repository-links") {
     if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) await loadRepositoryLinkOperations();

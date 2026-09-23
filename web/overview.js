@@ -138,7 +138,7 @@ function renderOverviewRepositories() {
     list.append(textNode(repositoryListStatus === "loading" ? t("dynamic.loading") : ovt(key), "overview-empty"));
   } else {
     for (const visit of visits) {
-      const link = overviewLink("", "repository-tree", visit.repository, visit.branch);
+      const link = overviewLink("", "repository-links", visit.repository, visit.branch);
       link.className = "overview-repository-card"; link.title = visit.repository;
       link.append(textNode(repositoryName(visit.repository), "overview-repository-name"));
       link.append(textNode(visit.branch || t("Branch"), "overview-row-meta"));

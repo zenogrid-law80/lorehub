@@ -1032,11 +1032,6 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
   color: #c8c1d5;
 }
 
-.repository-tree-controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
-.repository-tree-controls label { display: grid; gap: 7px; min-width: 180px; color: var(--muted); font-size: 12px; }
-.repository-tree-controls select { max-width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
-.repository-tree-revision { color: var(--muted); font-size: 12px; }
-.repository-tree-content { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .repository-tree-nodes { list-style: none; padding: 0; margin: 0; }
 .repository-tree-children { margin-left: 18px; }
 .repository-tree-toggle, .repository-tree-file { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 4px; color: var(--ink); font: inherit; font-size: 14px; text-align: left; }
@@ -1047,12 +1042,10 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
 .repository-tree-name { min-width: 0; overflow-wrap: anywhere; }
 .repository-tree-link { flex: none; padding: 1px 3px; border: 1px solid var(--purple); border-radius: 3px; background: var(--purple-soft); color: var(--purple); font-size: 10px; font-weight: 700; line-height: 1.2; }
 .repository-tree-message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 22px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-@media (max-width: 600px) { .repository-tree-controls label { min-width: 0; width: 100%; } .repository-tree-content { padding: 10px 8px; } }
 
 .repository-nav .nav-item { margin-left: 8px; }
 .repository-open { color: inherit; font-weight: 700; text-decoration: none; }
 .repository-open:hover { color: var(--purple); text-decoration: underline; }
-.has-repository-scope .repository-tree-controls,
 .has-repository-scope label:has(#repository-config-repository),
 .has-repository-scope label:has(#repository-config-branch),
 .has-repository-scope label:has(#repository-link-repository),

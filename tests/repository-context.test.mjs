@@ -222,8 +222,8 @@ test("a slow previous search cannot overwrite results or cursors for the new sea
 });
 
 test("repository menu links preserve the branch while global routes clear scope", () => {
-  const { get } = setup({ state: { repositoryScope: "lores://host/game", repositoryBranch: "release/한국어 & fixes", section: "repository-tree" } });
-  for (const section of ["repository-tree", "repository-links", "pipelines", "graphs", "ci-settings"]) {
+  const { get } = setup({ state: { repositoryScope: "lores://host/game", repositoryBranch: "release/한국어 & fixes", section: "repository-links" } });
+  for (const section of ["repository-links", "pipelines", "graphs", "ci-settings"]) {
     const route = get(`repositoryRoute(repositorySectionHash('${section}', state.repositoryScope))`);
     assert.equal(route.repository, "lores://host/game");
     assert.equal(route.branch, "release/한국어 & fixes");
@@ -235,9 +235,9 @@ test("repository menu links preserve the branch while global routes clear scope"
 });
 
 function branchSetup(api = async () => []) {
-  const window = { location: { hash: "#repository-tree?repository=lores%3A%2F%2Fhost%2Fgame&branch=release" } };
+  const window = { location: { hash: "#repository-links?repository=lores%3A%2F%2Fhost%2Fgame&branch=release" } };
   const { context, get } = setup({
-    state: { repositories: [], repositoryScope: "lores://host/game", repositoryBranch: "release", section: "repository-tree" },
+    state: { repositories: [], repositoryScope: "lores://host/game", repositoryBranch: "release", section: "repository-links" },
     window, history: { state: {}, replaceState(_, __, hash) { window.location.hash = hash; } },
     api, repositoryName: url => url.split('/').at(-1), toast() {},
   });
@@ -353,7 +353,7 @@ test('stored selections are isolated by account and invalid or unavailable stora
   assert.equal(blocked.get('selectedRepository()'), 'lores://host/one');
 });
 
-test('switching repositories keeps a scoped page but opens files from global pages', () => {
+test('switching repositories keeps a scoped page and opens links from global pages', () => {
   const calls = [];
   const { context, get } = selectionSetup();
   context.navigateRepositorySection = (...args) => calls.push(args);
@@ -361,7 +361,7 @@ test('switching repositories keeps a scoped page but opens files from global pag
   assert.deepEqual(calls.pop(), ['repository-links', 'lores://host/two']);
   assert.equal(get('selectedRepository()'), 'lores://host/one', 'selection is not committed before unsaved-edit checks');
   get("state.repositoryScope=''; state.section='pipelines'; switchRepository('lores://host/two')");
-  assert.deepEqual(calls.pop(), ['repository-tree', 'lores://host/two']);
+  assert.deepEqual(calls.pop(), ['repository-links', 'lores://host/two']);
   get("switchRepository('lores://host/missing')");
   assert.equal(calls.length, 0);
 });

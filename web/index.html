@@ -16,7 +16,6 @@
     <script src="/assets/operations.js" defer></script>
     <script src="/assets/repository-context.js" defer></script>
     <script src="/assets/overview.js" defer></script>
-    <script src="/assets/repository-tree.js" defer></script>
   </head>
   <body>
     <div id="loading-view" class="loading-view" aria-live="polite">
@@ -96,9 +95,6 @@
           <div class="nav-group repository-nav" data-nav-group="repository">
             <p class="nav-group-label">Selected repository</p>
             <div id="repository-picker-slot"></div>
-            <a class="nav-item" href="#repository-tree" data-section="repository-tree" data-nav-scope="repository">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg><span>Files and folders</span>
-            </a>
             <a class="nav-item" href="#repository-links" data-section="repository-links" data-nav-scope="repository">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9m-7.8 8.3-1 1a3.54 3.54 0 0 1-5-5l3.1-3.1a3.54 3.54 0 0 1 5 0m6.4 3.6a3.54 3.54 0 0 1 5 0 3.54 3.54 0 0 1 0 5l-3.1 3.1a3.54 3.54 0 0 1-5 0"/></svg>
               <span>Links</span>
@@ -412,7 +408,6 @@
             </form>
           </section>
 
-          <section id="repository-tree-page" hidden></section>
           <section id="repository-links-page" class="repository-links-page" hidden>
             <div class="page-heading">
               <div>

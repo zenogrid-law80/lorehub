@@ -31,7 +31,6 @@ function historyPage(params) {
 }
 const assets = { "/": ["index.html", "text/html"], "/app.js": ["app.js", "text/javascript"], "/ci-visual.js": ["ci-visual.js", "text/javascript"], "/ci-editor.js": ["ci-editor.js", "text/javascript"], "/app.css": ["app.css", "text/css"], "/theme.js": ["theme.js", "text/javascript"], "/management.js": ["management.js", "text/javascript"] };
 assets["/lore-logo.svg"] = ["lore-logo.svg", "image/svg+xml"];
-assets["/repository-tree.js"] = ["repository-tree.js", "text/javascript"];
 assets["/repository-context.js"] = ["repository-context.js", "text/javascript"];
 assets["/operations.js"] = ["operations.js", "text/javascript"];
 assets["/overview.js"] = ["overview.js", "text/javascript"];

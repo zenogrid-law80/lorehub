@@ -1,6 +1,6 @@
 "use strict";
 
-const REPOSITORY_SECTIONS = ["pipelines", "graphs", "ci-settings", "repository-links", "repository-tree"];
+const REPOSITORY_SECTIONS = ["pipelines", "graphs", "ci-settings", "repository-links"];
 const repositoryBranchSelections = new Map();
 const repositoryBranchOptions = new Map();
 let repositoryNavigationRequest = 0;
@@ -88,7 +88,7 @@ function reconcileRepositorySelection() {
 }
 function switchRepository(repository) {
   if (!state.repositories.some(item => item.url === repository)) return;
-  const section = state.repositoryScope && REPOSITORY_SECTIONS.includes(state.section) ? state.section : "repository-tree";
+  const section = state.repositoryScope && REPOSITORY_SECTIONS.includes(state.section) ? state.section : "repository-links";
   // Commit the selection only in showSection, after unsaved-edit checks succeed.
   navigateRepositorySection(section, repository);
 }
@@ -141,7 +141,8 @@ function renderRepositoryPicker(picker) {
 }
 
 function repositoryRoute(hash) {
-  const [section, query = ""] = hash.replace(/^#/, "").split("?", 2);
+  const [requestedSection, query = ""] = hash.replace(/^#/, "").split("?", 2);
+  const section = requestedSection === "repository-tree" ? "repository-links" : requestedSection;
   const params = new URLSearchParams(query);
   const repository = REPOSITORY_SECTIONS.includes(section) ? params.get("repository") || "" : "";
   return { section, repository, branch: repository ? params.get("branch") || "" : "" };

@@ -208,10 +208,6 @@ pub fn router_with_releases(
             "/assets/repository-context.js",
             get(web::repository_context_script),
         )
-        .route(
-            "/assets/repository-tree.js",
-            get(web::repository_tree_script),
-        )
         .route("/healthz", get(health))
         .route("/.well-known/openid-configuration", get(oidc_discovery))
         .route("/.well-known/jwks.json", get(jwks))
