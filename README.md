@@ -67,9 +67,9 @@ The shell executor runs POSIX shell on Linux and PowerShell on Windows. Jobs hav
 
 ## Repository navigation
 
-The workspace menu contains **Overview**, **Repositories**, **All run history**, and **Runners**. The **Selected repository** picker searches by name or URL and keeps the selection while navigating **Files and folders**, **Links**, **Run history**, **Execution graphs**, and **CI settings**. The selected branch is shown below the picker.
+The workspace menu contains **Overview**, **Repositories**, and **Runners**. The **Selected repository** picker searches by name or URL and keeps the selection while navigating **Files and folders**, **Links**, **Run history**, **Execution graphs**, and **CI settings**. The selected branch is shown below the picker.
 
-Repository and branch selection are stored in URLs such as `#repository-tree?repository=URL&branch=NAME`. They survive navigation, reload, and browser Back/Forward. The browser remembers the selection per account and restores it only while the repository is accessible. **All run history** remains unscoped and includes every repository.
+Repository and branch selection are stored in URLs such as `#repository-tree?repository=URL&branch=NAME`. They survive navigation, reload, and browser Back/Forward. The browser remembers the selection per account and restores it only while the repository is accessible. Unscoped run history URLs remain available for direct links and workspace activity filters.
 
 `GET /api/v1/repositories/{name}/tree?revision=HASH&path=PATH` checks login and repository access and returns immediate nodes with `name`, `kind`, and `is_link`. The root uses an empty `path`; file contents are never downloaded.
 

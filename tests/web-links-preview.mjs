@@ -64,6 +64,8 @@ createServer(async (req, res) => {
         src: [{ name: "app.js", kind: "file", is_link: false }],
         Shared: [{ name: "Textures", kind: "directory", is_link: false }, { name: "shared.txt", kind: "file", is_link: false }],
         "Shared/Textures": [{ name: "한국어 & texture.png", kind: "file", is_link: false }], empty: [],
+        Test: [{ name: "Textures", kind: "directory", is_link: false }, { name: "readme.txt", kind: "file", is_link: false }],
+        "Test/Textures": [{ name: "tile.png", kind: "file", is_link: false }],
       };
       if (path === "unavailable") { status = 403; data = { error: "Linked repository access denied (fixture)" }; }
       else data = folders[path] || [];
@@ -78,6 +80,10 @@ createServer(async (req, res) => {
         const request = JSON.parse(data.request);
         links.push({ ...links[0], path: request.path, source_path: request.source_path, auto_update: request.auto_update, status: "current", latest_revision: revision });
       }
+    } else if (url.pathname.endsWith("/links/remove")) {
+      const index = links.findIndex(link => link.path === input.path);
+      if (index >= 0) links.splice(index, 1);
+      data = { revision };
     } else if (url.pathname.endsWith("/links/policy")) {
       links.find(link => link.path === input.path).auto_update = input.auto_update; status = 204;
     } else if (url.pathname.endsWith("/links/update")) {

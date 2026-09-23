@@ -201,7 +201,7 @@ Object.assign(I18N.en, {
   "dynamic.refreshRepositoryLinks": "Repository links refreshed.", "dynamic.countLinks": "{count} links", "dynamic.updateLink": "Update to latest", "dynamic.removeLink": "Remove", "dynamic.linkAdded": "Repository link added and pushed.", "dynamic.linkAddedWithSourceFolder": "The missing source folder was created and pushed before adding the repository link.", "dynamic.linkUpdated": "Repository link updated and pushed.", "dynamic.linkRemoved": "Repository link removed and pushed.", "dynamic.removeLinkConfirm": "Remove repository link {path}? This creates and pushes a new revision.", "dynamic.loadingLinks": "Loading repository links…", "dynamic.noSourceRepositories": "No other accessible repositories are available.", "dynamic.sourceUnavailable": "Repository {id}", "dynamic.pinnedRevision": "Pinned revision", "dynamic.tracking": "Branch creation enabled", "dynamic.fixed": "Branch creation disabled"
 });
 Object.assign(I18N.ko, {
-  "Repository links": "저장소 링크", "Lore dependencies": "Lore 의존성", "Add link": "링크 추가", "Linked paths": "연결된 경로", "Add repository link": "저장소 링크 추가", "Link path": "링크 경로", "Source repository": "Source 저장소", "Source branch": "Source branch", "Source path": "Source 경로", "Disable linked branch creation": "연결된 branch 자동 생성을 사용하지 않음", "Link creation failed": "링크 생성 실패",
+  "Repository links": "저장소 링크", "Lore dependencies": "Lore 의존성", "Add link": "링크 추가", "Linked paths": "연결된 경로", "Repository link가 없습니다": "저장소 링크가 없습니다", "다른 저장소의 경로를 이 branch에 연결하세요.": "다른 저장소의 경로를 이 브랜치에 연결하세요.", "Add repository link": "저장소 링크 추가", "Link path": "링크 경로", "Source repository": "Source 저장소", "Source branch": "Source branch", "Source path": "Source 경로", "Disable linked branch creation": "연결된 branch 자동 생성을 사용하지 않음", "Link creation failed": "링크 생성 실패",
   "dynamic.refreshRepositoryLinks": "저장소 링크를 새로고침했습니다.", "dynamic.countLinks": "링크 {count}개", "dynamic.updateLink": "최신 revision으로 갱신", "dynamic.removeLink": "제거", "dynamic.linkAdded": "저장소 링크를 추가하고 push했습니다.", "dynamic.linkAddedWithSourceFolder": "없는 Source 폴더를 생성하고 commit·push한 뒤 저장소 링크를 추가했습니다.", "dynamic.linkUpdated": "저장소 링크를 갱신하고 push했습니다.", "dynamic.linkRemoved": "저장소 링크를 제거하고 push했습니다.", "dynamic.removeLinkConfirm": "저장소 링크 {path}을(를) 제거할까요? 새 revision이 생성되어 push됩니다.", "dynamic.loadingLinks": "저장소 링크를 불러오는 중…", "dynamic.noSourceRepositories": "접근 가능한 다른 저장소가 없습니다.", "dynamic.sourceUnavailable": "저장소 {id}", "dynamic.pinnedRevision": "고정 revision", "dynamic.tracking": "Branch 생성 허용", "dynamic.fixed": "Branch 생성 비활성"
 });
 Object.assign(I18N["zh-CN"], {
@@ -267,7 +267,12 @@ const LINK_LABELS = {
   "Retry checks the latest Root revision and preserves existing Source commits. Continue?": ["최신 Root revision을 확인하고 Source commit을 유지한 채 재시도합니다. 계속할까요?", "将检查最新 Root revision 并保留现有 Source 提交后重试。是否继续？"],
   "Request interrupted. Refresh the creation history before retrying.": ["요청이 중단되었습니다. 생성 이력을 새로고침하여 상태를 확인하세요.", "请求中断。请刷新创建历史后再重试。"],
   "Source folder committed and pushed": ["Source 폴더 commit · push 완료", "Source 文件夹已提交并推送"],
-  "Source verified": ["Source 확인 완료", "Source 已验证"], "Refresh to check progress": ["새로고침으로 진행 상황 확인", "刷新以查看进度"]
+  "Source verified": ["Source 확인 완료", "Source 已验证"], "Refresh to check progress": ["새로고침으로 진행 상황 확인", "刷新以查看进度"],
+  "Expand folder": ["폴더 펼치기", "展开文件夹"], "Collapse folder": ["폴더 접기", "折叠文件夹"],
+  "Link details": ["링크 상세", "链接详情"], "Link actions": ["링크 작업", "链接操作"],
+  "Retry": ["다시 시도", "重试"], "No files or folders": ["파일이나 폴더가 없습니다.", "没有文件或文件夹。"],
+  "Loading folder…": ["폴더를 불러오는 중…", "正在加载文件夹…"],
+  "Delete link": ["링크 삭제", "删除链接"], "Only linked folders can be deleted here.": ["여기서는 LINK 폴더만 삭제할 수 있습니다.", "这里只能删除 LINK 文件夹。"]
 };
 for (const [key, [ko, zh]] of Object.entries(LINK_LABELS)) {
   I18N.en[key] = key; I18N.ko[key] = ko; I18N["zh-CN"][key] = zh;
@@ -314,6 +319,10 @@ const state = {
   repositoryLinksBranch: null,
   repositoryLinksRevision: null,
   repositoryLinks: [],
+  repositoryLinkCollapsedPaths: new Set(),
+  repositoryLinkOpenPaths: new Set(),
+  repositoryLinkContent: new Map(),
+  repositoryLinkSelectedPath: null,
   repositoryLinksStatus: "idle",
   repositoryLinksError: "",
   repositoryLinksRequest: 0,
@@ -345,7 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "user-picture", "user-initials", "welcome-heading", "ci-new-pipeline-button",
     "ci-config-template", "ci-config-template-source", "ci-config-use-template",
     "new-pipeline-dialog", "pipeline-form", "repository-url", "branch", "revision", "pipeline-name", "run-pipeline-button",
-    "pipeline-table-body", "empty-state", "pipeline-count", "load-more-pipelines", "last-updated", "nav-active-count",
+    "pipeline-table-body", "empty-state", "pipeline-count", "load-more-pipelines", "last-updated",
     "pipeline-repository-filter", "pipeline-branch-filter", "pipeline-name-filter", "pipeline-filter-reset",
     "pipeline-detail-dialog", "detail-repository", "detail-title", "detail-summary",
     "execution-graph-section", "execution-graph", "job-count", "job-list", "pipeline-log", "cancel-pipeline-button", "toast-region",
@@ -366,9 +375,9 @@ document.addEventListener("DOMContentLoaded", () => {
     "repository-config-visual", "repository-config-pipeline-count", "repository-config-pipeline-list",
     "repository-config-add-pipeline", "repository-config-graph-title", "repository-config-stage-graph",
     "repository-config-inspector-title", "repository-config-inspector",
-    "repository-links-page", "new-repository-link-button", "repository-link-repository",
+    "repository-links-page", "repository-link-repository",
     "repository-link-branch", "repository-link-revision", "repository-link-count",
-    "repository-link-list", "repository-link-empty-state", "repository-link-last-updated",
+    "repository-link-list", "repository-link-last-updated",
     "new-repository-link-dialog", "repository-link-form", "repository-link-root-name",
     "repository-link-path", "repository-link-source-repository", "repository-link-source-branch",
     "repository-link-source-path", "repository-link-disable-branching", "repository-link-form-error", "create-repository-link-button",
@@ -471,7 +480,6 @@ function applyLocale(rerender) {
   if (!rerender) return;
   if (state.user) renderUser(state.user);
   updateSectionSearch();
-  renderStats();
   renderPipelines();
   renderOverview();
   renderRepositories();
@@ -542,14 +550,21 @@ function bindEvents() {
   elements["repository-config-visual-tab"].addEventListener("click", () => void setRepositoryConfigMode("visual"));
   elements["repository-config-toml-tab"].addEventListener("click", () => void setRepositoryConfigMode("toml"));
   elements["repository-config-add-pipeline"].addEventListener("click", addVisualPipeline);
-  elements["new-repository-link-button"].addEventListener("click", openNewRepositoryLink);
-  document.querySelectorAll(".js-open-repository-link").forEach((button) => button.addEventListener("click", openNewRepositoryLink));
   document.querySelectorAll(".repository-link-modal-close, .repository-link-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-link-dialog"].close()));
   elements["repository-link-form"].addEventListener("submit", createRepositoryLink);
   elements["repository-link-repository"].addEventListener("change", () => chooseRepositorySection("repository-links", elements["repository-link-repository"].value));
   elements["repository-link-branch"].addEventListener("change", () => void loadRepositoryLinks());
   elements["repository-link-source-repository"].addEventListener("change", () => void loadRepositoryLinkSourceBranches());
-  elements["repository-link-list"].addEventListener("click", repositoryLinkAction);
+  elements["repository-link-list"].addEventListener("contextmenu", openRepositoryLinkContextMenu);
+  document.addEventListener("pointerdown", (event) => {
+    if (repositoryLinkContextMenu && !repositoryLinkContextMenu.contains(event.target)) closeRepositoryLinkContextMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && repositoryLinkContextMenu) closeRepositoryLinkContextMenu(true);
+  });
+  window.addEventListener("scroll", () => closeRepositoryLinkContextMenu(), true);
+  window.addEventListener("resize", () => closeRepositoryLinkContextMenu());
+  window.addEventListener("hashchange", () => closeRepositoryLinkContextMenu());
   elements["repository-link-operations"].addEventListener("click", retryRepositoryLink);
   elements["repository-link-form"].addEventListener("input", renderRepositoryLinkPreview);
   window.addEventListener("resize", () => {
@@ -712,7 +727,6 @@ async function showSection(section) {
     state.repositoryLinksName = scope ? repositoryName(scope) : null;
     renderPipelines();
     renderPipelineGraphs();
-    renderStats();
   }
   state.repositoryBranch = branch;
   if (scope) { repositoryBranchSelections.set(scope, branch); rememberRepositorySelection(scope); }
@@ -855,14 +869,13 @@ async function loadPipelines(notify, append = false) {
     state.pipelines = append ? [...state.pipelines, ...page.pipelines] : page.pipelines;
     state.pipelineNextBefore = page.next_before;
     state.pipelineHasOlderPages = append;
-    renderStats();
     renderPipelines();
     state.updatedAt.pipelines = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshPipelines"), "success");
   } catch (error) {
     if (request !== state.pipelineRequest || scope !== state.repositoryScope || filters !== pipelineHistoryParameters().toString()) return;
-    if (!append) { state.pipelines = []; state.pipelineNextBefore = null; renderStats(); renderPipelines(); }
+    if (!append) { state.pipelines = []; state.pipelineNextBefore = null; renderPipelines(); }
     toast(error.message, "error");
   } finally {
     if (request === state.pipelineRequest && scope === state.repositoryScope) {
@@ -1682,6 +1695,11 @@ async function prioritizeRepositoryLinkRepositories() {
   }).sort((left, right) => Number(right.hasLinks) - Number(left.hasLinks) || left.index - right.index);
 }
 function applyRepositoryLinks(result) {
+  if (state.repositoryLinksRevision !== result.revision) {
+    state.repositoryLinkOpenPaths.clear();
+    state.repositoryLinkContent.clear();
+    state.repositoryLinkCollapsedPaths.delete(repositoryLinkScopePath(""));
+  }
   state.repositoryLinksRevision = result.revision;
   state.repositoryLinks = result.links ?? [];
   state.repositoryLinksStatus = "ready";
@@ -1725,20 +1743,278 @@ function repositoryIdentifier(value) {
   return String(value ?? "").replace(/^urc-/i, "").toLowerCase();
 }
 
+function repositoryLinkTree(links) {
+  const root = { children: new Map() };
+  for (const link of links) {
+    let parent = root;
+    let path = "";
+    for (const name of link.path.split("/").filter(Boolean)) {
+      path = path ? `${path}/${name}` : name;
+      if (!parent.children.has(name)) parent.children.set(name, { name, path, children: new Map(), link: null });
+      parent = parent.children.get(name);
+    }
+    parent.link = link;
+  }
+  return root;
+}
+
+function repositoryLinkScopePath(path) {
+  return `${state.repositoryLinksName}\0${state.repositoryLinksBranch}\0${path}`;
+}
+
+function toggleRepositoryLinkFolder(path) {
+  const key = repositoryLinkScopePath(path);
+  if (state.repositoryLinkCollapsedPaths.has(key)) state.repositoryLinkCollapsedPaths.delete(key);
+  else state.repositoryLinkCollapsedPaths.add(key);
+  renderRepositoryLinks();
+}
+
+async function loadRepositoryLinkContent(path) {
+  const name = state.repositoryLinksName, branch = state.repositoryLinksBranch, revision = state.repositoryLinksRevision;
+  const key = repositoryLinkScopePath(path);
+  const pending = { entries: [], loading: true, error: "" };
+  state.repositoryLinkContent.set(key, pending);
+  renderRepositoryLinks();
+  try {
+    const params = new URLSearchParams({ revision, path });
+    const entries = await api(`/api/v1/repositories/${encodeURIComponent(name)}/tree?${params}`);
+    if (name === state.repositoryLinksName && branch === state.repositoryLinksBranch && revision === state.repositoryLinksRevision && state.repositoryLinkContent.get(key) === pending) {
+      state.repositoryLinkContent.set(key, { entries, loading: false, error: "" });
+      renderRepositoryLinks();
+    }
+  } catch (error) {
+    if (name === state.repositoryLinksName && branch === state.repositoryLinksBranch && revision === state.repositoryLinksRevision && state.repositoryLinkContent.get(key) === pending) {
+      state.repositoryLinkContent.set(key, { entries: [], loading: false, error: error.message });
+      renderRepositoryLinks();
+    }
+  }
+}
+
+function toggleRepositoryLinkContent(path) {
+  const key = repositoryLinkScopePath(path);
+  if (state.repositoryLinkOpenPaths.has(key)) {
+    state.repositoryLinkOpenPaths.delete(key);
+    renderRepositoryLinks();
+  } else {
+    state.repositoryLinkOpenPaths.add(key);
+    if (state.repositoryLinkContent.has(key)) renderRepositoryLinks();
+    else void loadRepositoryLinkContent(path);
+  }
+}
+
+function toggleRepositoryLinkDetails(path) {
+  const key = repositoryLinkScopePath(path);
+  state.repositoryLinkSelectedPath = state.repositoryLinkSelectedPath === key ? null : key;
+  renderRepositoryLinks();
+}
+
+function renderRepositoryLinkContent(path, excludedNames = new Set(), nested = false) {
+  const content = state.repositoryLinkContent.get(repositoryLinkScopePath(path));
+  const container = document.createElement("div"); container.className = nested ? "repository-tree-children" : "repository-link-content";
+  container.setAttribute("aria-busy", String(Boolean(content?.loading)));
+  if (!content || content.loading || content.error) {
+    const message = textNode(content?.error || t("Loading folder…"), "repository-tree-message");
+    if (content?.error) {
+      message.setAttribute("role", "alert");
+      const retry = document.createElement("button"); retry.type = "button"; retry.className = "button button--ghost"; retry.textContent = t("Retry");
+      retry.addEventListener("click", () => void loadRepositoryLinkContent(path)); message.append(retry);
+    }
+    container.append(message);
+    return container;
+  }
+  const entries = content.entries.filter(entry => !excludedNames.has(entry.name));
+  if (!entries.length) {
+    if (!content.entries.length) container.append(textNode(t("No files or folders"), "repository-tree-message"));
+    return container;
+  }
+  const list = document.createElement("ul"); list.className = "repository-tree-nodes";
+  for (const entry of entries) {
+    const childPath = `${path}/${entry.name}`;
+    const item = document.createElement("li"); item.className = "repository-tree-item";
+    if (entry.kind === "directory") {
+      const open = state.repositoryLinkOpenPaths.has(repositoryLinkScopePath(childPath));
+      const button = document.createElement("button"); button.type = "button"; button.className = "repository-tree-toggle";
+      button.dataset.nodePath = childPath; button.dataset.nodeKind = "directory";
+      button.dataset.focusKey = `content:${childPath}`;
+      button.setAttribute("aria-expanded", String(open));
+      button.append(textNode(open ? "▾" : "▸", "repository-tree-icon"), textNode(entry.name, "repository-tree-name"));
+      if (entry.is_link) button.append(textNode("LINK", "repository-tree-link"));
+      button.addEventListener("click", () => toggleRepositoryLinkContent(childPath)); item.append(button);
+      if (open) item.append(renderRepositoryLinkContent(childPath, new Set(), true));
+    } else {
+      const row = document.createElement("div"); row.className = "repository-tree-file";
+      row.dataset.nodePath = childPath; row.dataset.nodeKind = "file";
+      row.append(textNode("·", "repository-tree-icon"), textNode(entry.name, "repository-tree-name")); item.append(row);
+    }
+    list.append(item);
+  }
+  container.append(list);
+  return container;
+}
+
+function renderRepositoryLinkDetail(link) {
+  const source = state.repositories.find(repository => repositoryIdentifier(repository.id) === repositoryIdentifier(link.source_repository_id));
+  const card = document.createElement("article"); card.className = "repository-link-card"; card.dataset.path = link.path;
+  const identity = document.createElement("div"); identity.className = "repository-link-identity";
+  identity.append(textNode(`${source?.name ?? t("Source unavailable")} / ${link.source_branch_name ?? "?"} / ${link.source_path}`, "repository-link-path"));
+  identity.append(textNode(`→ ${state.repositoryLinksName} / ${state.repositoryLinksBranch} / ${link.path}`, "repository-link-target"));
+  const lastSync = document.createElement("div"); lastSync.className = "repository-link-detail";
+  lastSync.append(textNode(t("Last successful sync"), "repository-link-detail-label"), textNode(link.last_success_at ? new Date(link.last_success_at).toLocaleString(state.locale) : t("No sync recorded"), "repository-link-detail-value"));
+  const policy = document.createElement("div"); policy.className = "repository-link-detail";
+  policy.append(textNode(t("Sync policy"), "repository-link-detail-label"), textNode(t(link.auto_update ? "Automatic sync" : "Manual sync"), "repository-link-detail-value"));
+  const details = document.createElement("details"); details.className = "repository-link-technical";
+  const summary = document.createElement("summary"); summary.textContent = t("Technical details"); details.append(summary);
+  for (const [label, value] of [["Source repository", link.source_repository_id], ["Source branch", link.source_branch_id], ["dynamic.pinnedRevision", link.source_revision], ["Latest Source revision", link.latest_revision ?? "—"], ["Lore", t(link.tracking ? "dynamic.tracking" : "dynamic.fixed")]]) {
+    details.append(textNode(`${t(label)}: ${value}`, "repository-link-source"));
+  }
+  card.append(identity, lastSync, policy, details);
+  if (link.last_error) card.append(textNode(link.last_error, "repository-link-inline-error"));
+  return card;
+}
+
+function renderRepositoryLinkNodes(nodes) {
+  const list = document.createElement("ul"); list.className = "repository-tree-nodes repository-link-tree";
+  const sorted = [...nodes.values()].sort((left, right) => left.name.localeCompare(right.name, state.locale));
+  for (const node of sorted) {
+    const item = document.createElement("li"); item.className = "repository-tree-item";
+    const row = document.createElement("div"); row.className = "repository-link-row";
+    row.dataset.nodePath = node.path; row.dataset.nodeKind = node.link ? "link" : "directory";
+    const hasChildren = node.children.size > 0 || Boolean(node.link);
+    const collapsed = node.link ? !state.repositoryLinkOpenPaths.has(repositoryLinkScopePath(node.path)) : state.repositoryLinkCollapsedPaths.has(repositoryLinkScopePath(node.path));
+    if (hasChildren) {
+      const expand = document.createElement("button"); expand.type = "button"; expand.className = "repository-link-expand";
+      expand.dataset.focusKey = `folder:${node.path}`;
+      expand.setAttribute("aria-label", `${t(collapsed ? "Expand folder" : "Collapse folder")}: ${node.path}`);
+      expand.setAttribute("aria-expanded", String(!collapsed));
+      expand.textContent = collapsed ? "▸" : "▾";
+      expand.addEventListener("click", () => node.link ? toggleRepositoryLinkContent(node.path) : toggleRepositoryLinkFolder(node.path));
+      row.append(expand);
+    } else row.append(textNode("·", "repository-link-spacer"));
+    const name = document.createElement("button"); name.type = "button"; name.className = "repository-link-name";
+    name.textContent = node.name; name.title = node.path; name.dataset.focusKey = `name:${node.path}`;
+    if (node.link) {
+      const selected = state.repositoryLinkSelectedPath === repositoryLinkScopePath(node.path);
+      name.setAttribute("aria-expanded", String(selected));
+      name.setAttribute("aria-label", `${t("Link details")}: ${node.path}`);
+      name.addEventListener("click", () => toggleRepositoryLinkDetails(node.path));
+    } else name.addEventListener("click", () => toggleRepositoryLinkFolder(node.path));
+    row.append(name);
+    if (node.link) {
+      const status = ["current", "outdated", "failed", "unknown"].includes(node.link.status) ? node.link.status : "unknown";
+      const labels = { current: "Up to date", outdated: "Update available", failed: "Sync failed", unknown: "Source unavailable" };
+      row.append(textNode("LINK", "repository-tree-link"));
+      row.append(textNode(t(labels[status]), `repository-link-badge repository-link-badge--${status}`));
+    }
+    item.append(row);
+    if (node.link && state.repositoryLinkSelectedPath === repositoryLinkScopePath(node.path)) item.append(renderRepositoryLinkDetail(node.link));
+    if (hasChildren && !collapsed) {
+      const children = document.createElement("div"); children.className = "repository-tree-children";
+      if (node.children.size) children.append(renderRepositoryLinkNodes(node.children));
+      if (node.link) children.append(renderRepositoryLinkContent(node.path, new Set(node.children.keys())));
+      item.append(children);
+    }
+    list.append(item);
+  }
+  return list;
+}
+
+function renderRepositoryLinkRoot(nodes) {
+  const list = document.createElement("ul"); list.className = "repository-tree-nodes repository-link-tree";
+  list.setAttribute("aria-label", t("Linked paths"));
+  const item = document.createElement("li"); item.className = "repository-tree-item";
+  const row = document.createElement("div"); row.className = "repository-link-row repository-link-root";
+  row.dataset.nodePath = ""; row.dataset.nodeKind = "root";
+  const collapsed = state.repositoryLinkCollapsedPaths.has(repositoryLinkScopePath(""));
+  const label = `${state.repositoryLinksName} / ${state.repositoryLinksBranch}`;
+  const expand = document.createElement("button"); expand.type = "button"; expand.className = "repository-link-expand";
+  expand.dataset.focusKey = "root-folder";
+  expand.setAttribute("aria-label", `${t(collapsed ? "Expand folder" : "Collapse folder")}: ${label}`);
+  expand.setAttribute("aria-expanded", String(!collapsed));
+  expand.textContent = collapsed ? "▸" : "▾";
+  expand.addEventListener("click", () => toggleRepositoryLinkFolder(""));
+  const name = document.createElement("button"); name.type = "button"; name.className = "repository-link-name repository-link-root-name";
+  name.textContent = label; name.dataset.focusKey = "root-name"; name.setAttribute("aria-expanded", String(!collapsed));
+  name.addEventListener("click", () => toggleRepositoryLinkFolder(""));
+  row.append(expand, name, textNode("ROOT", "repository-link-root-badge"));
+  item.append(row);
+  if (!collapsed) {
+    const children = document.createElement("div"); children.className = "repository-tree-children";
+    if (nodes.size) children.append(renderRepositoryLinkNodes(nodes));
+    else {
+      const empty = document.createElement("div"); empty.className = "repository-link-empty";
+      empty.append(textNode(t("Repository link가 없습니다")), textNode(t("다른 저장소의 경로를 이 branch에 연결하세요.")));
+      children.append(empty);
+    }
+    item.append(children);
+  }
+  list.append(item);
+  return list;
+}
+
+let repositoryLinkContextMenu = null;
+let repositoryLinkContextTarget = null;
+
+function closeRepositoryLinkContextMenu(restoreFocus = false) {
+  repositoryLinkContextMenu?.remove();
+  repositoryLinkContextMenu = null;
+  if (restoreFocus) repositoryLinkContextTarget?.focus({ preventScroll: true });
+  repositoryLinkContextTarget = null;
+}
+
+function openRepositoryLinkContextMenu(event) {
+  const node = event.target.closest("[data-node-path]");
+  if (!node || state.repositoryLinksStatus !== "ready") return;
+  event.preventDefault();
+  closeRepositoryLinkContextMenu();
+  const path = node.dataset.nodePath;
+  const kind = node.dataset.nodeKind;
+  const targetFolder = kind === "file" ? path.slice(0, Math.max(0, path.lastIndexOf("/"))) : path;
+  const link = kind === "link" ? state.repositoryLinks.find(item => item.path === path) : null;
+  const menu = document.createElement("div"); menu.className = "repository-link-context-menu"; menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", path || state.repositoryLinksName);
+  const add = document.createElement("button"); add.type = "button"; add.setAttribute("role", "menuitem");
+  add.textContent = t("Add link"); add.disabled = state.repositoryLinksBusy || state.repositories.length < 2;
+  add.addEventListener("click", () => { closeRepositoryLinkContextMenu(); openNewRepositoryLink(targetFolder); });
+  const actions = [add];
+  if (link) {
+    for (const [action, label] of [["update", t("dynamic.updateLink")], ["policy", t(link.auto_update ? "Switch to manual sync" : "Enable automatic sync")]]) {
+      const button = document.createElement("button"); button.type = "button"; button.setAttribute("role", "menuitem");
+      button.textContent = label; button.disabled = state.repositoryLinksBusy;
+      button.addEventListener("click", () => { closeRepositoryLinkContextMenu(); void performRepositoryLinkAction(action, path); });
+      actions.push(button);
+    }
+  }
+  const remove = document.createElement("button"); remove.type = "button"; remove.setAttribute("role", "menuitem");
+  remove.textContent = t("Delete link"); remove.disabled = state.repositoryLinksBusy || !link;
+  remove.addEventListener("click", () => { closeRepositoryLinkContextMenu(); void performRepositoryLinkAction("remove", path); });
+  if (kind !== "root") {
+    actions.push(remove);
+  }
+  menu.append(...actions);
+  if (kind !== "root" && !link) menu.append(textNode(t("Only linked folders can be deleted here."), "repository-link-context-note"));
+  document.body.append(menu);
+  const rect = menu.getBoundingClientRect();
+  const anchor = node.getBoundingClientRect();
+  const x = event.clientX || anchor.left, y = event.clientY || anchor.bottom;
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  repositoryLinkContextMenu = menu;
+  repositoryLinkContextTarget = node;
+  actions.find(button => !button.disabled)?.focus();
+}
+
 function renderRepositoryLinks() {
+  closeRepositoryLinkContextMenu();
   renderRepositoryLinkOperations();
   const ready = state.repositoryLinksStatus === "ready";
   const list = elements["repository-link-list"];
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   elements["repository-link-repository"].disabled = state.repositoryLinksBusy || state.repositoryLinksStatus === "loading" || state.repositoryLinksStatus === "no-repositories";
   elements["repository-link-branch"].disabled = state.repositoryLinksBusy || state.repositoryLinksStatus === "loading" || state.repositoryLinksStatus === "no-branches" || state.repositoryLinksStatus === "no-repositories";
-  elements["new-repository-link-button"].disabled = !ready || state.repositoryLinksBusy || state.repositories.length < 2;
   elements["repository-link-revision"].textContent = state.repositoryLinksRevision ?? "—";
   elements["repository-link-revision"].title = state.repositoryLinksRevision ?? "";
   elements["repository-link-count"].textContent = tc("dynamic.countLinks", ready ? state.repositoryLinks.length : 0);
   list.replaceChildren();
-  const showEmpty = ready && state.repositoryLinks.length === 0;
-  elements["repository-link-empty-state"].hidden = !showEmpty;
-  list.hidden = showEmpty;
 
   if (!ready) {
     const message = state.repositoryLinksStatus === "no-repositories" ? t("dynamic.noRepositories")
@@ -1749,47 +2025,22 @@ function renderRepositoryLinks() {
     return;
   }
 
-  for (const link of state.repositoryLinks) {
-    const source = state.repositories.find(repository => repositoryIdentifier(repository.id) === repositoryIdentifier(link.source_repository_id));
-    const card = document.createElement("article");
-    card.className = "repository-link-card";
-    card.dataset.path = link.path;
-    const identity = document.createElement("div"); identity.className = "repository-link-identity";
-    identity.append(textNode(`${source?.name ?? t("Source unavailable")} / ${link.source_branch_name ?? "?"} / ${link.source_path}`, "repository-link-path"));
-    identity.append(textNode(`→ ${state.repositoryLinksName} / ${state.repositoryLinksBranch} / ${link.path}`, "repository-link-target"));
-    const branch = document.createElement("div"); branch.className = "repository-link-detail";
-    branch.append(textNode(t("Last successful sync"), "repository-link-detail-label"), textNode(link.last_success_at ? new Date(link.last_success_at).toLocaleString(state.locale) : t("No sync recorded"), "repository-link-detail-value"));
-    const revision = document.createElement("div"); revision.className = "repository-link-detail";
-    revision.append(textNode(t("Sync policy"), "repository-link-detail-label"), textNode(t(link.auto_update ? "Automatic sync" : "Manual sync"), "repository-link-detail-value"));
-    const status = ["current", "outdated", "failed", "unknown"].includes(link.status) ? link.status : "unknown";
-    const labels = { current: "Up to date", outdated: "Update available", failed: "Sync failed", unknown: "Source unavailable" };
-    const mode = textNode(t(labels[status]), `repository-link-badge repository-link-badge--${status}`);
-    const actions = document.createElement("div"); actions.className = "repository-link-actions";
-    actions.append(repositoryButton("update", t("dynamic.updateLink")), repositoryButton("policy", t(link.auto_update ? "Switch to manual sync" : "Enable automatic sync")), repositoryButton("remove", t("dynamic.removeLink"), "button--danger"));
-    for (const button of actions.querySelectorAll("button")) button.disabled = state.repositoryLinksBusy;
-    card.append(identity, branch, revision, mode, actions);
-    const details = document.createElement("details"); details.className = "repository-link-technical";
-    const summary = document.createElement("summary"); summary.textContent = t("Technical details"); details.append(summary);
-    for (const [label, value] of [["Source repository", link.source_repository_id], ["Source branch", link.source_branch_id], ["dynamic.pinnedRevision", link.source_revision], ["Latest Source revision", link.latest_revision ?? "—"], ["Lore", t(link.tracking ? "dynamic.tracking" : "dynamic.fixed")]]) {
-      details.append(textNode(`${t(label)}: ${value}`, "repository-link-source"));
-    }
-    card.append(details);
-    if (link.last_error) card.append(textNode(link.last_error, "repository-link-inline-error"));
-    list.append(card);
-  }
+  list.append(renderRepositoryLinkRoot(repositoryLinkTree(state.repositoryLinks).children));
+  if (focused) [...list.querySelectorAll("[data-focus-key]")].find(control => control.dataset.focusKey === focused)?.focus({ preventScroll: true });
 }
 
-function openNewRepositoryLink() {
+function openNewRepositoryLink(folderPath = "") {
   if (state.repositoryLinksBusy || state.repositoryLinksStatus !== "ready" || !state.repositoryLinksRevision) return;
   const sources = state.repositories.filter(repository => repository.name !== state.repositoryLinksName);
   elements["repository-link-form"].reset();
+  elements["repository-link-path"].value = folderPath ? `${folderPath}/` : "";
   state.repositoryLinkDraft = null;
   setRepositoryLinkFormError();
   elements["repository-link-progress"].hidden = true;
   elements["repository-link-root-name"].textContent = `${state.repositoryLinksName} / ${state.repositoryLinksBranch}`;
   elements["repository-link-source-repository"].replaceChildren();
   for (const repository of sources) elements["repository-link-source-repository"].add(new Option(repository.name, repository.name));
-  elements["repository-link-source-path"].value = ".";
+  elements["repository-link-source-path"].value = folderPath || ".";
   elements["create-repository-link-button"].disabled = true;
   if (!sources.length) elements["repository-link-source-repository"].add(new Option(t("dynamic.noSourceRepositories"), ""));
   elements["new-repository-link-dialog"].showModal();
@@ -1987,20 +2238,18 @@ function setRepositoryLinkFormError(message = "") {
   error.querySelector("span").textContent = message;
 }
 
-async function repositoryLinkAction(event) {
-  const button = event.target.closest("button[data-action]");
-  const card = event.target.closest("[data-path]");
-  if (!button || !card || state.repositoryLinksBusy || !state.repositoryLinksRevision) return;
-  const action = button.dataset.action;
-  const link = state.repositoryLinks.find(item => item.path === card.dataset.path);
-  if (action === "remove" && !window.confirm(t("dynamic.removeLinkConfirm", { path: card.dataset.path }))) return;
+async function performRepositoryLinkAction(action, path) {
+  if (state.repositoryLinksBusy || !state.repositoryLinksRevision) return;
+  const link = state.repositoryLinks.find(item => item.path === path);
+  if (!link || !["update", "policy", "remove"].includes(action)) return;
+  if (action === "remove" && !window.confirm(t("dynamic.removeLinkConfirm", { path }))) return;
   state.repositoryLinksBusy = true;
   renderRepositoryLinks();
   try {
     await api(`/api/v1/repositories/${encodeURIComponent(state.repositoryLinksName)}/links/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({ branch: state.repositoryLinksBranch, expected_revision: state.repositoryLinksRevision, path: card.dataset.path, ...(action === "policy" ? { auto_update: !link.auto_update } : {}) }),
+      body: JSON.stringify({ branch: state.repositoryLinksBranch, expected_revision: state.repositoryLinksRevision, path, ...(action === "policy" ? { auto_update: !link.auto_update } : {}) }),
     });
     toast(t(action === "policy" ? "Sync policy saved" : action === "update" ? "dynamic.linkUpdated" : "dynamic.linkRemoved"), "success");
     await loadRepositoryLinks();
@@ -2837,12 +3086,6 @@ async function copyLoreToken() {
 function closeLoreToken() {
   elements["lore-token-dialog"].close();
   elements["lore-access-token"].value = "";
-}
-
-function renderStats() {
-  const active = state.pipelines.filter((pipeline) => ["queued", "running"].includes(pipeline.status)).length;
-  elements["nav-active-count"].textContent = String(active);
-  elements["nav-active-count"].hidden = state.section === "overview" || Boolean(state.repositoryScope) || active === 0;
 }
 
 function filteredPipelines() {

@@ -34,7 +34,7 @@ function historySetup(api) {
   const { context, get } = setup({
     state: { repositoryScope: "lores://host/one", pipelines: [], pipelineRequest: 0, pipelineLoading: false, pipelineNextBefore: null, updatedAt: {} },
     api, elements: { "refresh-button": {}, "load-more-pipelines": {} },
-    renderStats() {}, renderPipelines() {}, renderUpdatedLabels() {}, toast() {}, t: x => x,
+    renderPipelines() {}, renderUpdatedLabels() {}, toast() {}, t: x => x,
   });
   vm.runInContext(fn("async function loadPipelines(", "async function loadRepositories("), context);
   return { context, get };

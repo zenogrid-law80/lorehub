@@ -19,7 +19,6 @@ const overviewCopy = {
   browse: ["저장소 보기", "Browse repositories", "浏览仓库"],
   runs: ["최근 실행", "Recent runs", "最近运行"],
   runsNote: ["접근 가능한 저장소의 최근 실행 5건", "Latest 5 runs across your accessible repositories", "可访问仓库中最近的 5 次运行"],
-  history: ["전체 실행 이력", "All run history", "全部运行历史"],
   error: ["워크스페이스 현황을 불러오지 못했습니다.", "Could not load workspace activity.", "无法加载工作区活动。"],
   retry: ["다시 시도", "Retry", "重试"],
   repositoryError: ["저장소 목록을 불러오지 못했습니다.", "Could not load repositories.", "无法加载仓库。"],
@@ -74,7 +73,6 @@ function renderOverview() {
   if (state.section !== "overview") return;
   const { data, loading, error } = workspaceOverview;
   document.getElementById("overview-description").textContent = ovt("description");
-  document.getElementById("overview-history-link").textContent = ovt("history");
   const notice = document.getElementById("overview-notice");
   notice.replaceChildren(); notice.hidden = !error;
   if (error) {
