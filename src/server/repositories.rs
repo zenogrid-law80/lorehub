@@ -1,6 +1,7 @@
 pub mod tree;
 
 use std::{
+    collections::HashSet,
     ffi::OsString,
     path::{Path, PathBuf},
     process::Stdio,
@@ -93,6 +94,22 @@ pub struct RepositoryLinks {
     pub branch: String,
     pub revision: String,
     pub links: Vec<RepositoryLink>,
+}
+
+pub(crate) fn direct_repository_links<T, F>(links: Vec<T>, path: F) -> Vec<T>
+where
+    F: for<'a> Fn(&'a T) -> &'a str,
+{
+    let paths: HashSet<String> = links.iter().map(|link| path(link).to_owned()).collect();
+    links
+        .into_iter()
+        .filter(|link| {
+            let link_path = path(link);
+            !link_path
+                .match_indices('/')
+                .any(|(index, _)| paths.contains(&link_path[..index]))
+        })
+        .collect()
 }
 
 enum LinkMutation<'a> {
@@ -1223,7 +1240,7 @@ fn parse_links(output: &str) -> Result<Vec<RepositoryLink>, CommandError> {
             tracking,
         });
     }
-    Ok(result)
+    Ok(direct_repository_links(result, |link| &link.path))
 }
 
 fn repository_ids_equal(left: &str, right: &str) -> bool {

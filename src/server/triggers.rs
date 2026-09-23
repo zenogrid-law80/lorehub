@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    repositories::{RepositoryService, StorageBackend, validate_name},
+    repositories::{RepositoryService, StorageBackend, direct_repository_links, validate_name},
     repository_access,
     tokens::TokenIssuer,
 };
@@ -272,7 +272,7 @@ fn repository_resource_id(value: &Value) -> Result<String> {
 }
 
 fn repository_links(events: &[Value]) -> Result<Vec<RepositoryLink>> {
-    events
+    let links: Vec<RepositoryLink> = events
         .iter()
         .filter(|event| event["tagName"] == "linkEntry")
         .map(|event| {
@@ -296,7 +296,8 @@ fn repository_links(events: &[Value]) -> Result<Vec<RepositoryLink>> {
                 tracking,
             })
         })
-        .collect()
+        .collect::<Result<_>>()?;
+    Ok(direct_repository_links(links, |link| &link.path))
 }
 
 fn link_change_revision(events: &[Value]) -> Result<Option<String>> {
@@ -815,6 +816,13 @@ async fn refresh_link_branch_index(
             .execute(&mut *tx)
             .await?;
     }
+    // Errors describe the previous root revision. Once a new revision is
+    // indexed, a prior failure no longer describes its current link state.
+    sqlx::query("UPDATE repository_link_policies SET last_error=NULL,updated_at=now() WHERE root_resource_id=$1 AND root_branch=$2 AND last_error IS NOT NULL")
+        .bind(&repository.resource_id)
+        .bind(branch_name)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     tracing::info!(
         repository = %repository.name,
@@ -909,19 +917,20 @@ async fn propagate_link_updates(
         if let Err(error) =
             update_root_links(pool, binary, repository_service, tokens, source, &updates).await
         {
+            let detail = format!("{error:#}");
             record_link_failure(
                 pool,
                 &root_resource_id,
                 &root_branch,
                 &source.resource_id,
-                &error.to_string(),
+                &detail,
             )
             .await;
             tracing::warn!(
                 source = %source.name,
                 root = %updates[0].0.root_name,
                 branch = %updates[0].0.root_branch,
-                %error,
+                error = %detail,
                 "automatic repository link update failed"
             );
         }
