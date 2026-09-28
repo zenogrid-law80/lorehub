@@ -34,6 +34,7 @@ assets["/lore-logo.svg"] = ["lore-logo.svg", "image/svg+xml"];
 assets["/repository-context.js"] = ["repository-context.js", "text/javascript"];
 assets["/operations.js"] = ["operations.js", "text/javascript"];
 assets["/overview.js"] = ["overview.js", "text/javascript"];
+assets["/execution-detail.js"] = ["execution-detail.js", "text/javascript"];
 assets["/execution-graph.js"] = ["execution-graph.js", "text/javascript"];
 assets["/execution-analysis.js"] = ["execution-analysis.js", "text/javascript"];
 createServer(async (req, res) => {
@@ -58,7 +59,11 @@ createServer(async (req, res) => {
     else if (url.pathname === "/api/v1/repository-links/summary") data = [{ resource_id: root.id, branch: "main", count: links.length }];
     else if (url.pathname.endsWith("/tree")) {
       const path = url.searchParams.get("path") || "";
-      const folders = {
+      const folders = url.pathname.includes("/developer/tree") ? {
+        "": [{ name: "Test", kind: "directory", is_link: false }, { name: "README.md", kind: "file", is_link: false }],
+        Test: [{ name: "Textures", kind: "directory", is_link: false }, { name: "readme.txt", kind: "file", is_link: false }],
+        "Test/Textures": [{ name: "tile.png", kind: "file", is_link: false }],
+      } : {
         "": [{ name: "src", kind: "directory", is_link: false }, { name: "Shared", kind: "directory", is_link: true }, { name: "empty", kind: "directory", is_link: false }, { name: "unavailable", kind: "directory", is_link: true }, { name: "README.md", kind: "file", is_link: false }],
         src: [{ name: "app.js", kind: "file", is_link: false }],
         Shared: [{ name: "Textures", kind: "directory", is_link: false }, { name: "shared.txt", kind: "file", is_link: false }],

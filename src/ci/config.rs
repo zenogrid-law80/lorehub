@@ -129,6 +129,8 @@ impl SubmitPipeline {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PipelineConfig {
+    #[serde(default = "default_parallel_jobs", skip_serializing_if = "serial_jobs")]
+    pub max_parallel_jobs: usize,
     pub stages: Vec<String>,
     pub jobs: Vec<JobConfig>,
 }
@@ -149,6 +151,8 @@ pub struct JobConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PipelineFile {
+    #[serde(default = "default_parallel_jobs", skip_serializing_if = "serial_jobs")]
+    max_parallel_jobs: usize,
     #[serde(default)]
     stages: Vec<String>,
     #[serde(default)]
@@ -160,6 +164,8 @@ pub struct PipelineFile {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct NamedPipeline {
+    #[serde(default = "default_parallel_jobs", skip_serializing_if = "serial_jobs")]
+    pub max_parallel_jobs: usize,
     pub name: String,
     #[serde(default = "default_category")]
     pub category: String,
@@ -177,6 +183,7 @@ pub struct NamedPipeline {
 impl NamedPipeline {
     pub fn config(&self) -> PipelineConfig {
         PipelineConfig {
+            max_parallel_jobs: self.max_parallel_jobs,
             stages: self.stages.clone(),
             jobs: self.jobs.clone(),
         }
@@ -218,8 +225,8 @@ impl PipelineFile {
             file.jobs = config.jobs;
         } else {
             ensure!(
-                file.stages.is_empty() && file.jobs.is_empty(),
-                "cannot mix root jobs with named pipelines"
+                file.stages.is_empty() && file.jobs.is_empty() && file.max_parallel_jobs == 1,
+                "cannot mix root jobs or root parallelism with named pipelines"
             );
             ensure!(file.pipelines.len() <= 32, "provide at most 32 pipelines");
             let mut names = HashSet::new();
@@ -373,6 +380,7 @@ impl PipelineFile {
                 );
                 Ok((
                     PipelineConfig {
+                        max_parallel_jobs: self.max_parallel_jobs,
                         stages: self.stages.clone(),
                         jobs: self.jobs.clone(),
                     },
@@ -383,6 +391,14 @@ impl PipelineFile {
             }
         }
     }
+}
+
+fn default_parallel_jobs() -> usize {
+    1
+}
+
+fn serial_jobs(value: &usize) -> bool {
+    *value == 1
 }
 
 fn default_timeout() -> u64 {
@@ -403,6 +419,14 @@ impl PipelineConfig {
 
     pub(crate) fn validate(&mut self) -> Result<()> {
         let config = self;
+        ensure_config!(
+            (1..=16).contains(&config.max_parallel_jobs),
+            ConfigLocation {
+                field: "max_parallel_jobs",
+                ..Default::default()
+            },
+            "max_parallel_jobs must be 1..16"
+        );
         ensure_config!(
             !config.stages.is_empty() && config.stages.len() <= 32,
             ConfigLocation {
@@ -663,6 +687,49 @@ mod tests {
         request.branch = Some("main".into());
         request.pipeline_name = Some("".into());
         assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn parallelism_defaults_to_serial_and_is_bounded_for_manual_and_named_pipelines() {
+        let manual = include_str!("../../examples/.lore-ci.toml");
+        assert_eq!(
+            PipelineFile::parse(manual)
+                .unwrap()
+                .select(None)
+                .unwrap()
+                .0
+                .max_parallel_jobs,
+            1
+        );
+        for limit in [0, 1, 4, 16, 17] {
+            let input = format!("max_parallel_jobs = {limit}\n{manual}");
+            let result = PipelineFile::parse(&input);
+            if (1..=16).contains(&limit) {
+                let config = result.unwrap().select(None).unwrap().0;
+                assert_eq!(config.max_parallel_jobs, limit);
+                let json = serde_json::to_value(config).unwrap();
+                assert_eq!(json.get("max_parallel_jobs").is_none(), limit == 1);
+            } else {
+                assert!(result.is_err());
+            }
+        }
+        let named = include_str!("../../examples/monorepo.lore-ci.toml");
+        let parallel = named.replacen("[[pipelines]]", "[[pipelines]]\nmax_parallel_jobs = 4", 1);
+        let file = PipelineFile::parse(&parallel).unwrap();
+        assert_eq!(
+            file.select(Some(&file.pipelines[0].name))
+                .unwrap()
+                .0
+                .max_parallel_jobs,
+            4
+        );
+        assert!(
+            PipelineFile::parse(
+                &parallel.replace("max_parallel_jobs = 4", "max_parallel_jobs = 17")
+            )
+            .is_err()
+        );
+        assert!(PipelineFile::parse(&format!("max_parallel_jobs = 4\n{named}")).is_err());
     }
 
     #[test]

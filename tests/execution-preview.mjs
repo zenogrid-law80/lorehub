@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 const now = new Date().toISOString();
 const repository = "lores://fixture/demo";
-const snapshot = { sparse_view: "ServerView", stages: [
+const snapshot = { max_parallel_jobs: 2, sparse_view: "ServerView", stages: [
   { name: "build", jobs: Array.from({ length: 16 }, (_, i) => `compile-${i + 1}`) },
   { name: "test", jobs: ["unit-tests"] }, { name: "package", jobs: ["package"] }, { name: "publish", jobs: ["publish"] },
 ], dependencies: [{ job: "unit-tests", needs: ["compile-16"] }] };
@@ -26,7 +26,7 @@ const runs = Object.fromEntries([makeRun("server", "failed"), makeRun("client", 
 const routes = Object.values(runs).map(({ pipeline }) => ({ ...pipeline, runner_os: "windows", revision: "b".repeat(64), revision_number: 11,
   graph: { stages: [{ name: "new-config", jobs: ["new-job"] }] }, latest_pipeline_id: pipeline.id, latest_created_at: now,
 }));
-const assets = new Set(["app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js", "theme.js"]);
+const assets = new Set(["lore-logo.svg", "app.js", "app.css", "ci-visual.js", "ci-editor.js", "execution-detail.js", "execution-graph.js", "overview.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js", "theme.js"]);
 // Deterministic analysis timings with a queue delay, longer completed jobs,
 // an unfinished job, missing prerequisites, and a changed-configuration baseline.
 const at = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
@@ -55,7 +55,7 @@ createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1:4181");
     const file = url.pathname === "/" ? "index.html" : url.pathname.startsWith("/assets/") && assets.has(url.pathname.slice(8)) ? url.pathname.slice(8) : null;
     if (file) {
-      res.writeHead(200, { "content-type": file.endsWith("css") ? "text/css" : file.endsWith("js") ? "text/javascript" : "text/html", "cache-control": "no-store" });
+      res.writeHead(200, { "content-type": file.endsWith(".svg") ? "image/svg+xml" : file.endsWith("css") ? "text/css" : file.endsWith("js") ? "text/javascript" : "text/html", "cache-control": "no-store" });
       res.end(await readFile(new URL("../web/" + file, import.meta.url))); return;
     }
     let data = [];

@@ -36,6 +36,8 @@ web/                    embedded dashboard HTML, CSS, and JavaScript
 
 The binary and Rust crate are both named `lorehub`. `lorehub serve` starts the coordinator and `lorehub worker` starts a worker. Lore arguments are built by `vcs`; child environment variables, timeouts, and process termination are handled by `runner`.
 
+The dashboard uses deferred scripts without a JavaScript build step. `web/app.js` owns shared state, navigation setup, and polling; `web/execution-detail.js` owns the execution drawer, summary, cancellation, and bounded log paging. Execution graphs and analysis remain in `web/execution-graph.js` and `web/execution-analysis.js`. Load all deferred scripts before the `DOMContentLoaded` initialization in `app.js`.
+
 ## Migrating from lore-runner
 
 | Previous | LoreHub |
@@ -89,6 +91,8 @@ Repositories used as a Lore link's **Source Repository** are read-only in CI set
 
 Read-only execution analysis is available at `GET /api/v1/pipelines/{id}/insights`. It reports related runs, queue and execution timelines, and conservative comparisons with matching previous runs.
 
+Automatic refresh uses a minimum interval of 5 seconds for active runs and busy runners, and 30 seconds for idle lists. Repeated refresh failures increase the interval up to 60 seconds; successful requests restore the normal interval. Hidden tabs and browsers reporting an offline connection pause automatic refresh. Returning to the tab or regaining connectivity immediately checks for due refreshes while preserving normal intervals and failure backoff. Overlapping automatic requests for the same view and scope are skipped. Completed run details stop refreshing automatically; reopen the run to retrieve fresh details. Log paging remains manual, and the main log viewer preserves existing log nodes as new output arrives.
+
 ## Repository links
 
 Links connect **Source → Root**. Lore revisions are authoritative for pins; PostgreSQL stores synchronization policy, last success/error, and operation history. Automatic synchronization watches source pushes, while manual synchronization changes Root only when requested. Source-directory creation is enabled by default, and failed Root creation can be retried without reverting the Source commit.
@@ -140,6 +144,10 @@ Place `.lore-ci.toml` at the Lore repository root and push the revision before r
 
 Automatic `[[pipelines]]` routes use exact, case-sensitive paths and `directory/**` patterns. `needs` may reference earlier or same-stage jobs; unknown, duplicate, self, and cyclic dependencies are rejected. Each job runs in its own `/bin/sh -e -c` process, while commands in one job share a shell. Output is bounded and the working directory is removed after completion.
 
+Set `max_parallel_jobs = 4` at the root of a manual configuration, or inside an individual `[[pipelines]]` table, to run independent jobs concurrently on one worker. The allowed range is 1–16 and the default is 1. The Visual editor exposes this as **Maximum parallel jobs**. A job starts only after its `needs` succeed; every stage waits for all jobs in the preceding stages. The first observed failure stops new assignments, cancels running sibling jobs, and waits for their process cleanup before finishing the pipeline. Pending jobs are skipped; interrupted running jobs are failed, or canceled when the pipeline was canceled.
+
+Parallel jobs share the pipeline checkout and working directory. Use separate output paths or explicit `needs` when jobs write the same files. Enable parallelism after updating both the coordinator and workers; older versions reject the new configuration field. Recorded execution graphs include the configured concurrency limit.
+
 ## Authentication and access control
 
 `/auth/google/login` starts Google login with the `zenogrid.co.kr` hosted-domain hint. The callback verifies signature, issuer, audience, expiry, nonce, hosted domain, and verified email. The immutable Google `sub` identifies the user.
@@ -165,7 +173,7 @@ Preview fixtures for the repository tree, CI editor, execution graphs, and repos
 
 ## Operations and administration
 
-The administrator **Operations** page reports queued work, Runner availability, repository checks, and PostgreSQL usage. It refreshes while open and treats failed refreshes as stale. It does not perform automatic alerts, retries, or cleanup.
+The administrator **Operations** page reports queued work, Runner availability, repository checks, and PostgreSQL usage. While an administrator keeps the app visible, operations refresh about every 30 seconds across all pages, with backoff after failures. In-app alerts report queue waits of at least five minutes, expired execution leases, an OS with disconnected Runners and none online, three consecutive repository check failures, and link update errors. A persistent banner links to unresolved issues and the latest 50 issue/recovery events; Mark as read clears the unread count without hiding unresolved issues. Repeated observations do not repeat notifications. Failed requests and repositories missing from the top-100 snapshot are not treated as recovery; the banner counts currently confirmed issues separately from unconfirmed previous observations. Losing administrator access cancels the pending observation request and clears the retained operations state. Alerts are local to the current tab and reset on reload; hidden or closed tabs do not monitor, and no external notifications are sent. This page does not perform automatic retries or cleanup.
 
 Administrators can use **Accounts**, **Account groups**, **Repository access**, **Sparse View**, and **Operations**. These pages and APIs are administrator-only; ordinary users and group members receive `403`. Sparse View presets are reusable repository patterns and do not change repository access or existing local workspaces automatically.
 

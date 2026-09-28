@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 const source = await readFile(new URL("../web/operations.js", import.meta.url), "utf8");
 function setup(api) {
-  const context = vm.createContext({ state: { section: "operations", locale: "en" }, api, AbortController, window: { setTimeout, clearTimeout }, renders: 0 });
+  const context = vm.createContext({ state: { section: "operations", locale: "en", user: { id: "admin", role: "admin" } }, api, AbortController, document: { getElementById: () => null }, toast() {}, window: { setTimeout, clearTimeout }, renders: 0 });
   vm.runInContext(source, context);
   vm.runInContext("renderOperations = () => { renders++; }", context);
   return { context, get: code => vm.runInContext(code, context) };
@@ -42,7 +42,7 @@ test("overlapping polls are skipped and an invalidated response cannot restore a
   const initialRenders = get("renders");
   await get("loadOperations()");
   assert.equal(calls, 1);
-  get("operations.request++; operations.snapshot = null");
+  get("resetOperationsState()");
   resolve({ secret: "stale response" });
   await pending;
   assert.equal(get("operations.snapshot"), null);
@@ -50,12 +50,32 @@ test("overlapping polls are skipped and an invalidated response cannot restore a
   assert.equal(get("operations.loading"), false);
 });
 
+test("reset aborts the old request without letting its completion unlock a new request", async () => {
+  const requests = [];
+  const { get } = setup((path, { signal }) => new Promise(resolve => requests.push({ signal, resolve })));
+  const old = get("loadOperations()");
+  get("resetOperationsState()");
+  assert.equal(requests[0].signal.aborted, true);
+  const current = get("loadOperations()");
+  requests[0].resolve({ observed_at: "old" });
+  await old;
+  assert.equal(get("operations.loading"), true);
+  assert.equal(get("operations.snapshot"), null);
+  await get("loadOperations()");
+  assert.equal(requests.length, 2);
+  requests[1].resolve({ observed_at: "current" });
+  await current;
+  assert.equal(get("operations.loading"), false);
+  assert.equal(get("operations.snapshot.observed_at"), "current");
+});
+
 test("execution detail keeps polling from operations while summary refresh remains throttled", async () => {
   const app = await readFile(new URL("../web/app.js", import.meta.url), "utf8");
-  let summaries = 0;
+  let summaries = 0, now = Date.now();
   const details = [];
   const context = vm.createContext({
-    document: { hidden: false }, state: { section: "operations", selectedId: "active-run" },
+    Date: { now: () => now },
+    document: { hidden: false }, state: { section: "operations", selectedId: "active-run", user: { id: "admin", role: "admin" } },
     operations: { lastAttempt: Date.now() },
     elements: { "pipeline-detail-dialog": { open: true } },
     loadOperations: async () => { summaries++; },
@@ -65,6 +85,7 @@ test("execution detail keeps polling from operations while summary refresh remai
   await vm.runInContext("refreshActiveViews()", context);
   assert.equal(summaries, 0);
   assert.deepEqual(details, ["active-run"]);
+  now += 5000;
   vm.runInContext("operations.lastAttempt = 0", context);
   await vm.runInContext("refreshActiveViews()", context);
   assert.equal(summaries, 1);

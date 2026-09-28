@@ -1,6 +1,7 @@
 //! Worker orchestration and trusted shell execution.
 mod client;
 pub mod executor;
+mod scheduler;
 mod update;
 mod worker;
 

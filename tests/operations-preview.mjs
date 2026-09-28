@@ -2,7 +2,7 @@
 // node tests/operations-preview.mjs; open http://127.0.0.1:4182/#operations
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-const assets = new Set(["app.js", "app.css", "theme.js", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js"]);
+const assets = new Set(["lore-logo.svg", "app.js", "app.css", "theme.js", "ci-visual.js", "ci-editor.js", "execution-detail.js", "execution-graph.js", "overview.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js"]);
 const now = new Date().toISOString();
 const snapshot = {
   observed_at: now, queue: { queued: 3, running: 2, expired_leases: 1, oldest_wait_seconds: 845 },
@@ -16,7 +16,7 @@ createServer(async (req, res) => {
   try {
     const file = url.pathname === "/" ? "index.html" : url.pathname.startsWith("/assets/") && assets.has(url.pathname.slice(8)) ? url.pathname.slice(8) : null;
     if (file) {
-      res.writeHead(200, { "content-type": file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html", "cache-control": "no-store" });
+      res.writeHead(200, { "content-type": file.endsWith(".svg") ? "image/svg+xml" : file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html", "cache-control": "no-store" });
       res.end(await readFile(new URL(`../web/${file}`, import.meta.url))); return;
     }
     let data = [];

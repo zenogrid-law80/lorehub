@@ -10,6 +10,7 @@
     <script src="/assets/app.js" defer></script>
     <script src="/assets/ci-visual.js" defer></script>
     <script src="/assets/ci-editor.js" defer></script>
+    <script src="/assets/execution-detail.js" defer></script>
     <script src="/assets/execution-graph.js" defer></script>
     <script src="/assets/execution-analysis.js" defer></script>
     <script src="/assets/management.js" defer></script>
@@ -166,6 +167,11 @@
         </header>
 
         <main class="page-content">
+          <aside id="operations-alert-banner" class="operations-alert-banner" hidden aria-label="Operations alerts">
+            <span id="operations-alert-summary" role="status"></span>
+            <a id="operations-alert-link" class="button button--ghost" href="#operations">View alerts</a>
+            <button id="operations-alert-read" class="button button--ghost" type="button">Mark as read</button>
+          </aside>
           <section id="overview-heading" class="page-heading overview-view">
             <div>
               <h1 id="welcome-heading">Overview</h1>

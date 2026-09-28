@@ -57,6 +57,10 @@ test("wait reasons require server evidence and do not invent missing dependency 
   detail.pipeline.status = "running";
   const jobs = [{ id: "1", status: "running" }, { id: "2", status: "queued" }];
   assert.equal(reason(detail, jobs[1], jobs), "Waiting for a previous job");
+  detail.graph = { max_parallel_jobs: 2 };
+  assert.equal(reason(detail, jobs[1], jobs), "Waiting reason unavailable");
+  detail.graph.max_parallel_jobs = 1;
+  assert.equal(reason(detail, jobs[1], jobs), "Waiting for a previous job");
   jobs[0].status = "succeeded";
   assert.equal(reason(detail, jobs[1], jobs), "Waiting reason unavailable");
   detail.pipeline.cancel_requested = true;

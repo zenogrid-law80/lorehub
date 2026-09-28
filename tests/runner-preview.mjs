@@ -2,7 +2,7 @@
 // node tests/runner-preview.mjs; open http://127.0.0.1:4183/#runners
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-const assets = new Set(["app.js", "app.css", "theme.js", "ci-visual.js", "ci-editor.js", "execution-graph.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js"]);
+const assets = new Set(["app.js", "app.css", "theme.js", "ci-visual.js", "ci-editor.js", "execution-detail.js", "execution-graph.js", "overview.js", "execution-analysis.js", "management.js", "operations.js", "repository-context.js"]);
 const runners = [
   { id: "fixture-idle", name: "Linux build", os: "linux", busy: false, draining: false, status: "online" },
   { id: "fixture-busy", name: "macOS build", os: "macos", busy: true, draining: false, status: "online" },

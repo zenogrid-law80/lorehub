@@ -652,6 +652,15 @@ pub(crate) async fn acquire_link_branch_lock(
     Ok(())
 }
 
+pub(super) async fn acquire_link_graph_lock(
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('repository-links:graph', 1))")
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 async fn try_link_branch_lock(
     tx: &mut Transaction<'_, Postgres>,
     resource_id: &str,
@@ -732,6 +741,7 @@ async fn refresh_link_branch_index(
     else {
         let mut tx = pool.begin().await?;
         if try_link_branch_lock(&mut tx, &repository.resource_id, branch_name).await? {
+            acquire_link_graph_lock(&mut tx).await?;
             sqlx::query(
                 "DELETE FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
             )
@@ -779,6 +789,7 @@ async fn refresh_link_branch_index(
     if !try_link_branch_lock(&mut tx, &repository.resource_id, branch_name).await? {
         return Ok(());
     }
+    acquire_link_graph_lock(&mut tx).await?;
     let indexed_revision: Option<String> = sqlx::query_scalar(
         "SELECT root_revision FROM repository_link_snapshots WHERE root_resource_id=$1 AND root_branch=$2",
     )
@@ -834,7 +845,11 @@ async fn refresh_link_branch_index(
     Ok(())
 }
 
-async fn dependency_reaches(pool: &PgPool, start: &str, target: &str) -> Result<bool> {
+pub(super) async fn dependency_reaches(
+    pool: &PgPool,
+    start: &str,
+    target: &str,
+) -> Result<bool, sqlx::Error> {
     if start == target {
         return Ok(true);
     }
@@ -845,6 +860,22 @@ async fn dependency_reaches(pool: &PgPool, start: &str, target: &str) -> Result<
     .bind(target)
     .fetch_one(pool)
     .await?)
+}
+
+pub(super) async fn link_would_cycle(
+    pool: &PgPool,
+    root_resource_id: &str,
+    source_resource_id: &str,
+    live_source_links: &[String],
+) -> Result<bool, sqlx::Error> {
+    let mut upstream = HashSet::from([source_resource_id]);
+    upstream.extend(live_source_links.iter().map(String::as_str));
+    for resource_id in upstream {
+        if dependency_reaches(pool, resource_id, root_resource_id).await? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 async fn propagate_link_updates(
@@ -1202,6 +1233,7 @@ pub(crate) fn pipeline_graph_definition(pipeline: &NamedPipeline) -> Result<Stri
     Ok(serde_json::to_string(&serde_json::json!({
         "sparse_view": pipeline.sparse_view,
         "pipeline_needs": pipeline.needs,
+        "max_parallel_jobs": pipeline.max_parallel_jobs,
         "stages": pipeline.stages.iter().map(|stage| serde_json::json!({
             "name": stage,
             "jobs": pipeline.jobs.iter().filter(|job| &job.stage == stage).map(|job| &job.name).collect::<Vec<_>>()
@@ -1690,6 +1722,26 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
         assert!(dependency_reaches(&pool, "urc-a", "urc-c").await.unwrap());
         assert!(!dependency_reaches(&pool, "urc-c", "urc-a").await.unwrap());
         assert!(dependency_reaches(&pool, "urc-a", "urc-a").await.unwrap());
+        assert!(
+            link_would_cycle(&pool, "urc-c", "urc-a", &[])
+                .await
+                .unwrap()
+        );
+        assert!(
+            !link_would_cycle(&pool, "urc-a", "urc-c", &[])
+                .await
+                .unwrap()
+        );
+        assert!(
+            link_would_cycle(&pool, "urc-c", "urc-new", &["urc-a".into()])
+                .await
+                .unwrap()
+        );
+        assert!(
+            link_would_cycle(&pool, "urc-c", "urc-new", &["urc-c".into()])
+                .await
+                .unwrap()
+        );
     }
 
     #[test]

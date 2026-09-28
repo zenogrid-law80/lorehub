@@ -473,6 +473,7 @@ function applyLocale(rerender) {
   for (const entry of localizedTextNodes) entry.node.nodeValue = `${entry.leading}${t(entry.key)}${entry.trailing}`;
   for (const entry of localizedAttributes) entry.element.setAttribute(entry.attribute, t(entry.key));
   managementLocale();
+  renderOperationsAlertBanner();
   renderRepositoryContext();
   document.querySelector('.status-tab[data-status="failed"]').textContent = t("status.failed");
   if (!rerender) return;
@@ -490,6 +491,8 @@ function applyLocale(rerender) {
 }
 
 function bindEvents() {
+  document.addEventListener("visibilitychange", refreshWhenAvailable);
+  window.addEventListener("online", refreshWhenAvailable);
   document.querySelectorAll('a[href="/auth/google/login"]').forEach(link => link.addEventListener("click", rememberPipelineLogin));
   elements["new-repository-button"].addEventListener("click", openNewRepository);
   document.querySelectorAll(".js-open-repository").forEach((button) => button.addEventListener("click", openNewRepository));
@@ -501,36 +504,7 @@ function bindEvents() {
     if (state.repositoryConfigStatus === "ready" && state.repositoryConfigContent === null) setRepositoryConfigEditing(true);
   });
   document.querySelectorAll(".modal-close, .modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-pipeline-dialog"].close()));
-  document.querySelectorAll(".drawer-close").forEach((button) => button.addEventListener("click", () => elements["pipeline-detail-dialog"].close()));
-  elements["pipeline-detail-dialog"].addEventListener("close", () => {
-    if (elements["pipeline-detail-dialog"].open) return;
-    const id = state.selectedId;
-    executionDetailRequest++;
-    state.selectedId = null;
-    state.detailLogView = null;
-    if (id) closePipelineLocation(id);
-  });
-  elements["detail-copy-link"].addEventListener("click", async () => {
-    if (!state.selectedId) return;
-    try { await navigator.clipboard.writeText(pipelinePermalink(state.selectedId)); toast(t("dynamic.urlCopied"), "success"); }
-    catch (_) { toast(t("dynamic.copyFailed"), "error"); }
-  });
-  elements["detail-log-more"].addEventListener("click", () => void loadPipelineLogs(state.selectedId));
-  elements["detail-log-restart"].addEventListener("click", () => void restartDetailLogs());
-  elements["detail-log-follow"].addEventListener("click", () => {
-    const cache = state.detailLogView;
-    if (!cache) return;
-    cache.follow = !cache.follow;
-    renderLogs(cache.rows, cache.prunedAt);
-    if (cache.follow && !cache.more) void loadPipelineLogs(cache.id);
-  });
-  elements["pipeline-log"].addEventListener("scroll", () => {
-    const cache = state.detailLogView, terminal = elements["pipeline-log"];
-    if (!cache?.follow || terminal.scrollTop + terminal.clientHeight >= terminal.scrollHeight - 8) return;
-    cache.follow = false;
-    renderLogs(cache.rows, cache.prunedAt);
-  });
-  elements["detail-retry"].addEventListener("click", () => { if (state.selectedId) void openPipeline(state.selectedId); });
+  bindPipelineDetailEvents();
   document.querySelectorAll(".repository-modal-close, .repository-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["new-repository-dialog"].close()));
   document.querySelectorAll(".delete-modal-close, .delete-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["delete-repository-dialog"].close()));
   document.querySelectorAll(".repository-branches-modal-close, .repository-branches-modal-cancel").forEach((button) => button.addEventListener("click", () => elements["repository-branches-dialog"].close()));
@@ -582,13 +556,12 @@ function bindEvents() {
     if (state.section === "repositories") renderRepositories();
     else if (state.section === "runners") renderRunners();
     else if (state.section === "graphs") renderPipelineGraphs();
-    else if (isManagement()) { if (!management.dirty) renderManagement(); }
+    else if (isManagement()) { if (!management.dirty || state.section === "repository-access") renderManagement(); }
     else searchPipelineHistory(250);
   });
   elements["refresh-button"].addEventListener("click", () => void refreshSection(true));
   elements["load-more-pipelines"].addEventListener("click", () => void loadPipelines(false, true));
   elements["logout-button"].addEventListener("click", logout);
-  elements["cancel-pipeline-button"].addEventListener("click", cancelPipeline);
   elements["user-menu-button"].addEventListener("click", () => {
     const expanded = elements["user-menu-button"].getAttribute("aria-expanded") === "true";
     elements["user-menu-button"].setAttribute("aria-expanded", String(!expanded));
@@ -665,7 +638,10 @@ async function initialize() {
     elements["loading-view"].hidden = true;
     elements["app-view"].hidden = false;
     await Promise.all([loadRepositories(false), loadRunners(false)]);
+    if (state.user !== user) return;
     await syncPipelineLocation(true);
+    if (state.user !== user) return;
+    stopAutoRefresh();
     state.refreshTimer = window.setInterval(() => void refreshActiveViews(), 5000);
   } catch (error) {
     showLogin();
@@ -832,9 +808,10 @@ function renderUser(user) {
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   if (response.status === 401) {
-    window.clearInterval(state.refreshTimer);
+    stopAutoRefresh();
+    state.user = null;
     window.location.reload();
-    throw new Error(t("dynamic.sessionExpired"));
+    throw Object.assign(new Error(t("dynamic.sessionExpired")), { status: 401 });
   }
   if (!response.ok) {
     let message = t("dynamic.requestFailed", { status: response.status });
@@ -867,10 +844,12 @@ async function loadPipelines(notify, append = false) {
     state.updatedAt.pipelines = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshPipelines"), "success");
+    return true;
   } catch (error) {
     if (request !== state.pipelineRequest || scope !== state.repositoryScope || filters !== pipelineHistoryParameters().toString()) return;
     if (!append) { state.pipelines = []; state.pipelineNextBefore = null; renderPipelines(); }
     toast(error.message, "error");
+    return false;
   } finally {
     if (request === state.pipelineRequest && scope === state.repositoryScope) {
       state.pipelineLoading = false;
@@ -927,12 +906,14 @@ async function loadRunners(notify) {
     state.updatedAt.runners = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshRunners"), "success");
+    return true;
   } catch (error) {
     if (request === runnerListRequest) {
       runnerLoadError = true;
       renderRunnerDiagnostics();
       toast(error.message, "error");
     }
+    return false;
   } finally {
     if (request === runnerListRequest) elements["refresh-button"].disabled = false;
   }
@@ -988,11 +969,13 @@ async function loadPipelineGraphs(notify) {
     state.updatedAt.graphs = new Date();
     renderUpdatedLabels();
     if (notify) toast(t("dynamic.refreshGraphs"), "success");
+    return true;
   } catch (error) {
     if (request !== executionGraphRequest || scope !== state.repositoryScope) return;
     state.pipelineGraphs = [];
     renderPipelineGraphs();
     toast(error.message, "error");
+    return false;
   } finally {
     if (request === executionGraphRequest && scope === state.repositoryScope) {
       elements["pipeline-graph-list"].removeAttribute("aria-busy");
@@ -2712,6 +2695,11 @@ function renderConfigInspector(selected, model) {
   }
 
   elements["repository-config-inspector-title"].textContent = t("Pipeline settings");
+  const parallelOwner = selected.legacy ? model : selected.pipeline;
+  inspector.append(configInspectorInput(t("Maximum parallel jobs"), parallelOwner.max_parallel_jobs ?? 1, value => { parallelOwner.max_parallel_jobs = Number(value); }, "number", { min: 1, max: 16, step: 1 }));
+  const parallelNote = document.createElement("p"); parallelNote.className = "config-inspector-note";
+  parallelNote.textContent = t("Parallel jobs share the checkout. Use separate output paths or needs for jobs that write the same files.");
+  inspector.append(parallelNote);
   if (selected.legacy) {
     const note = document.createElement("p"); note.className = "config-inspector-note"; note.textContent = t("This is a manual pipeline using root stages and jobs.");
     inspector.append(note);
@@ -2916,9 +2904,9 @@ function addVisualPipeline() {
   if (!model.pipelines.length) {
     model.pipelines = [{
       name: "pipeline", category: "uncategorized", needs: [], runner_os: "linux", sparse_view: null,
-      changes: ["src/**"], working_directory: ".", stages: model.stages, jobs: model.jobs,
+      changes: ["src/**"], working_directory: ".", stages: model.stages, jobs: model.jobs, max_parallel_jobs: model.max_parallel_jobs ?? 1,
     }];
-    model.stages = []; model.jobs = [];
+    model.stages = []; model.jobs = []; delete model.max_parallel_jobs;
     state.repositoryConfigSelection = { type: "pipeline", pipelineIndex: 0 };
   } else {
     const name = uniqueCiName(model.pipelines.map(pipeline => pipeline.name), "pipeline");
@@ -2937,6 +2925,7 @@ function deleteVisualPipeline(index) {
   const [deleted] = model.pipelines.splice(index, 1);
   for (const pipeline of model.pipelines) pipeline.needs = (pipeline.needs ?? []).filter(dependency => dependency !== deleted.name);
   if (!model.pipelines.length) {
+    delete model.max_parallel_jobs;
     model.stages = cloneCiModel(DEFAULT_CI_MODEL.stages);
     model.jobs = cloneCiModel(DEFAULT_CI_MODEL.jobs);
   }
@@ -2987,6 +2976,10 @@ function serializeCiModel(model) {
   const lines = [];
   const value = input => JSON.stringify(String(input));
   const array = items => `[${items.map(item => value(item)).join(", ")}]`;
+  const appendParallelism = pipeline => {
+    const limit = Number(pipeline.max_parallel_jobs ?? 1);
+    if (limit !== 1) lines.push(`max_parallel_jobs = ${Number.isFinite(limit) ? limit : 0}`);
+  };
   const appendJob = (job, table) => {
     lines.push(`[[${table}]]`, `name = ${value(job.name)}`, `stage = ${value(job.stage)}`);
     if (job.needs?.length) lines.push(`needs = ${array(job.needs)}`);
@@ -2995,12 +2988,14 @@ function serializeCiModel(model) {
   if (model.pipelines.length) {
     for (const pipeline of model.pipelines) {
       lines.push("[[pipelines]]", `name = ${value(pipeline.name)}`, `category = ${value(pipeline.category)}`, `runner_os = ${value(pipeline.runner_os)}`);
+      appendParallelism(pipeline);
       if (pipeline.needs?.length) lines.push(`needs = ${array(pipeline.needs)}`);
       if (pipeline.sparse_view) lines.push(`sparse_view = ${value(pipeline.sparse_view)}`);
       lines.push(`changes = ${array(pipeline.changes)}`, `working_directory = ${value(pipeline.working_directory)}`, `stages = ${array(pipeline.stages)}`, "");
       for (const job of pipeline.jobs) appendJob(job, "pipelines.jobs");
     }
   } else {
+    appendParallelism(model);
     lines.push(`stages = ${array(model.stages)}`, "");
     for (const job of model.jobs) appendJob(job, "jobs");
   }
@@ -3343,156 +3338,6 @@ function setSubmitting(submitting) {
   elements["run-pipeline-button"].querySelector(".button-spinner").hidden = !submitting;
 }
 
-const detailLogCopy = {
-  more: ["로그 500건 더 보기", "Load 500 more records", "再加载 500 条记录"],
-  retry: ["로그 다시 시도", "Retry logs", "重试日志"],
-  follow: ["새 출력 따라가기", "Follow new output", "跟随新输出"],
-  restart: ["처음부터 보기", "Start from the beginning", "从头查看"],
-  detailRetry: ["상세 다시 시도", "Retry detail", "重试详情"],
-  copyLink: ["실행 링크 복사", "Copy run link", "复制运行链接"],
-  openLink: ["실행 링크 열기", "Open run link", "打开运行链接"],
-  paused: ["자동 갱신과 스크롤이 일시 정지되었습니다.", "Automatic updates and scrolling are paused.", "已暂停自动更新和滚动。"],
-  pending: ["뒤에 로그가 더 있을 수 있습니다. 더 보기를 눌러 계속 읽으세요.", "More records may follow. Load more to continue reading.", "后面可能还有日志，请继续加载。"],
-  trimmed: ["화면에는 최근에 읽은 로그 일부만 유지합니다. 이전 부분은 ‘처음부터 보기’로 다시 읽을 수 있습니다.", "Only the most recently loaded output is kept on screen. Restart to read earlier output again.", "仅保留最近加载的输出，可从头重新查看较早的内容。"],
-};
-function dlt(key) { return detailLogCopy[key][state.locale === "ko" ? 0 : state.locale === "zh-CN" ? 2 : 1]; }
-
-function resetDetailLogs(id, prunedAt = null) {
-  state.detailLogView = { id, prunedAt, rows: [], after: 0, more: true, started: false, busy: false, follow: true, trimmed: false, error: null };
-  return state.detailLogView;
-}
-
-async function restartDetailLogs() {
-  const cache = state.detailLogView;
-  if (!cache || cache.busy) return;
-  resetDetailLogs(cache.id, cache.prunedAt).follow = false;
-  elements["pipeline-log"].scrollTop = 0;
-  await loadPipelineLogs(cache.id);
-}
-
-function clearPipelineDetail(message) {
-  state.detailLogView = null;
-  elements["detail-title"].textContent = "";
-  elements["detail-repository"].textContent = "";
-  elements["detail-summary"].replaceChildren();
-  elements["execution-graph"].replaceChildren();
-  elements["execution-graph-section"].hidden = true;
-  elements["job-list"].replaceChildren(textNode(message, "job-empty"));
-  elements["job-count"].textContent = "";
-  elements["cancel-pipeline-button"].hidden = true;
-  renderLogs([], null);
-}
-
-async function openPipeline(id, { fromLocation = false } = {}) {
-  if (!fromLocation) recordPipelineLocation(id);
-  state.selectedId = id;
-  clearPipelineDetail(t("dynamic.loading"));
-  resetDetailLogs(id);
-  elements["detail-retry"].hidden = true;
-  if (!elements["pipeline-detail-dialog"].open) elements["pipeline-detail-dialog"].showModal();
-  elements["detail-title"].textContent = t("dynamic.loading");
-  renderPipelinePermalink(id);
-  try { await loadPipelineDetail(id); } catch (error) { toast(error.message, "error"); }
-}
-
-function renderPipelinePermalink(id) {
-  elements["detail-copy-link"].textContent = dlt("copyLink");
-  elements["detail-permalink"].textContent = dlt("openLink");
-  elements["detail-permalink"].href = pipelinePermalink(id);
-}
-
-async function loadPipelineDetail(id) {
-  const request = ++executionDetailRequest;
-  let detail;
-  try { detail = await api(`/api/v1/pipelines/${encodeURIComponent(id)}`); }
-  catch (error) {
-    if (state.selectedId !== id || request !== executionDetailRequest) return;
-    clearPipelineDetail(error.message);
-    elements["detail-title"].textContent = t("dynamic.requestFailed", { status: error.status || "—" });
-    elements["detail-retry"].hidden = false;
-    elements["detail-retry"].textContent = dlt("detailRetry");
-    throw error;
-  }
-  if (state.selectedId !== id || request !== executionDetailRequest) return;
-  renderPipelinePermalink(id);
-  const pipeline = detail.pipeline;
-  const prunedAt = pipeline.logs_pruned_at || null;
-  if (state.detailLogView?.id !== id || state.detailLogView.prunedAt !== prunedAt) resetDetailLogs(id, prunedAt);
-  elements["detail-retry"].hidden = true;
-  elements["detail-repository"].textContent = [
-    repositoryName(pipeline.repository_url),
-    pipeline.branch,
-    pipeline.category && pipelineCategory(pipeline),
-  ].filter(Boolean).join(" / ");
-  elements["detail-title"].textContent = pipeline.pipeline_name || revisionLabel(pipeline);
-  renderDetailSummary(pipeline, detail.sparse_view_rules);
-  renderExecutionGraph(pipeline, detail.jobs, detail.graph, detail.queue_reason);
-  renderJobs(detail.jobs);
-  const cancellable = ["queued", "running"].includes(pipeline.status) && !pipeline.cancel_requested;
-  elements["cancel-pipeline-button"].hidden = !cancellable;
-  elements["cancel-pipeline-button"].disabled = false;
-  const cache = state.detailLogView;
-  renderLogs(cache.rows, cache.prunedAt);
-  // Summary and jobs are visible before the first log page resolves. A full page
-  // requires an explicit next-page request instead of draining an unbounded log.
-  if (!cache.started || (cache.follow && !cache.more && !cache.error)) await loadPipelineLogs(id);
-}
-
-function appendDetailLogs(cache, rows) {
-  cache.after = rows.at(-1)?.id ?? cache.after;
-  cache.more = rows.length === 500;
-  cache.started = true;
-  cache.rows.push(...rows);
-  let size = cache.rows.reduce((total, row) => total + row.content.length, 0);
-  while (cache.rows.length > 1 && (cache.rows.length > 2000 || size > 512000)) {
-    size -= cache.rows.shift().content.length;
-    cache.trimmed = true;
-  }
-  if (size > 512000) {
-    cache.rows[0] = { ...cache.rows[0], content: cache.rows[0].content.slice(-512000) };
-    cache.trimmed = true;
-  }
-}
-
-async function loadPipelineLogs(id) {
-  const cache = state.detailLogView;
-  if (!cache || cache.id !== id || state.selectedId !== id || cache.busy) return;
-  cache.busy = true;
-  cache.error = null;
-  renderLogs(cache.rows, cache.prunedAt);
-  try {
-    const rows = await api(`/api/v1/pipelines/${encodeURIComponent(id)}/logs?after=${cache.after}&limit=500`);
-    if (state.detailLogView !== cache || state.selectedId !== id) return;
-    appendDetailLogs(cache, rows);
-  } catch (error) {
-    if (state.detailLogView !== cache || state.selectedId !== id) return;
-    if ([403, 404].includes(error.status)) {
-      clearPipelineDetail(error.message);
-      elements["detail-retry"].hidden = false;
-      elements["detail-retry"].textContent = dlt("detailRetry");
-      return;
-    }
-    cache.error = error.message;
-    cache.started = true;
-  } finally {
-    cache.busy = false;
-    if (state.detailLogView === cache && state.selectedId === id) renderLogs(cache.rows, cache.prunedAt);
-  }
-}
-
-function renderExecutionGraph(pipeline, jobs, snapshot, queueReason) {
-  const section = elements["execution-graph-section"];
-  const graph = elements["execution-graph"];
-  if (!pipeline.pipeline_name) {
-    section.hidden = true;
-    graph.replaceChildren();
-    return;
-  }
-
-  section.hidden = false;
-  renderExecutionWorkspace(graph, { pipeline, jobs, graph: snapshot, queue_reason: queueReason }, `drawer:${pipeline.id}`);
-}
-
 function osLabel(os) {
   return { windows: "Windows", macos: "macOS", linux: "Linux" }[os] || os || t("Any OS");
 }
@@ -3501,127 +3346,90 @@ function revisionLabel(pipeline) {
   return `#${pipeline.revision_number}`;
 }
 
-function renderDetailSummary(pipeline, sparseViewRules) {
-  elements["detail-summary"].replaceChildren();
-  const values = [
-    [t("Status"), statusLabel(pipeline.status)],
-    [t("Revision"), revisionLabel(pipeline)],
-    [t("Created"), formatDate(pipeline.created_at)],
-    [t("Duration"), duration(pipeline.started_at, pipeline.finished_at)],
-  ];
-  if (pipeline.branch) values.splice(2, 0, [t("Branch"), pipeline.branch]);
-  if (pipeline.category) values.push([t("Category"), pipelineCategory(pipeline)]);
-  if (pipeline.pipeline_name) values.push([t("Pipeline"), pipeline.pipeline_name], [t("Runner OS"), osLabel(pipeline.runner_os)]);
-  values.push([t("Sparse View"), pipeline.sparse_view_name || t("dynamic.noSparseView")]);
-  for (const [label, value] of values) {
-    const item = document.createElement("div"); item.className = "summary-item";
-    const title = document.createElement("span"); title.textContent = label;
-    const content = document.createElement("strong"); content.textContent = value;
-    item.append(title, content); elements["detail-summary"].append(item);
-  }
-  if (pipeline.error) {
-    const item = document.createElement("div"); item.className = "summary-item summary-item--error";
-    const title = document.createElement("span"); title.textContent = t("Failure reason");
-    const content = document.createElement("strong"); content.textContent = pipeline.error;
-    item.append(title, content); elements["detail-summary"].append(item);
-  }
-  if (pipeline.sparse_view_name && sparseViewRules) {
-    const item = document.createElement("div"); item.className = "summary-item summary-item--view-rules";
-    const title = document.createElement("span"); title.textContent = `${t("View rules")} · ${t("dynamic.viewSnapshot")}`;
-    const content = document.createElement("code"); content.textContent = sparseViewRules.trim();
-    item.append(title, content); elements["detail-summary"].append(item);
-  }
-}
-
-function renderJobs(jobs) {
-  elements["job-list"].replaceChildren();
-  elements["job-count"].textContent = tc("dynamic.jobs", jobs.length);
-  if (!jobs.length) {
-    const empty = textNode(t("dynamic.workerPreparing"), "job-empty");
-    elements["job-list"].append(empty);
-    return;
-  }
-  for (const job of jobs) {
-    const row = document.createElement("div"); row.className = "job-row";
-    const stateIcon = textNode(job.status === "succeeded" ? "✓" : job.status === "failed" ? "!" : job.status === "running" ? "▶" : "·", `job-state job-state--${job.status}`);
-    row.append(stateIcon, textNode(job.name, "job-name"), textNode(job.stage, "job-stage"), textNode(duration(job.started_at, job.finished_at), "job-duration"));
-    elements["job-list"].append(row);
-  }
-}
-
-function renderLogs(logs, prunedAt) {
-  const terminal = elements["pipeline-log"];
-  const scroll = terminal.scrollTop;
-  const cache = state.detailLogView;
-  terminal.replaceChildren();
-  if (prunedAt) terminal.append(textNode(t("dynamic.logsPruned"), "terminal-muted"));
-  if (!logs.length && !prunedAt) terminal.append(textNode(t(cache?.busy ? "dynamic.loadingLogs" : "dynamic.noLogs"), "terminal-muted"));
-  for (const log of logs) {
-    const line = document.createElement("span");
-    line.className = log.stream === "stderr" ? "terminal-stderr" : log.stream === "system" ? "terminal-system" : "";
-    line.textContent = log.content;
-    terminal.append(line);
-  }
-  terminal.scrollTop = cache?.follow ? terminal.scrollHeight : scroll;
-  const more = elements["detail-log-more"];
-  more.hidden = !cache || (!cache.more && !cache.error);
-  more.disabled = !cache || cache.busy;
-  more.textContent = dlt(cache?.error ? "retry" : "more");
-  const follow = elements["detail-log-follow"];
-  follow.disabled = !cache;
-  follow.textContent = dlt("follow");
-  follow.setAttribute("aria-pressed", String(Boolean(cache?.follow)));
-  elements["detail-log-restart"].disabled = !cache || cache.busy;
-  elements["detail-log-restart"].textContent = dlt("restart");
-  elements["detail-log-note"].textContent = cache ? [cache.error, cache.trimmed && dlt("trimmed"), !cache.follow && dlt("paused"), cache.more && dlt("pending")].filter(Boolean).join(" ") : "";
-}
-
-async function cancelPipeline() {
-  if (!state.selectedId) return;
-  elements["cancel-pipeline-button"].disabled = true;
-  try {
-    await api(`/api/v1/pipelines/${encodeURIComponent(state.selectedId)}/cancel`, { method: "POST", headers: { "X-CSRF-Token": csrfToken() } });
-    toast(t("dynamic.cancelRequested"), "success");
-    await loadPipelines(false);
-    await loadPipelineDetail(state.selectedId);
-  } catch (error) {
-    elements["cancel-pipeline-button"].disabled = false;
-    toast(error.message, "error");
-  }
-}
-
 async function logout() {
   try {
     await api("/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken() } });
+    stopAutoRefresh();
+    resetOperationsAlerts();
     window.location.reload();
   } catch (error) { toast(error.message, "error"); }
 }
 
+function stopAutoRefresh() {
+  window.clearInterval(state.refreshTimer);
+  state.refreshTimer = null;
+}
+
+function refreshWhenAvailable() {
+  // Visibility and connectivity events can arrive together. Keep the existing
+  // per-view intervals, backoff, and in-flight guards when checking due work.
+  if (state.user && state.refreshTimer !== null) void refreshActiveViews();
+}
+
 async function refreshActiveViews() {
-  if (!document.hidden && state.section === "operations") {
-    if (Date.now() - operations.lastAttempt >= 30000) await loadOperations();
-    if (state.selectedId && elements["pipeline-detail-dialog"].open) {
-      try { await loadPipelineDetail(state.selectedId); } catch (_) { /* next poll retries */ }
+  if (document.hidden || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
+  const section = state.section;
+  const tasks = [];
+  const detailId = state.selectedId;
+  if (detailId && elements["pipeline-detail-dialog"].open) {
+    const cache = state.detailLogView;
+    // Finished runs keep manual log paging; reopening fetches fresh detail.
+    if (cache?.id !== detailId || !["succeeded", "failed", "canceled"].includes(cache.status)) {
+      tasks.push(pollActiveView("detail", detailId, 5000, () => loadPipelineDetail(detailId)));
     }
-    return;
   }
-  if (document.hidden || isManagement()) return;
-  if (state.section === "overview" && Date.now() - workspaceOverview.lastAttempt >= 30000) await loadOverview();
-  if (state.section === "repository-links") {
-    if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) await loadRepositoryLinkOperations();
-    return;
+  if (state.user?.role === "admin" && !operations.forbidden && Date.now() - operations.lastAttempt >= 30000) {
+    tasks.push(pollActiveView("operations", state.user.id, 30000, async () => { await loadOperations(); return !operations.error; }));
   }
-  if (state.section === "runners") {
-    await loadRunners(false);
-    return;
+  if (section !== "operations" && !isManagement()) {
+    const scope = JSON.stringify([section, state.repositoryScope, state.repositoryBranch]);
+    if (section === "overview" && Date.now() - workspaceOverview.lastAttempt >= 30000) {
+      tasks.push(pollActiveView("overview", section, 30000, async () => { await loadOverview(); return !workspaceOverview.error; }));
+    }
+    if (section === "repository-links") {
+      if (!state.repositoryLinksBusy && state.repositoryLinkOperations.some(item => item.status === "running")) {
+        tasks.push(pollActiveView("links", scope, 5000, async () => { await loadRepositoryLinkOperations(); return !state.repositoryLinkOperationsError; }));
+      }
+    } else if (section === "runners") {
+      const active = state.runners.some(runner => runner.busy || runner.current_pipeline_id);
+      tasks.push(pollActiveView("runners", scope, active ? 5000 : 30000, () => loadRunners(false)));
+    } else if (["overview", "pipelines", "graphs"].includes(section)) {
+      const active = state.pipelines.some(pipeline => ["queued", "running"].includes(pipeline.status));
+      if (!state.pipelineHasOlderPages && !state.pipelineSearchTimer) {
+        tasks.push(pollActiveView("pipelines", scope + pipelineHistoryParameters().toString(), active ? 5000 : 30000, () => loadPipelines(false)));
+      }
+      if (section === "graphs") {
+        const running = state.pipelineGraphs.some(detail => ["queued", "running"].includes(detail.pipeline.status));
+        tasks.push(pollActiveView("graphs", scope, running ? 5000 : 30000, () => loadPipelineGraphs(false)));
+      }
+    }
   }
-  if (state.section === "repositories" && !elements["pipeline-detail-dialog"].open) return;
-  if (!state.pipelineHasOlderPages && !state.pipelineSearchTimer) await loadPipelines(false);
-  if (state.section === "graphs") {
-    await loadPipelineGraphs(false);
+  await Promise.all(tasks);
+}
+
+// Retain timing for the current scope of each view, and track unfinished polls
+// until they settle so navigating away and back cannot duplicate a request.
+const activeViewPolls = new Map();
+const pendingViewPolls = new Map();
+async function pollActiveView(key, scope, interval, load) {
+  const requestKey = JSON.stringify([key, scope]);
+  let poll = activeViewPolls.get(key);
+  if (!poll || poll.scope !== scope) {
+    poll = pendingViewPolls.get(requestKey) || { scope, busy: false, finished: null, failures: 0 };
+    activeViewPolls.set(key, poll);
   }
-  if (state.selectedId && elements["pipeline-detail-dialog"].open) {
-    try { await loadPipelineDetail(state.selectedId); } catch (_) { /* next poll retries */ }
+  const delay = poll.failures ? Math.max(interval, Math.min(60000, 5000 * 2 ** poll.failures)) : interval;
+  if (poll.busy || (poll.finished !== null && Date.now() - poll.finished < delay)) return;
+  poll.busy = true;
+  pendingViewPolls.set(requestKey, poll);
+  try {
+    poll.failures = await load() === false ? Math.min(poll.failures + 1, 4) : 0;
+  } catch (_) {
+    poll.failures = Math.min(poll.failures + 1, 4);
+  } finally {
+    poll.finished = Date.now();
+    poll.busy = false;
+    pendingViewPolls.delete(requestKey);
   }
 }
 

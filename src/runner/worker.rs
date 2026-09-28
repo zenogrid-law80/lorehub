@@ -9,6 +9,7 @@ use super::{
     CoordinatorClient,
     client::retryable,
     executor::{self, Execution},
+    scheduler::run_jobs,
     update::{SelfUpdater, UpdateCheck},
 };
 use crate::{
@@ -335,12 +336,28 @@ impl Worker {
             "working_directory must be a directory inside the checkout"
         );
         let jobs = self.coordinator.create_jobs(pipeline.id, &config).await?;
-        for (job, spec) in jobs.iter().zip(&config.jobs) {
-            ensure!(!cancel.is_cancelled(), "pipeline canceled");
-            self.coordinator.job_status(job.id, "running", None).await?;
-            let job_token = self.worker_access_token(pipeline).await?;
+        ensure!(
+            jobs.len() == config.jobs.len(),
+            "coordinator returned an incomplete job list"
+        );
+        ensure!(
+            jobs.iter()
+                .zip(&config.jobs)
+                .all(|(job, spec)| job.name == spec.name && job.stage == spec.stage),
+            "coordinator job order differs from configuration"
+        );
+        run_jobs(&config, cancel, |index, cancel| {
+            let spec = &config.jobs[index];
+            let job = &jobs[index];
+            let coordinator = self.coordinator.clone();
+            let pipeline_id = pipeline.id;
+            let job_id = job.id;
+            let job_name = job.name.clone();
+            let issue_token = self.token_issuer.is_some();
+            let timeout = Duration::from_secs(spec.timeout_seconds);
             let mut shell = executor::shell(&spec.script, &working_directory);
-            // All entries share one platform shell so directory and environment changes persist.
+            // Jobs opt into sharing this checkout concurrently; scripts within
+            // each job still share one shell and its environment.
             shell
                 .env("LORE_PIPELINE_ID", pipeline.id.to_string())
                 .env("LORE_JOB_ID", job.id.to_string())
@@ -352,32 +369,39 @@ impl Worker {
             if let Some(branch) = pipeline.branch.as_deref() {
                 shell.env("LORE_BRANCH", branch);
             }
-            if let Some(token) = job_token.as_deref() {
-                shell
-                    .env("LORE_IDENTITY_TOKEN", token)
-                    .env("LORE_ACCESS_TOKEN", token);
-            }
             for name in ["ECR_ACCESS_KEY_ID", "ECR_ACCESS_KEY", "ECR_REGION"] {
                 if let Some(value) = std::env::var_os(name) {
                     shell.env(name, value);
                 }
             }
-            let execution = Execution {
-                job: Some(job.id),
-                ..execution
-            };
-            let code = execution
-                .run(shell, Duration::from_secs(spec.timeout_seconds))
-                .await?;
-            self.coordinator
-                .job_status(
-                    job.id,
-                    if code == 0 { "succeeded" } else { "failed" },
-                    Some(code),
-                )
-                .await?;
-            ensure!(code == 0, "job {} failed with exit code {code}", job.name);
-        }
+            async move {
+                ensure!(!cancel.is_cancelled(), "pipeline canceled");
+                coordinator.job_status(job_id, "running", None).await?;
+                if issue_token {
+                    let token = coordinator.worker_access_token(pipeline_id).await?;
+                    shell
+                        .env("LORE_IDENTITY_TOKEN", &token)
+                        .env("LORE_ACCESS_TOKEN", &token);
+                }
+                let execution = Execution {
+                    coordinator: &coordinator,
+                    pipeline: pipeline_id,
+                    job: Some(job_id),
+                    cancel: &cancel,
+                };
+                let code = execution.run(shell, timeout).await?;
+                coordinator
+                    .job_status(
+                        job_id,
+                        if code == 0 { "succeeded" } else { "failed" },
+                        Some(code),
+                    )
+                    .await?;
+                ensure!(code == 0, "job {job_name} failed with exit code {code}");
+                Ok(())
+            }
+        })
+        .await?;
         Ok(())
     }
 

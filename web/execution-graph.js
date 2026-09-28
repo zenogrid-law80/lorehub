@@ -2,7 +2,6 @@
 const executionViews = new Map();
 const executionModes = new Map();
 let executionGraphRequest = 0;
-let executionDetailRequest = 0;
 const EXECUTION_LABELS = {
   "Inspect run status, waiting reasons, and job logs against the execution snapshot.": ["실행 스냅샷을 기준으로 진행 상태, 대기 사유와 작업 로그를 확인합니다.", "基于运行快照查看执行状态、等待原因与任务日志。"],
   "Select a job for its logs. Current configuration is separate from run history.": ["작업을 선택하면 로그를 표시합니다. 현재 설정과 실행 이력은 별도로 표시합니다.", "选择任务查看日志。当前配置与运行历史分开显示。"],
@@ -16,7 +15,7 @@ const EXECUTION_LABELS = {
   "Exit code": ["종료 코드", "退出码"], "Not recorded": ["기록 없음", "无记录"],
   "Snapshot unavailable · showing recorded jobs only": ["스냅샷 없음 · 기록된 작업만 표시", "无快照 · 仅显示已记录任务"],
   "Recorded jobs differ from the snapshot · showing actual jobs": ["스냅샷과 등록된 작업이 다릅니다 · 실제 작업 기준 표시", "记录任务与快照不同 · 显示实际任务"],
-  "Stages run left to right; jobs run sequentially. Select a job for logs.": ["단계는 왼쪽부터, 작업은 순차 실행됩니다. 작업을 선택하면 로그를 표시합니다.", "阶段从左到右，任务依次执行。选择任务查看日志。"],
+  "Stages run left to right; jobs follow dependencies and the parallelism limit. Select a job for logs.": ["단계는 왼쪽부터 진행하며, 작업은 의존성과 동시 실행 제한을 따릅니다. 작업을 선택하면 로그를 표시합니다.", "阶段从左到右，任务遵循依赖关系和并发限制。选择任务查看日志。"],
   "Waiting for prerequisite pipelines": ["선행 파이프라인 완료 대기", "等待前置流水线"],
   "Waiting for Runner assignment": ["Runner 할당 대기", "等待分配 Runner"],
   "Waiting for a previous job": ["이전 작업 완료 대기", "等待前序任务"],
@@ -64,6 +63,8 @@ function executionWaitReason(detail, job, jobs) {
   if (detail.pipeline.status === "queued") return ({ dependencies: "Waiting for prerequisite pipelines", runner: "Waiting for Runner assignment", canceling: "Cancel requested" })[detail.queue_reason] || "Waiting reason unavailable";
   if (job?.status !== "queued") return "";
   if (detail.pipeline.status !== "running") return "Waiting reason unavailable";
+  // List order does not establish a blocker when jobs may run in parallel.
+  if (detail.graph?.max_parallel_jobs > 1) return "Waiting reason unavailable";
   const previous = jobs.slice(0, jobs.findIndex(item => item.id === job.id));
   return previous.some(item => ["running", "queued"].includes(item.status)) ? "Waiting for a previous job" : "Waiting reason unavailable";
 }
@@ -173,6 +174,7 @@ function renderExecutionWorkspace(host, original, baseKey) {
   context.append(textNode(`${t(configured ? "Configuration revision" : "Run revision")}: ${pipeline.revision || "—"}`, "run-revision"));
   const assigned = state.runners.find(runner => runner.id === pipeline.worker_id);
   context.append(textNode(`${t("Runner")}: ${assigned?.name || pipeline.worker_id || pipeline.runner_os || "—"} · ${t("Working directory")}: ${pipeline.working_directory || "."} · ${t("Sparse View")}: ${pipeline.sparse_view_name || "—"}`));
+  if (detail.graph?.max_parallel_jobs !== undefined) context.append(textNode(`${t("Maximum parallel jobs")}: ${detail.graph.max_parallel_jobs}`));
   const paths = pipeline.trigger_patterns || [];
   if (paths.length) context.append(textNode(`${t("Change paths")}: ${paths.join(", ")}`));
   const upstream = pipeline.pipeline_needs || detail.graph?.pipeline_needs || [];
@@ -204,7 +206,7 @@ function renderExecutionWorkspace(host, original, baseKey) {
     canvas.append(column);
   }
   if (!jobs.length) canvas.append(textNode(t("No recorded jobs")));
-  viewport.append(canvas); center.append(textNode(t("Stages run left to right; jobs run sequentially. Select a job for logs."), "run-legend"), viewport);
+  viewport.append(canvas); center.append(textNode(t("Stages run left to right; jobs follow dependencies and the parallelism limit. Select a job for logs."), "run-legend"), viewport);
   const inspector = document.createElement("aside"); inspector.className = "run-inspector"; inspector.setAttribute("aria-label", t("Job details"));
   inspector.append(textNode(selected?.name || t("Job details"), "run-job-name"));
   if (selected) {
@@ -218,33 +220,56 @@ function renderExecutionWorkspace(host, original, baseKey) {
     inspector.append(log);
     if (selected.planned || configured) log.textContent = t(configured ? "Configuration only · no execution status" : "Job not registered yet");
     else {
-      if (memo.logs?.job !== selected.id) memo.logs = { job: selected.id, rows: [], after: 0, busy: false, more: false, error: null, scroll: 0, bottom: true, trimmed: false };
+      const prunedAt = pipeline.logs_pruned_at || null;
+      if (memo.logs?.job !== selected.id || memo.logs.prunedAt !== prunedAt) {
+        memo.logs = { job: selected.id, prunedAt, rows: [], after: 0, started: false, busy: false, more: false, error: null, scroll: 0, bottom: true, trimmed: false, paint: null };
+      }
       const cache = memo.logs;
       const more = button("Load more logs", "more-logs", () => void fetchLogs(), inspector);
       const note = textNode("", "run-log-note"); inspector.append(note);
       function paintLogs() {
-        if (!host.isConnected || memo.logs !== cache) return;
+        if (!workspace.isConnected || memo.logs !== cache) return;
         const scroll = cache.scroll;
-        log.textContent = cache.rows.map(row => `[${row.stream}] ${row.content}`).join("") || t(cache.busy ? "Loading job logs…" : "No job logs yet");
-        note.textContent = cache.error || (cache.trimmed ? t("Showing the most recently loaded log lines") : "");
+        const output = cache.rows.map(row => `[${row.stream}] ${row.content}`).join("") || t(cache.busy ? "Loading job logs…" : "No job logs yet");
+        if (log.textContent !== output) log.textContent = output;
+        note.textContent = [cache.prunedAt && t("dynamic.logsPruned"), cache.error, cache.trimmed && t("Showing the most recently loaded log lines")].filter(Boolean).join(" ");
         more.hidden = !cache.more && !cache.error; more.disabled = cache.busy;
         more.textContent = t(cache.error ? "Retry logs" : "Load more logs");
         log.scrollTop = cache.bottom ? log.scrollHeight : scroll;
       }
+      // A pending request must paint the latest inspector, not detached DOM.
+      if (cache.busy) cache.paint = paintLogs;
       log.addEventListener("scroll", () => { cache.scroll = log.scrollTop; cache.bottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8; });
       async function fetchLogs() {
         if (cache.busy || memo.logs !== cache || !workspace.isConnected || !workspace.getClientRects().length) return;
+        cache.paint = paintLogs;
         cache.busy = true; cache.error = null; paintLogs();
         try {
           const rows = await api(`/api/v1/pipelines/${encodeURIComponent(pipeline.id)}/logs?job_id=${encodeURIComponent(selected.id)}&after=${cache.after}&limit=500`);
+          if (memo.logs !== cache) return;
+          cache.started = true;
           cache.after = rows.at(-1)?.id ?? cache.after; cache.more = rows.length === 500;
           cache.rows.push(...rows);
           let size = cache.rows.reduce((sum, row) => sum + row.content.length, 0);
           while (cache.rows.length > 1 && (cache.rows.length > 2000 || size > 512000)) { size -= cache.rows.shift().content.length; cache.trimmed = true; }
-        } catch (error) { cache.error = error.message; }
-        finally { cache.busy = false; paintLogs(); }
+          if (size > 512000) {
+            cache.rows[0] = { ...cache.rows[0], content: cache.rows[0].content.slice(-512000) };
+            cache.trimmed = true;
+          }
+        } catch (error) {
+          if (memo.logs === cache) { cache.error = error.message; cache.started = true; }
+        } finally {
+          cache.busy = false;
+          cache.paint?.();
+          cache.paint = null;
+        }
       }
-      window.requestAnimationFrame(() => { paintLogs(); void fetchLogs(); });
+      window.requestAnimationFrame(() => {
+        if (!workspace.isConnected || memo.logs !== cache) return;
+        paintLogs();
+        if (!cache.started || (!cache.more && !cache.error && cache.bottom)) void fetchLogs();
+        if (!cache.busy) cache.paint = null;
+      });
     }
   }
   const body = document.createElement("div"); body.className = "run-body"; body.append(center, inspector);

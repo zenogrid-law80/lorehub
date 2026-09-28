@@ -58,3 +58,53 @@ test("a late missing-file response cannot replace another branch's configuration
   await pending;
   assert.equal(state.repositoryConfigContent, "existing release configuration");
 });
+
+test("visual serialization preserves parallelism for root and named pipelines", () => {
+  const context = vm.createContext({});
+  vm.runInContext(fn("function serializeCiModel(", "function openNewRepository("), context);
+  const serialize = model => { context.model = model; return vm.runInContext("serializeCiModel(model)", context); };
+  const job = { name: "build", stage: "build", script: ["echo ok"], timeout_seconds: 30 };
+  const model = { stages: ["build"], jobs: [job], pipelines: [] };
+  assert.doesNotMatch(serialize(model), /max_parallel_jobs/);
+  model.max_parallel_jobs = 4;
+  assert.match(serialize(model), /^max_parallel_jobs = 4\nstages =/);
+  const named = { ...model, name: "build", category: "ci", runner_os: "linux", changes: ["src/**"], working_directory: "." };
+  const output = serialize({ stages: [], jobs: [], pipelines: [named, { ...named, name: "serial", max_parallel_jobs: 1 }] });
+  assert.equal(output.match(/max_parallel_jobs/g).length, 1);
+  assert.ok(output.indexOf("max_parallel_jobs = 4") < output.indexOf("[[pipelines.jobs]]"));
+  assert.ok(output.startsWith("[[pipelines]]"));
+});
+
+test("converting a manual pipeline preserves its parallelism and clears the root setting", () => {
+  const draft = { max_parallel_jobs: 4, stages: ["build"], jobs: [], pipelines: [] };
+  const state = { repositoryConfigEditing: true, repositoryConfigDraft: draft };
+  const context = vm.createContext({ state, renderRepositoryConfigVisual() {} });
+  vm.runInContext(fn("function addVisualPipeline(", "function deleteVisualPipeline("), context);
+  vm.runInContext("addVisualPipeline()", context);
+  assert.equal(draft.pipelines[0].max_parallel_jobs, 4);
+  assert.equal(draft.max_parallel_jobs, undefined);
+});
+
+test("pipeline inspector edits parallelism on the root or selected named pipeline", () => {
+  const node = () => ({ children: [], append(...items) { this.children.push(...items); } });
+  const inspector = node();
+  const context = vm.createContext({
+    state: { repositoryConfigSelection: { type: "pipeline" }, repositoryConfigEditing: false },
+    elements: { "repository-config-inspector": inspector, "repository-config-inspector-title": node() },
+    document: { createElement: node }, t: value => value,
+    configInspectorInput: (label, value, update, type, attributes) => ({ label, value, update, type, attributes }),
+    configInspectorPipelineDependencies: node, configInspectorSelect: node, configInspectorTextarea: node,
+  });
+  vm.runInContext(fn("function renderConfigInspector(", "function configInspectorInput("), context);
+  for (const legacy of [true, false]) {
+    inspector.children = [];
+    context.model = { max_parallel_jobs: 2, pipelines: [] };
+    context.selected = { legacy, pipeline: { max_parallel_jobs: 4, changes: [], stages: [], jobs: [] } };
+    vm.runInContext("renderConfigInspector(selected, model)", context);
+    const field = inspector.children.find(item => item.label === "Maximum parallel jobs");
+    assert.equal(field.value, legacy ? 2 : 4);
+    assert.equal(field.attributes.max, 16);
+    field.update("8");
+    assert.equal(legacy ? context.model.max_parallel_jobs : context.selected.pipeline.max_parallel_jobs, 8);
+  }
+});

@@ -1430,3 +1430,140 @@ script = ['exit 99']
         .unwrap();
     assert_eq!(count, 0);
 }
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn worker_parallel_jobs_share_outputs_and_honor_dependencies(pool: PgPool) {
+    let root = tempfile::tempdir().unwrap();
+    let lore_bin = fake_lore(
+        root.path(),
+        r#"
+max_parallel_jobs = 2
+stages = ["build", "test"]
+[[jobs]]
+name = "a"
+stage = "build"
+timeout_seconds = 5
+script = ['touch a.started', 'while ! test -f b.started; do sleep 0.01; done', 'echo A > a.out']
+[[jobs]]
+name = "b"
+stage = "build"
+timeout_seconds = 5
+script = ['touch b.started', 'while ! test -f c.done; do sleep 0.01; done', 'echo B > b.out']
+[[jobs]]
+name = "c"
+stage = "build"
+needs = ["a"]
+timeout_seconds = 5
+script = ['test -f a.out', 'test ! -f b.out', 'echo C > c.done']
+[[jobs]]
+name = "verify"
+stage = "test"
+script = ['test -f a.out', 'test -f b.out', 'test -f c.done', 'echo parallel-success']
+"#,
+    );
+    let id = Uuid::new_v4();
+    let worker = Worker {
+        coordinator: coordinator_client(&pool, id).await,
+        id,
+        work_dir: root.path().join("work"),
+        lore_bin,
+        token_issuer: None,
+    };
+    let pipeline = db::submit(&pool, &input()).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        worker.run(CancellationToken::new(), true),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(status(&pool, pipeline.id).await, "succeeded");
+    let jobs: Vec<(String, String)> =
+        sqlx::query_as("SELECT name,status FROM jobs WHERE pipeline_id=$1 ORDER BY position")
+            .bind(pipeline.id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        jobs,
+        ["a", "b", "c", "verify"].map(|name| (name.to_owned(), "succeeded".to_owned()))
+    );
+    let output: String = sqlx::query_scalar("SELECT string_agg(content,'' ORDER BY id) FROM logs WHERE pipeline_id=$1 AND job_id IS NOT NULL")
+        .bind(pipeline.id).fetch_one(&pool).await.unwrap();
+    assert!(output.contains("parallel-success"));
+    assert_eq!(
+        std::fs::read_dir(root.path().join("work")).unwrap().count(),
+        0
+    );
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn worker_parallel_failure_reaps_sibling_processes_and_skips_pending_jobs(pool: PgPool) {
+    let root = tempfile::tempdir().unwrap();
+    let lore_bin = fake_lore(
+        root.path(),
+        r#"
+max_parallel_jobs = 2
+stages = ["build", "deploy"]
+[[jobs]]
+name = "fail"
+stage = "build"
+timeout_seconds = 5
+script = ['while ! test -f sibling.started; do sleep 0.01; done', 'exit 7']
+[[jobs]]
+name = "sibling"
+stage = "build"
+timeout_seconds = 5
+script = ['(sleep 2; touch "$LORE_PROJECT_DIR/../../../survived") & touch sibling.started; wait']
+[[jobs]]
+name = "dependent"
+stage = "build"
+needs = ["fail"]
+script = ['echo must-not-run']
+[[jobs]]
+name = "deploy"
+stage = "deploy"
+script = ['echo must-not-run']
+"#,
+    );
+    let id = Uuid::new_v4();
+    let worker = Worker {
+        coordinator: coordinator_client(&pool, id).await,
+        id,
+        work_dir: root.path().join("work"),
+        lore_bin,
+        token_issuer: None,
+    };
+    let pipeline = db::submit(&pool, &input()).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        worker.run(CancellationToken::new(), true),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(status(&pool, pipeline.id).await, "failed");
+    let jobs: Vec<(String, Option<i32>)> =
+        sqlx::query_as("SELECT status,exit_code FROM jobs WHERE pipeline_id=$1 ORDER BY position")
+            .bind(pipeline.id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        jobs,
+        vec![
+            ("failed".into(), Some(7)),
+            ("failed".into(), None),
+            ("skipped".into(), None),
+            ("skipped".into(), None)
+        ]
+    );
+    assert_eq!(
+        std::fs::read_dir(root.path().join("work")).unwrap().count(),
+        0
+    );
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    assert!(!root.path().join("survived").exists());
+}

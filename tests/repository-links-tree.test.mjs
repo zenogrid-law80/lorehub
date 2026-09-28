@@ -92,28 +92,35 @@ test("folder context menu offers Add link and deletes only a real LINK", () => {
   assert.equal(body.children.at(-1).children.length, 1);
   get("openRepositoryLinkContextMenu(contextEvent('assets/Test', 'link'))");
   const linkMenu = body.children.at(-1);
-  assert.equal(linkMenu.children.length, 4);
-  assert.equal(linkMenu.children[1].textContent, "dynamic.updateLink");
-  assert.equal(linkMenu.children[2].textContent, "Switch to manual sync");
-  assert.equal(linkMenu.children[3].textContent, "Delete link");
-  for (const button of linkMenu.children.slice(1)) button.listeners.click();
+  const linkActions = linkMenu.children.filter(child => child.attributes.role === "menuitem");
+  assert.equal(linkActions.length, 4);
+  assert.equal(linkActions[0].disabled, true);
+  assert.equal(linkActions[0].title, "A LINK cannot be created below {path} because it is already a LINK.");
+  assert.equal(linkMenu.children.at(-1).textContent, linkActions[0].title);
+  assert.equal(linkActions[1].textContent, "dynamic.updateLink");
+  assert.equal(linkActions[2].textContent, "Switch to manual sync");
+  assert.equal(linkActions[3].textContent, "Delete link");
+  for (const button of linkActions.slice(1)) button.listeners.click();
   assert.deepEqual(performed, [["update", "assets/Test"], ["policy", "assets/Test"], ["remove", "assets/Test"]]);
+  get("openRepositoryLinkContextMenu(contextEvent('assets/Test/child'))");
+  const childActions = body.children.at(-1).children.filter(child => child.attributes.role === "menuitem");
+  assert.equal(childActions.length, 2);
+  assert.equal(childActions[0].disabled, true);
+  assert.equal(childActions[1].disabled, true);
 });
 
-test("Add link preselects the same source folder for child nodes", () => {
+test("Add link preselects source folders and refuses paths inside an existing link", () => {
   const formSource = source.slice(source.indexOf("function openNewRepositoryLink("), source.indexOf("async function loadRepositoryLinkSourceBranches("));
+  let opened = 0;
   const elements = Object.fromEntries([
     "repository-link-form", "repository-link-path", "repository-link-progress", "repository-link-root-name",
     "repository-link-source-repository", "repository-link-source-path", "create-repository-link-button",
     "new-repository-link-dialog",
-  ].map(id => [id, { value: "", reset() {}, replaceChildren() {}, add() {}, showModal() {}, focus() {} }]));
-  const state = {
-    repositoryLinksBusy: false, repositoryLinksStatus: "ready", repositoryLinksRevision: "a".repeat(64),
-    repositoryLinksName: "game", repositoryLinksBranch: "main",
-    repositories: [{ name: "game" }, { name: "developer" }],
-  };
-  const context = vm.createContext({
-    state, elements, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
+  ].map(id => [id, { value: "", reset() {}, replaceChildren() {}, add() {}, showModal() { opened++; }, focus() {} }]));
+  const { state, context, get } = setup();
+  state.repositories = [{ name: "game" }, { name: "developer" }];
+  Object.assign(context, {
+    elements, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     t: key => key, setRepositoryLinkFormError() {}, loadRepositoryLinkSourceBranches() {},
     renderRepositoryLinkPreview() {}, window: { setTimeout() {} },
   });
@@ -124,6 +131,17 @@ test("Add link preselects the same source folder for child nodes", () => {
   vm.runInContext("openNewRepositoryLink()", context);
   assert.equal(elements["repository-link-path"].value, "");
   assert.equal(elements["repository-link-source-path"].value, ".");
+  assert.equal(opened, 2);
+  state.repositoryLinks = [{ path: "assets/characters" }];
+  get("openNewRepositoryLink('assets/characters')");
+  get("openNewRepositoryLink('assets/characters/hero')");
+  assert.equal(opened, 2);
+  assert.equal(elements["repository-link-path"].value, "");
+  assert.equal(elements["repository-link-source-path"].value, ".");
+  get("openNewRepositoryLink('assets/characters-extra')");
+  assert.equal(opened, 3);
+  assert.equal(elements["repository-link-path"].value, "assets/characters-extra/");
+  assert.equal(elements["repository-link-source-path"].value, "assets/characters-extra");
 });
 
 test("links are grouped under their actual path segments", () => {

@@ -196,6 +196,10 @@ pub fn router_with_releases(
         .route("/assets/app.js", get(web::script))
         .route("/assets/ci-visual.js", get(web::ci_script))
         .route("/assets/ci-editor.js", get(web::ci_editor_script))
+        .route(
+            "/assets/execution-detail.js",
+            get(web::execution_detail_script),
+        )
         .route("/assets/execution-graph.js", get(web::execution_script))
         .route(
             "/assets/execution-analysis.js",
@@ -945,8 +949,17 @@ pub(super) async fn add_repository_link(
         .strip_prefix("urc-")
         .unwrap_or(&root_repository.id);
     let root_resource_id = format!("urc-{}", root_resource_id.to_ascii_lowercase());
+    let source_resource_id = format!(
+        "urc-{}",
+        source_repository
+            .id
+            .strip_prefix("urc-")
+            .unwrap_or(&source_repository.id)
+            .to_ascii_lowercase()
+    );
     let mut link_tx = state.pool.begin().await?;
     triggers::acquire_link_branch_lock(&mut link_tx, &root_resource_id, &input.branch).await?;
+    triggers::acquire_link_graph_lock(&mut link_tx).await?;
     let existing = state
         .repositories
         .links_on(&name, &input.branch, root_backend, &access_token)
@@ -1002,6 +1015,38 @@ pub(super) async fn add_repository_link(
             "root branch changed; refresh before creating the link".into(),
         ));
     }
+    // The index covers every known branch; read the selected source branch live as
+    // well, since its latest push may not have reached the watcher yet.
+    let source_links = state
+        .repositories
+        .links_on(
+            &input.source_repository,
+            &input.source_branch,
+            source_backend,
+            &access_token,
+        )
+        .await?;
+    let live_source_links = source_links
+        .links
+        .iter()
+        .map(|link| format!("urc-{}", link.source_repository_id))
+        .collect::<Vec<_>>();
+    if triggers::link_would_cycle(
+        &state.pool,
+        &root_resource_id,
+        &source_resource_id,
+        &live_source_links,
+    )
+    .await?
+    {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            format!(
+                "linking '{}' to '{}' would create a repository dependency cycle",
+                name, input.source_repository
+            ),
+        ));
+    }
     super::links::stage(&state.pool, input.operation_id, "source", false, false).await?;
     let source_path_created = state
         .repositories
@@ -1041,7 +1086,7 @@ pub(super) async fn add_repository_link(
     // interprets it as a revision, producing `revision not found: main`. Pin the full source
     // revision instead. Lore still records the source branch ID discovered from the repository,
     // so automatic updates can continue following that branch.
-    let mut expected_revision = existing.revision;
+    let mut expected_revision = existing.revision.clone();
     let mut stale_revision_retries = 0;
     let revision = loop {
         match state
@@ -1104,6 +1149,27 @@ pub(super) async fn add_repository_link(
         input.auto_update,
     )
     .await?;
+    // Publish the new graph edge before releasing the graph lock. The watcher
+    // will replace this provisional snapshot with the pushed revision.
+    sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,$2,$3) ON CONFLICT(root_resource_id,root_branch) DO UPDATE SET root_revision=EXCLUDED.root_revision,updated_at=now()")
+        .bind(&root_resource_id).bind(&input.branch).bind(&existing.revision).execute(&mut *link_tx).await?;
+    sqlx::query(
+        "DELETE FROM repository_link_dependencies WHERE root_resource_id=$1 AND root_branch=$2",
+    )
+    .bind(&root_resource_id)
+    .bind(&input.branch)
+    .execute(&mut *link_tx)
+    .await?;
+    for link in &existing.links {
+        sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+            .bind(&root_resource_id).bind(&input.branch).bind(&existing.revision).bind(&link.path)
+            .bind(format!("urc-{}", link.source_repository_id)).bind(&link.source_branch_id)
+            .bind(&link.source_revision).bind(link.tracking).execute(&mut *link_tx).await?;
+    }
+    sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+        .bind(&root_resource_id).bind(&input.branch).bind(&existing.revision).bind(&input.path)
+        .bind(&source_resource_id).bind(&source_branch.id).bind(&source_branch.revision)
+        .bind(true).execute(&mut *link_tx).await?;
     link_tx.commit().await?;
     Ok(RepositoryLinkAddition {
         revision,

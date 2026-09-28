@@ -3,21 +3,30 @@ import vm from "node:vm";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const source = await readFile(new URL("../web/app.js", import.meta.url), "utf8");
-const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+const source = await readFile(new URL("../web/execution-detail.js", import.meta.url), "utf8");
 function setup(api = async () => []) {
-  const node = () => ({ children: [], scrollTop: 0, scrollHeight: 1000, replaceChildren(...children) { this.children = children; }, append(child) { this.children.push(child); }, setAttribute(key, value) { this[key] = value; }, showModal() { this.open = true; } });
+  const node = () => ({
+    children: [], scrollTop: 0, scrollHeight: 1000, writes: 0, replacements: 0,
+    get textContent() { return this.text || ""; },
+    set textContent(value) { this.text = value; this.writes++; },
+    replaceChildren(...children) { this.replacements++; this.children.forEach(child => { child.parent = null; }); this.children = []; children.forEach(child => this.append(child)); },
+    append(child) { child.parent = this; this.children.push(child); },
+    prepend(child) { child.parent = this; this.children.unshift(child); },
+    remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; },
+    setAttribute(key, value) { this[key] = value; }, showModal() { this.open = true; },
+  });
   const elements = Object.fromEntries(["pipeline-log", "detail-log-more", "detail-log-follow", "detail-log-restart", "detail-log-note", "detail-retry", "detail-repository", "detail-title", "detail-summary", "execution-graph", "execution-graph-section", "job-list", "job-count", "cancel-pipeline-button", "pipeline-detail-dialog", "detail-copy-link", "detail-permalink"].map(id => [id, node()]));
   const events = [];
   const state = { locale: "en", selectedId: "run", detailLogView: null };
-  const context = vm.createContext({ state, elements, executionDetailRequest: 0, api, t: key => key,
-    textNode: (textContent, className) => ({ textContent, className }), document: { createElement: node },
+  const context = vm.createContext({ state, elements, api, t: key => key,
+    textNode: (textContent, className) => Object.assign(node(), { textContent, className }), document: { createElement: node },
     repositoryName: value => value, revisionLabel: () => "revision", pipelineCategory: () => "test", toast() {},
     pipelinePermalink: id => `https://fixture/#pipelines?run=${id}`, recordPipelineLocation() {},
+  });
+  vm.runInContext(source, context);
+  Object.assign(context, {
     renderDetailSummary() { events.push("summary"); }, renderExecutionGraph() { events.push("graph"); }, renderJobs() { events.push("jobs"); },
   });
-  vm.runInContext(section("const detailLogCopy =", "function renderExecutionGraph("), context);
-  vm.runInContext(section("function renderLogs(", "async function cancelPipeline("), context);
   const get = code => vm.runInContext(code, context);
   get("resetDetailLogs('run')");
   return { get, state, elements, events, context };
@@ -153,10 +162,86 @@ test("restart fetches the first page and keeps its beginning visible", async () 
   const requests = [];
   const { get, state, elements } = setup(async path => { requests.push(path); return rows(0, 500); });
   state.detailLogView.after = 2500;
+  state.detailLogView.status = "succeeded";
   elements["pipeline-log"].scrollTop = 5000;
   await get("restartDetailLogs()");
   assert.ok(requests[0].includes("after=0"));
   assert.equal(state.detailLogView.rows[0].id, 1);
   assert.equal(state.detailLogView.follow, false);
+  assert.equal(state.detailLogView.status, "succeeded");
   assert.equal(elements["pipeline-log"].scrollTop, 0);
+});
+
+test("cancellation stays single-flight through polling and cannot refresh a different run", async () => {
+  let finish;
+  const requests = [], notices = [];
+  const { get, context, elements, state } = setup(async (path, options) => {
+    requests.push([path, options?.method]);
+    if (path.endsWith("/cancel")) return new Promise(resolve => { finish = resolve; });
+    return path.includes("/logs?") ? [] : detail(null);
+  });
+  Object.assign(context, { csrfToken: () => "csrf", loadPipelines: async () => {}, toast: (...args) => notices.push(args) });
+  const pending = get("cancelPipeline()");
+  await get("loadPipelineDetail('run')");
+  assert.equal(elements["cancel-pipeline-button"].disabled, true);
+  await get("cancelPipeline()");
+  assert.equal(requests.filter(([path]) => path.endsWith("/cancel")).length, 1);
+  state.selectedId = "other";
+  elements["cancel-pipeline-button"].disabled = true;
+  finish(); await pending;
+  assert.equal(requests.some(([path]) => path.includes("other")), false);
+  assert.equal(elements["cancel-pipeline-button"].disabled, true);
+  assert.equal(notices.length, 0);
+});
+
+test("a failed cancellation from an earlier opening cannot report errors in the reopened drawer", async () => {
+  let fail;
+  const notices = [];
+  const { get, context, elements } = setup(async path => {
+    if (path.endsWith("/cancel")) return new Promise((resolve, reject) => { fail = reject; });
+    return path.includes("/logs?") ? [] : detail(null);
+  });
+  Object.assign(context, { csrfToken: () => "csrf", loadPipelines: async () => {}, toast: (...args) => notices.push(args) });
+  const pending = get("cancelPipeline()");
+  await get("openPipeline('run')");
+  assert.equal(elements["cancel-pipeline-button"].disabled, true);
+  fail(new Error("old cancellation failed")); await pending;
+  assert.equal(notices.length, 0);
+  assert.equal(elements["cancel-pipeline-button"].disabled, false);
+});
+
+
+test("unchanged polling preserves log nodes, text selection targets, and scroll", () => {
+  const { get, state, elements } = setup();
+  const cache = state.detailLogView, terminal = elements["pipeline-log"];
+  Object.assign(cache, { follow: false, rows: rows(0, 3) });
+  get("renderLogs(state.detailLogView.rows, null)");
+  const original = [...terminal.children];
+  terminal.scrollTop = 123;
+  const writes = original.map(node => node.writes), replacements = terminal.replacements;
+  get("renderLogs(state.detailLogView.rows, null)");
+  assert.deepEqual(terminal.children, original);
+  assert.deepEqual(original.map(node => node.writes), writes);
+  assert.equal(terminal.replacements, replacements);
+  assert.equal(terminal.scrollTop, 123);
+  cache.rows.push(...rows(3, 2));
+  get("renderLogs(state.detailLogView.rows, null)");
+  assert.equal(terminal.children.length, 5);
+  original.forEach((node, index) => assert.equal(terminal.children[index], node));
+  assert.equal(terminal.scrollTop, 123);
+  cache.rows.splice(0, 2);
+  get("renderLogs(state.detailLogView.rows, null)");
+  assert.equal(terminal.children.length, 3);
+  assert.equal(terminal.children[0], original[2]);
+});
+
+test("trimming a large retained record updates its existing node", () => {
+  const { get, state, elements } = setup();
+  state.detailLogView.rows = rows(0, 1, "before");
+  get("renderLogs(state.detailLogView.rows, null)");
+  const retained = elements["pipeline-log"].children[0];
+  state.detailLogView.rows[0] = { ...state.detailLogView.rows[0], content: "after" };
+  get("renderLogs(state.detailLogView.rows, null)");
+  assert.equal(elements["pipeline-log"].children[0], retained);
+  assert.equal(retained.textContent, "after");
 });

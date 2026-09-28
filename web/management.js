@@ -87,8 +87,12 @@ function setManagementVisibility(visible) {
     document.querySelector(`#mobile-page-select option[value="${section}"]`).hidden = !visible;
   }
   if (!visible) {
-    operations.snapshot = null;
-    operations.request++;
+    management.request++;
+    if (repositoryAccessEditor.drafts.size) management.dirty = false;
+    resetRepositoryAccessEditor();
+    management.repositoryAccess = { repositories: [], groups: [] };
+    document.getElementById("repository-access-page").replaceChildren();
+    resetOperationsState();
     document.getElementById("operations-page").replaceChildren();
   }
 }
@@ -109,7 +113,7 @@ function managementLocale() {
     if (option) option.textContent = (link.querySelector(".management-nav-label") || link.querySelector("span")).textContent;
   }
   // Preserve authored drafts when changing language.
-  if (isManagement() && !management.dirty) renderManagement();
+  if (isManagement() && (!management.dirty || state.section === "repository-access")) renderManagement();
 }
 function managementShell(section, titleKey, introKey) {
   const page = document.getElementById(`${section}-page`); page.replaceChildren();
@@ -260,43 +264,221 @@ function confirmManagement(message, name, action) {
   const actions = mn("div", "modal-actions"); const button = mb(mt("remove"), () => void action(button), "danger"); actions.append(mb(mt("cancel"), () => dialog.close()), button); form.append(actions);
   form.addEventListener("submit", event => event.preventDefault()); dialog.showModal();
 }
-function discardManagement() { if (management.dirty && !window.confirm(mt("discard"))) return false; management.dirty = false; return true; }
-function renderRepositoryAccess() {
-  const page = managementShell("repository-access", "repositoryAccess", "accessIntro");
-  page.append(mn("p", "management-notice", mt("accessHint")));
-  const query = state.query.toLowerCase();
-  const accessGroups = management.repositoryAccess.groups;
-  const rows = management.repositoryAccess.repositories.filter(repository => !query || `${repository.repository_name} ${accessGroups.filter(group => repository.group_ids.includes(group.id)).map(group => group.name).join(" ")}`.toLowerCase().includes(query));
-  const list = mn("div", "management-group-grid");
-  for (const repository of rows) {
-    const card = mn("article", "pipeline-panel management-group-card");
-    const header = mn("header", "management-card-heading");
-    header.append(mn("h2", "", repository.repository_name), mn("span", "os-badge", `${repository.group_ids.length}`));
-    const groups = mn("fieldset", "management-member-picker");
-    groups.append(mn("legend", "", mt("grantedGroups")));
-    for (const group of accessGroups) {
-      const label = mn("label", "management-member-option");
-      const checkbox = mn("input"); checkbox.type = "checkbox"; checkbox.value = group.id; checkbox.checked = repository.group_ids.includes(group.id);
-      label.append(checkbox, mn("span", "", group.name)); groups.append(label);
-    }
-    if (!accessGroups.length) groups.append(mn("p", "management-note", mt("noGroup")));
-    const save = mb(mt("saveAccess"), () => {
-      const group_ids = [...groups.querySelectorAll("input:checked")].map(input => input.value);
-      void managementMutation(save, `/api/v1/repository-group-access/${encodeURIComponent(repository.resource_id)}`, "POST", { group_ids }, loadManagement);
-    }, "primary");
-    const initial = JSON.stringify([...repository.group_ids].sort());
-    const sync = () => {
-      save.disabled = JSON.stringify([...groups.querySelectorAll("input:checked")].map(input => input.value).sort()) === initial;
-      card.dataset.dirty = String(!save.disabled);
-      management.dirty = Boolean(page.querySelector('[data-dirty="true"]'));
-    };
-    groups.addEventListener("change", sync); save.disabled = true;
-    const actions = mn("div", "management-actions"); actions.append(save);
-    card.append(header, groups, actions); list.append(card);
-  }
-  if (!rows.length) list.append(mn("p", "management-note", mt("noManageableRepositories")));
-  page.append(list);
+function discardManagement() {
+  if (repositoryAccessEditor.saving.size) { toast(mt("accessSavingWait"), "error"); return false; }
+  if (management.dirty && !window.confirm(mt("discard"))) return false;
+  resetRepositoryAccessEditor(); management.dirty = false; return true;
 }
+const repositoryAccessEditor = { selected: "", filter: "all", groupQuery: "", drafts: new Map(), saving: new Set(), errors: new Map(), generation: 0 };
+Object.assign(managementCopy, {
+  accessRepositories: ["저장소", "Repositories", "仓库"],
+  accessConnected: ["그룹 연결됨", "Groups assigned", "已分配组"],
+  accessUnconnected: ["그룹 연결 없음", "No groups assigned", "未分配组"],
+  accessPending: ["변경한 저장소", "Repositories with changes", "有更改的仓库"],
+  accessAll: ["전체", "All", "全部"],
+  accessFilter: ["그룹 연결 상태", "Group assignment status", "组分配状态"],
+  accessNoResults: ["검색 조건에 맞는 저장소가 없습니다.", "No repositories match these filters.", "没有符合筛选条件的仓库。"],
+  accessClearFilters: ["검색 및 필터 초기화", "Clear search and filters", "清除搜索和筛选"],
+  accessGroupSearch: ["그룹 이름 또는 설명 검색", "Search group names or descriptions", "搜索组名称或描述"],
+  accessNoMatchingGroups: ["검색한 그룹이 없습니다. 다른 이름이나 설명으로 찾아보세요.", "No matching groups. Try another name or description.", "没有匹配的组，请尝试其他名称或描述。"],
+  accessChoose: ["왼쪽 목록에서 권한을 편집할 저장소를 선택하세요.", "Choose a repository from the list to edit access.", "从列表中选择要编辑权限的仓库。"],
+  accessSelectGroups: ["그룹별 접근 설정", "Group access settings", "组访问设置"],
+  accessDraftHint: ["그룹을 선택하고 변경 내용을 확인한 뒤 저장하세요. 저장소를 전환해도 작성 중인 변경은 유지됩니다.", "Select groups, review the changes, then save. Drafts are kept when switching repositories.", "选择组、检查更改后保存。切换仓库时保留草稿。"],
+  accessSelected: ["선택한 그룹", "Selected groups", "已选择的组"],
+  accessAdd: ["추가할 그룹", "Groups to add", "要添加的组"],
+  accessRemove: ["해제할 그룹", "Groups to remove", "要移除的组"],
+  accessNoChanges: ["저장된 권한과 같습니다.", "Matches the saved access settings.", "与已保存的权限设置一致。"],
+  accessDiscard: ["이 저장소 변경 취소", "Discard changes to this repository", "放弃此仓库的更改"],
+  accessNoGrants: ["연결된 그룹이 없습니다. 저장소 소유자와 관리자의 기본 권한은 유지됩니다.", "No groups are assigned. Repository owners and administrators keep their access.", "未分配任何组，仓库所有者和管理员仍保留访问权限。"],
+  accessRemovalHint: ["그룹 연결을 해제해도 다른 그룹이나 소유자·관리자 권한을 통한 접근은 유지됩니다.", "Removing a group does not remove access through other groups, ownership, or administrator privileges.", "移除组不会取消通过其他组、所有者或管理员权限获得的访问。"],
+  accessLimit: ["저장소당 최대 200개 그룹을 연결할 수 있습니다.", "A repository supports up to 200 groups.", "每个仓库最多可分配 200 个组。"],
+  accessSavingWait: ["권한을 저장하고 있습니다. 완료 후 이동하거나 새로고침하세요.", "Access is being saved. Wait before leaving or refreshing.", "正在保存权限，请完成后再离开或刷新。"],
+  accessSaved: ["저장됨", "Saved", "已保存"],
+});
+function resetRepositoryAccessEditor() {
+  repositoryAccessEditor.generation++;
+  repositoryAccessEditor.drafts.clear(); repositoryAccessEditor.saving.clear(); repositoryAccessEditor.errors.clear();
+  repositoryAccessEditor.selected = ""; repositoryAccessEditor.groupQuery = "";
+  repositoryAccessEditor.filter = "all";
+}
+function repositoryAccessSelection(repository) {
+  return repositoryAccessEditor.drafts.get(repository.resource_id) || new Set(repository.group_ids);
+}
+function repositoryAccessChanges(repository) {
+  const selected = repositoryAccessSelection(repository), saved = new Set(repository.group_ids);
+  return { added: [...selected].filter(id => !saved.has(id)), removed: [...saved].filter(id => !selected.has(id)) };
+}
+function updateRepositoryAccessDraft(repository, groupId, checked) {
+  if (repositoryAccessEditor.saving.has(repository.resource_id)) return;
+  const selected = new Set(repositoryAccessSelection(repository));
+  checked ? selected.add(groupId) : selected.delete(groupId);
+  repositoryAccessEditor.drafts.set(repository.resource_id, selected);
+  const changes = repositoryAccessChanges(repository);
+  if (!changes.added.length && !changes.removed.length) repositoryAccessEditor.drafts.delete(repository.resource_id);
+  repositoryAccessEditor.errors.delete(repository.resource_id);
+  management.dirty = repositoryAccessEditor.drafts.size > 0;
+}
+function filteredRepositoryAccess() {
+  const query = (state.query || "").trim().toLocaleLowerCase();
+  const names = new Map(management.repositoryAccess.groups.map(group => [group.id, group.name]));
+  return management.repositoryAccess.repositories.filter(repository => {
+    const ids = repositoryAccessSelection(repository);
+    const text = [repository.repository_name, repository.resource_id, ...[...ids].map(id => names.get(id) || id)].join(" ").toLocaleLowerCase();
+    return (!query || text.includes(query)) && (repositoryAccessEditor.filter === "all" || (repositoryAccessEditor.filter === "connected" ? ids.size > 0 : ids.size === 0));
+  });
+}
+async function saveRepositoryAccess(resourceId) {
+  const repository = management.repositoryAccess.repositories.find(item => item.resource_id === resourceId);
+  if (!repository || state.user?.role !== "admin" || repositoryAccessEditor.saving.has(resourceId) || !repositoryAccessEditor.drafts.has(resourceId)) return;
+  const groupIds = [...repositoryAccessSelection(repository)].sort();
+  if (groupIds.length > 200) return;
+  const generation = repositoryAccessEditor.generation, userId = state.user.id;
+  const current = () => generation === repositoryAccessEditor.generation && state.user?.id === userId && state.user?.role === "admin";
+  repositoryAccessEditor.saving.add(resourceId); repositoryAccessEditor.errors.delete(resourceId);
+  renderRepositoryAccess();
+  try {
+    await api(`/api/v1/repository-group-access/${encodeURIComponent(resourceId)}`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify({ group_ids: groupIds }),
+    });
+    if (!current()) return;
+    const saved = management.repositoryAccess.repositories.find(item => item.resource_id === resourceId);
+    if (saved) saved.group_ids = groupIds;
+    repositoryAccessEditor.drafts.delete(resourceId);
+    toast(`${repository.repository_name} · ${mt("saved")}`, "success");
+  } catch (error) {
+    if (current()) repositoryAccessEditor.errors.set(resourceId, error.message);
+  } finally {
+    if (current()) {
+      repositoryAccessEditor.saving.delete(resourceId);
+      management.dirty = repositoryAccessEditor.drafts.size > 0;
+      if (state.section === "repository-access") renderRepositoryAccess();
+    }
+  }
+}
+function renderRepositoryAccess() {
+  const previous = document.getElementById("repository-access-page");
+  if (state.user?.role !== "admin") { previous.replaceChildren(); return; }
+  const focused = previous.contains(document.activeElement) ? document.activeElement : null;
+  const focusId = focused?.id, cursor = focused?.selectionStart;
+  const page = managementShell("repository-access", "repositoryAccess", "accessIntro");
+  const data = management.repositoryAccess, editor = repositoryAccessEditor;
+  if (!data.repositories.some(repository => repository.resource_id === editor.selected)) editor.selected = filteredRepositoryAccess()[0]?.resource_id || "";
+  const summary = mn("div", "repository-access-summary"); page.append(summary);
+  const paintSummary = () => {
+    summary.replaceChildren();
+    for (const [key, count] of [["accessRepositories", data.repositories.length], ["accessConnected", data.repositories.filter(repository => repositoryAccessSelection(repository).size).length], ["accessPending", editor.drafts.size]]) {
+      const card = mn("div", "repository-access-stat"); card.append(mn("span", "", mt(key)), mn("strong", "", String(count))); summary.append(card);
+    }
+  };
+  paintSummary();
+  const layout = mn("div", "repository-access-layout"), sidebar = mn("section", "pipeline-panel repository-access-sidebar"), detail = mn("section", "pipeline-panel repository-access-detail");
+  sidebar.setAttribute("aria-label", mt("accessRepositories")); detail.setAttribute("aria-label", mt("accessSelectGroups"));
+  const tools = mn("div", "repository-access-tools");
+  const search = mi("repository-access-search", state.query || "", 200); search.type = "search"; search.placeholder = mt("accessSearch"); search.setAttribute("aria-label", mt("accessSearch"));
+  const filters = mn("div", "repository-access-filters"); filters.setAttribute("role", "group"); filters.setAttribute("aria-label", mt("accessFilter"));
+  for (const [value, key] of [["all", "accessAll"], ["connected", "accessConnected"], ["unconnected", "accessUnconnected"]]) {
+    const button = mb(mt(key), () => { editor.filter = value; renderRepositoryAccess(); });
+    button.id = `repository-access-filter-${value}`;
+    button.setAttribute("aria-pressed", String(editor.filter === value)); filters.append(button);
+  }
+  tools.append(search, filters);
+  const list = mn("div", "repository-access-list"); sidebar.append(tools, list);
+  const paintList = () => {
+    const activeId = list.contains(document.activeElement) ? document.activeElement.id : "";
+    const scrollTop = list.scrollTop;
+    list.replaceChildren();
+    const rows = filteredRepositoryAccess();
+    for (const repository of rows) {
+      const button = mb("", () => { editor.selected = repository.resource_id; editor.groupQuery = ""; paintList(); paintDetail(); });
+      button.id = `repository-access-repository-${repository.resource_id}`;
+      button.className = "repository-access-repository"; button.setAttribute("aria-pressed", String(editor.selected === repository.resource_id));
+      const copy = mn("span", "repository-access-repository-copy");
+      copy.append(mn("strong", "", repository.repository_name), mn("small", "", repository.resource_id));
+      const count = repositoryAccessSelection(repository).size;
+      copy.append(mn("span", "repository-access-meta", `${mt("grantedGroups")} · ${count}`));
+      button.append(copy);
+      if (editor.drafts.has(repository.resource_id)) button.append(mn("span", "repository-access-draft", mt(editor.saving.has(repository.resource_id) ? "saving" : "unsaved")));
+      list.append(button);
+    }
+    if (!rows.length) {
+      list.append(mn("p", "management-note", mt(data.repositories.length ? "accessNoResults" : "noManageableRepositories")));
+      if (data.repositories.length) list.append(mb(mt("accessClearFilters"), () => { state.query = ""; elements["pipeline-search"].value = ""; editor.filter = "all"; renderRepositoryAccess(); }));
+    }
+    list.scrollTop = scrollTop;
+    if (activeId) document.getElementById(activeId)?.focus({ preventScroll: true });
+  };
+  const paintDetail = () => {
+    detail.replaceChildren();
+    const repository = data.repositories.find(item => item.resource_id === editor.selected);
+    if (!repository) { detail.append(mn("p", "management-note", mt("accessChoose"))); return; }
+    const resourceId = repository.resource_id, saving = editor.saving.has(resourceId);
+    detail.setAttribute("aria-busy", String(saving));
+    const heading = mn("header", "repository-access-heading");
+    heading.append(mn("span", "repository-access-eyebrow", mt("accessSelectGroups")), mn("h2", "", repository.repository_name), mn("code", "", resourceId), mn("p", "management-note", mt("accessDraftHint")));
+    detail.append(heading);
+    const searchGroups = mi("repository-access-group-search", editor.groupQuery, 200); searchGroups.type = "search"; searchGroups.placeholder = mt("accessGroupSearch"); searchGroups.setAttribute("aria-label", mt("accessGroupSearch"));
+    const groups = mn("fieldset", "repository-access-group-list");
+    const selectedCount = mn("p", "repository-access-selection-count");
+    const paintGroups = () => {
+      groups.replaceChildren(mn("legend", "", mt("grantedGroups")));
+      const query = editor.groupQuery.trim().toLocaleLowerCase();
+      const matching = data.groups.filter(group => {
+        const meta = management.groups.find(item => item.id === group.id);
+        return `${group.name} ${meta?.description || ""}`.toLocaleLowerCase().includes(query);
+      });
+      for (const group of matching) {
+        const meta = management.groups.find(item => item.id === group.id);
+        const label = mn("label", "repository-access-group"), checkbox = mn("input"); checkbox.type = "checkbox"; checkbox.value = group.id;
+        checkbox.id = `repository-access-group-${group.id}`;
+        checkbox.checked = repositoryAccessSelection(repository).has(group.id); checkbox.disabled = saving;
+        const copy = mn("span", "repository-access-group-copy"); copy.append(mn("strong", "", group.name));
+        if (meta?.description) copy.append(mn("small", "", meta.description));
+        label.append(checkbox, copy);
+        if (meta) label.append(mn("span", "repository-access-meta", `${mt("members")} ${meta.member_ids.length}`));
+        checkbox.addEventListener("change", () => { updateRepositoryAccessDraft(repository, group.id, checkbox.checked); paintChanges(); paintList(); paintSummary(); });
+        groups.append(label);
+      }
+      if (!matching.length) groups.append(mn("p", "management-note", mt(data.groups.length ? "accessNoMatchingGroups" : "noGroup")));
+    };
+    searchGroups.addEventListener("input", () => { editor.groupQuery = searchGroups.value; paintGroups(); });
+    const changes = mn("div", "repository-access-changes"); changes.setAttribute("role", "status");
+    const error = mn("p", "repository-access-error", editor.errors.get(resourceId) || ""); error.setAttribute("role", "alert"); error.hidden = !editor.errors.has(resourceId);
+    const actions = mn("footer", "repository-access-actions");
+    const status = mn("span", "repository-access-meta");
+    const cancel = mb(mt("accessDiscard"), () => { editor.drafts.delete(resourceId); editor.errors.delete(resourceId); management.dirty = editor.drafts.size > 0; paintDetail(); paintList(); paintSummary(); });
+    const save = mb(mt(saving ? "saving" : "saveAccess"), () => void saveRepositoryAccess(resourceId), "primary");
+    actions.append(status, cancel, save);
+    const paintChanges = () => {
+      const selected = repositoryAccessSelection(repository), diff = repositoryAccessChanges(repository), dirty = editor.drafts.has(resourceId);
+      selectedCount.textContent = `${mt("accessSelected")}: ${selected.size} / ${data.groups.length}`;
+      changes.replaceChildren();
+      for (const [key, ids, style] of [["accessAdd", diff.added, "add"], ["accessRemove", diff.removed, "remove"]]) {
+        if (!ids.length) continue;
+        const row = mn("div", `repository-access-change repository-access-change--${style}`); row.append(mn("strong", "", `${mt(key)} · ${ids.length}`));
+        const names = mn("div", "management-member-chips");
+        for (const id of ids) names.append(mn("span", "management-chip", data.groups.find(group => group.id === id)?.name || id));
+        row.append(names); changes.append(row);
+      }
+      if (!dirty) changes.append(mn("p", "management-note", mt("accessNoChanges")));
+      if (!selected.size) changes.append(mn("p", "management-note", mt("accessNoGrants")));
+      if (diff.removed.length) changes.append(mn("p", "management-note", mt("accessRemovalHint")));
+      if (selected.size > 200) changes.append(mn("p", "repository-access-error", mt("accessLimit")));
+      status.textContent = mt(saving ? "saving" : dirty ? "unsaved" : "accessSaved");
+      save.disabled = saving || !dirty || selected.size > 200; cancel.disabled = saving || !dirty;
+      error.hidden = !editor.errors.has(resourceId);
+    };
+    const body = mn("div", "repository-access-body"); body.append(searchGroups, selectedCount, groups, changes, error);
+    detail.append(body, actions); paintGroups(); paintChanges();
+  };
+  search.addEventListener("input", () => { state.query = search.value; elements["pipeline-search"].value = search.value; paintList(); });
+  layout.append(sidebar, detail); page.append(layout, mn("p", "repository-access-policy", mt("accessHint")));
+  paintList(); paintDetail();
+  if (focusId) {
+    const input = document.getElementById(focusId); input?.focus({ preventScroll: true });
+    if (Number.isInteger(cursor) && input?.setSelectionRange) input.setSelectionRange(cursor, cursor);
+  }
+}
+
 function renderViews() {
   const page = managementShell("workspace-views", "views", "viewIntro");
   if (management.repositories.length) page.querySelector(".page-heading").append(mb(mt("newView"), () => openViewEditor(), "primary"));

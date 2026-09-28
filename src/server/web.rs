@@ -8,6 +8,7 @@ const THEME_SCRIPT: &str = include_str!("../../web/theme.js");
 const SCRIPT: &str = include_str!("../../web/app.js");
 const CI_SCRIPT: &str = include_str!("../../web/ci-visual.js");
 const CI_EDITOR_SCRIPT: &str = include_str!("../../web/ci-editor.js");
+const EXECUTION_DETAIL_SCRIPT: &str = include_str!("../../web/execution-detail.js");
 const EXECUTION_SCRIPT: &str = include_str!("../../web/execution-graph.js");
 const EXECUTION_ANALYSIS_SCRIPT: &str = include_str!("../../web/execution-analysis.js");
 const REPOSITORY_CONTEXT_SCRIPT: &str = include_str!("../../web/repository-context.js");
@@ -57,6 +58,14 @@ pub async fn ci_script() -> Response {
 
 pub async fn ci_editor_script() -> Response {
     asset(CI_EDITOR_SCRIPT, "text/javascript; charset=utf-8", false)
+}
+
+pub async fn execution_detail_script() -> Response {
+    asset(
+        EXECUTION_DETAIL_SCRIPT,
+        "text/javascript; charset=utf-8",
+        false,
+    )
 }
 
 pub async fn execution_script() -> Response {
@@ -219,6 +228,16 @@ mod tests {
         assert!(SCRIPT.contains("/api/v1/pipeline-graphs"));
         assert!(SCRIPT.contains("loadPipelineGraphs"));
         assert!(INDEX.contains("/assets/execution-graph.js"));
+        assert!(INDEX.contains("/assets/execution-detail.js"));
+        let response = execution_detail_script().await;
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), EXECUTION_DETAIL_SCRIPT.as_bytes());
         assert!(INDEX.contains("/assets/execution-analysis.js"));
         assert!(EXECUTION_ANALYSIS_SCRIPT.contains("renderExecutionAnalysis"));
         assert!(EXECUTION_SCRIPT.contains("renderExecutionWorkspace"));
