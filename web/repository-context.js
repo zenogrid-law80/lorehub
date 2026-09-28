@@ -6,6 +6,8 @@ const repositoryBranchOptions = new Map();
 let repositoryNavigationRequest = 0;
 let repositorySelectionRestored = false;
 let repositoryListStatus = "loading";
+let repositoryBranchDraft = null;
+let repositoryBranchCreating = false;
 const repositoryContextCopy = {
   choose: ["저장소 선택", "Select repository", "选择仓库"],
   search: ["저장소 검색…", "Search repositories…", "搜索仓库…"],
@@ -16,6 +18,14 @@ const repositoryContextCopy = {
   scope: ["선택한 저장소", "Selected repository", "所选仓库"],
   back: ["저장소 목록", "Repository list", "仓库列表"],
   branch: ["브랜치", "Branch", "分支"],
+  createBranch: ["브랜치 생성", "Create branch", "创建分支"],
+  branchName: ["새 브랜치 이름", "New branch name", "新分支名称"],
+  branchHelp: ["선택한 브랜치에서 새 브랜치를 만듭니다. 브랜치 연동이 켜진 Source 저장소에도 같은 이름의 브랜치를 생성합니다.", "Create from the selected branch, including same-name branches in Source repositories with linked branching enabled.", "从所选分支创建新分支，并在启用关联分支的 Source 仓库中创建同名分支。"],
+  branchCreating: ["ROOT · Source 브랜치 생성 중…", "Creating Root and Source branches…", "正在创建 Root 和 Source 分支…"],
+  branchCreated: ["브랜치를 생성했습니다.", "Branch created.", "分支已创建。"],
+  branchFailure: ["일부 브랜치가 이미 생성되었을 수 있습니다. ROOT와 Source의 브랜치 목록을 확인한 후 다시 시도하세요.", "Some branches may already have been created. Check the Root and Source branch lists before retrying.", "部分分支可能已创建。请检查 Root 和 Source 分支列表后重试。"],
+  invalidBranch: ["다른 브랜치 이름을 입력하세요. 공백만 있거나 제어 문자가 포함된 이름은 사용할 수 없습니다.", "Enter a different branch name without control characters or only whitespace.", "请输入其他分支名称，不能仅包含空格或含有控制字符。"],
+  cancel: ["취소", "Cancel", "取消"],
   history: ["실행 이력", "Run history", "运行历史"],
   all: ["전체 저장소 보기", "Show all repositories", "查看所有仓库"],
   scopedSearchHint: ["선택한 저장소와 브랜치의 전체 실행 이력에서 검색합니다. 파이프라인은 정확한 이름을 입력하세요.", "Search all run history for the selected repository and branch. Enter an exact pipeline name.", "搜索所选仓库与分支的全部运行历史。请输入准确的流水线名称。"],
@@ -222,12 +232,16 @@ function repositoryQuery(scope = state.repositoryScope) {
   return scope ? `&repository_url=${encodeURIComponent(scope)}` : "";
 }
 function createRepositoryBranchSelector(className) {
-  const label = document.createElement("label"); label.className = `repository-nav-branch ${className}`; label.hidden = true;
+  const container = document.createElement("div"); container.className = `repository-nav-branch ${className}`; container.hidden = true;
+  const label = document.createElement("label");
   const caption = document.createElement("span");
   const select = document.createElement("select");
   select.addEventListener("change", () => navigateRepositorySection(state.section, state.repositoryScope, select.value));
   label.append(caption, select);
-  return label;
+  const create = document.createElement("button"); create.type = "button"; create.className = "button button--ghost";
+  create.addEventListener("click", openRepositoryBranchDialog);
+  container.append(label, create);
+  return container;
 }
 function renderRepositoryBranchSelector(label) {
   const scope = state.repositoryScope;
@@ -239,12 +253,72 @@ function renderRepositoryBranchSelector(label) {
   for (const branch of repositoryBranchOptions.get(scope) || []) select.add(new Option(branch.name, branch.name));
   if (state.repositoryBranch && !Array.from(select.options).some(option => option.value === state.repositoryBranch)) select.add(new Option(state.repositoryBranch, state.repositoryBranch));
   select.value = state.repositoryBranch || ""; select.disabled = !select.options.length;
+  const create = label.querySelector("button");
+  create.textContent = rct("createBranch");
+  create.disabled = repositoryBranchCreating || !(repositoryBranchOptions.get(scope) || []).some(branch => branch.name === state.repositoryBranch);
+}
+function openRepositoryBranchDialog() {
+  if (repositoryBranchCreating) return;
+  const repository = state.repositoryScope;
+  const base = (repositoryBranchOptions.get(repository) || []).find(branch => branch.name === state.repositoryBranch);
+  if (!repository || !base) return;
+  repositoryBranchDraft = { repository, from_branch: base.name, expected_revision: base.revision, section: state.section };
+  document.getElementById("repository-branch-form").reset();
+  document.getElementById("repository-branch-title").textContent = rct("createBranch");
+  document.getElementById("repository-branch-base").textContent = `${repositoryName(repository)} / ${base.name}`;
+  document.getElementById("repository-branch-help").textContent = rct("branchHelp");
+  document.getElementById("repository-branch-name-label").textContent = rct("branchName");
+  document.getElementById("repository-branch-cancel").textContent = rct("cancel");
+  document.getElementById("repository-branch-submit").textContent = rct("createBranch");
+  document.getElementById("repository-branch-error").hidden = true;
+  document.getElementById("new-repository-branch-dialog").showModal();
+  document.getElementById("repository-branch-name").focus();
+}
+async function submitRepositoryBranch(event) {
+  event.preventDefault();
+  if (repositoryBranchCreating || !repositoryBranchDraft) return;
+  const draft = repositoryBranchDraft;
+  const name = document.getElementById("repository-branch-name").value.trim();
+  const error = document.getElementById("repository-branch-error");
+  error.hidden = true;
+  if (!name || name === draft.from_branch || /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
+    error.textContent = rct("invalidBranch"); error.hidden = false; return;
+  }
+  const submit = document.getElementById("repository-branch-submit");
+  const cancel = document.getElementById("repository-branch-cancel");
+  const input = document.getElementById("repository-branch-name");
+  repositoryBranchCreating = true;
+  submit.disabled = cancel.disabled = input.disabled = true;
+  submit.textContent = rct("branchCreating");
+  try {
+    const branch = await api(`/api/v1/repositories/${encodeURIComponent(repositoryName(draft.repository))}/branches`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+      body: JSON.stringify({ name, from_branch: draft.from_branch, expected_revision: draft.expected_revision }),
+    });
+    repositoryBranchOptions.set(draft.repository, [...(repositoryBranchOptions.get(draft.repository) || []).filter(item => item.name !== branch.name), branch]);
+    document.getElementById("new-repository-branch-dialog").close();
+    toast(rct("branchCreated"), "success");
+    if (state.repositoryScope === draft.repository && state.repositoryBranch === draft.from_branch && state.section === draft.section) {
+      navigateRepositorySection(draft.section, draft.repository, branch.name);
+    }
+  } catch (failure) {
+    error.textContent = `${failure.message} ${rct("branchFailure")}`; error.hidden = false;
+  } finally {
+    repositoryBranchCreating = false;
+    submit.disabled = cancel.disabled = input.disabled = false;
+    submit.textContent = rct("createBranch");
+  }
 }
 function initRepositoryContext() {
   document.getElementById("repository-picker-slot").append(createRepositoryPicker("repository-picker--sidebar"), createRepositoryBranchSelector("repository-nav-branch--sidebar"));
   const mobile = document.getElementById("mobile-page-select");
   mobile.insertAdjacentElement("beforebegin", createRepositoryPicker("repository-picker--mobile"));
   mobile.insertAdjacentElement("beforebegin", createRepositoryBranchSelector("repository-nav-branch--mobile"));
+  const dialog = document.getElementById("new-repository-branch-dialog");
+  document.getElementById("repository-branch-form").addEventListener("submit", submitRepositoryBranch);
+  document.getElementById("repository-branch-cancel").addEventListener("click", () => { if (!repositoryBranchCreating) dialog.close(); });
+  dialog.addEventListener("cancel", event => { if (repositoryBranchCreating) event.preventDefault(); });
+  dialog.addEventListener("close", () => { repositoryBranchDraft = null; });
 }
 function renderRepositoryContext() {
   const scope = state.repositoryScope;

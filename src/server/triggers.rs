@@ -781,6 +781,7 @@ async fn refresh_link_branch_index(
         .arg(&checkout)
         .current_dir(workspace.path());
     success(clone).await?;
+    select_checkout_branch(binary, &token, &checkout, &branch.id, &branch.revision).await?;
     let mut list = command(binary, &token, Some(&checkout));
     list.args(["link", "list"]);
     let links = repository_links(&success(list).await?)?;
@@ -853,13 +854,13 @@ pub(super) async fn dependency_reaches(
     if start == target {
         return Ok(true);
     }
-    Ok(sqlx::query_scalar(
+    sqlx::query_scalar(
         "WITH RECURSIVE upstream(resource_id) AS (SELECT source_resource_id FROM repository_link_dependencies WHERE root_resource_id=$1 UNION SELECT dependency.source_resource_id FROM repository_link_dependencies dependency JOIN upstream ON dependency.root_resource_id=upstream.resource_id) SELECT EXISTS(SELECT 1 FROM upstream WHERE resource_id=$2)",
     )
     .bind(start)
     .bind(target)
     .fetch_one(pool)
-    .await?)
+    .await
 }
 
 pub(super) async fn link_would_cycle(
@@ -1063,6 +1064,7 @@ async fn update_root_links(
         binary,
         &token,
         &url,
+        &root_head.id,
         &root_head.revision,
         &source.name,
         pending,
@@ -1126,10 +1128,24 @@ fn link_update_view(paths: impl IntoIterator<Item = impl AsRef<str>>) -> Result<
     Ok(view)
 }
 
+async fn select_checkout_branch(
+    binary: &str,
+    token: &str,
+    checkout: &Path,
+    branch_id: &str,
+    revision: &str,
+) -> Result<()> {
+    let mut switch = command(binary, token, Some(checkout));
+    switch.args(["branch", "switch", "--bare", "--", branch_id, revision]);
+    success(switch).await?;
+    Ok(())
+}
+
 async fn push_link_updates(
     binary: &str,
     token: &str,
     url: &str,
+    root_branch_id: &str,
     root_revision: &str,
     source_name: &str,
     pending: Vec<(String, String, String)>,
@@ -1149,6 +1165,7 @@ async fn push_link_updates(
         .arg(&checkout)
         .current_dir(workspace.path());
     success(clone).await?;
+    select_checkout_branch(binary, token, &checkout, root_branch_id, root_revision).await?;
 
     let mut changed = false;
     let mut applied = Vec::with_capacity(pending.len());
@@ -1260,14 +1277,10 @@ pub(crate) async fn sparse_view_snapshot(
     .bind(requested_name)
     .fetch_all(&mut **tx)
     .await?;
-    if views.is_empty() {
-        tracing::warn!(
-            resource = resource_id,
-            view = requested_name,
-            "pipeline sparse view was not found; continuing without a view"
-        );
-        return Ok((None, None));
-    }
+    ensure!(
+        !views.is_empty(),
+        "sparse view {requested_name} was not found for repository {resource_id}"
+    );
     ensure!(
         views.len() == 1,
         "sparse view {requested_name} must resolve to exactly one view for this repository"
@@ -1428,7 +1441,7 @@ set -eu
 fixture=$(dirname "$0")
 scenario=$(cat "$fixture/scenario")
 while [ "$#" -gt 0 ]; do
-    case "$1" in clone|link|commit|push) break;; esac
+    case "$1" in clone|branch|link|commit|push) break;; esac
     shift
 done
 printf '%s\n' "$1" >> "$fixture/commands"
@@ -1439,7 +1452,13 @@ case "$1" in
         for checkout in "$@"; do :; done
         mkdir "$checkout"
         ;;
+    branch)
+        [ "$2 $3 $4 $5" = 'switch --bare -- feature-root-id' ]
+        [ "$6" = dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd ]
+        touch .selected-branch
+        ;;
     link)
+        [ -f .selected-branch ]
         [ "$2" = 'update' ] && [ "$3" = '--' ]
         printf '%s\n' "$4" >> "$fixture/paths"
         if [ "$scenario" = 'update-failure' ] && [ "$4" = 'Test2' ]; then
@@ -1477,6 +1496,7 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
                 binary.to_str().unwrap(),
                 "token",
                 "lores://example.test/root",
+                "feature-root-id",
                 &"d".repeat(64),
                 "developer",
                 pending,
@@ -1518,6 +1538,117 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
                 }
             }
         }
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+    #[cfg(unix)]
+    async fn reindexes_shared_revisions_using_each_root_branch_identity(pool: PgPool) {
+        use std::os::unix::fs::PermissionsExt;
+        let workspace = tempfile::tempdir().unwrap();
+        let binary = workspace.path().join("lore");
+        std::fs::write(&binary, r#"#!/bin/sh
+set -eu
+shift 7
+if [ "$1" = --repository ]; then shift 3; fi
+case "$1:$2" in
+  clone:--revision)
+    mkdir -p "$6"
+    printf '%s' main-id > "$6/.branch"
+    ;;
+  branch:switch)
+    [ "$3 $4" = '--bare --' ]
+    [ "$6" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]
+    printf '%s' "$5" > .branch
+    ;;
+  link:list)
+    branch=$(cat .branch)
+    printf '{"tagName":"linkEntry","data":{"link":"22222222222222222222222222222222","linkPath":"Source","branch":"%s","tracking":true,"revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}\n' "$branch"
+    ;;
+  *) exit 99;;
+esac
+printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
+"#).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let owner = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO users(id,google_sub,email) VALUES($1,$2,'branch-index@example.test')",
+        )
+        .bind(owner)
+        .bind(owner.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+        let resource = "urc-11111111111111111111111111111111";
+        sqlx::query(
+            "INSERT INTO lore_resources(resource_id,name,owner_subject) VALUES($1,'root',$2)",
+        )
+        .bind(resource)
+        .bind(owner.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES($1,'feature',$2)")
+            .bind(resource).bind("a".repeat(64)).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES($1,'feature',$2,'Source','urc-22222222222222222222222222222222','main-id',$2,true)")
+            .bind(resource).bind("a".repeat(64)).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,auto_update) VALUES($1,'feature','Source',false)")
+            .bind(resource).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!(
+            "../../migrations/0033_reindex_branch_aware_links.sql"
+        ))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM repository_link_dependencies")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+        let tokens = TokenIssuer::from_files(
+            "tests/fixtures/test-private.pem",
+            "tests/fixtures/test-jwks.json",
+            "http://localhost:8080",
+            "zenogrid.co.kr",
+        )
+        .unwrap();
+        let repository = WatchedRepository {
+            resource_id: resource.into(),
+            name: "root".into(),
+            owner_subject: owner.to_string(),
+            enabled_branches: vec![],
+            storage_backend: "dynamodb_s3".into(),
+        };
+        let branches = ["main", "feature"].map(|name| RemoteBranchHead {
+            id: format!("{name}-id"),
+            name: name.into(),
+            revision: "a".repeat(64),
+        });
+        refresh_link_index(
+            &pool,
+            binary.to_str().unwrap(),
+            "lores://fixture/root",
+            &tokens,
+            &repository,
+            &branches,
+        )
+        .await
+        .unwrap();
+        let targets: Vec<(String, String)> = sqlx::query_as("SELECT root_branch,source_branch_id FROM repository_link_dependencies ORDER BY root_branch").fetch_all(&pool).await.unwrap();
+        assert_eq!(
+            targets,
+            vec![
+                ("feature".into(), "feature-id".into()),
+                ("main".into(), "main-id".into())
+            ]
+        );
+        let automatic: bool = sqlx::query_scalar(
+            "SELECT auto_update FROM repository_link_policies WHERE root_branch='feature'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!automatic);
     }
 
     #[sqlx::test]

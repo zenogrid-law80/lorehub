@@ -557,6 +557,17 @@
       </form>
     </dialog>
 
+    <dialog id="new-repository-branch-dialog" class="modal" aria-labelledby="repository-branch-title" aria-describedby="repository-branch-help">
+      <form id="repository-branch-form">
+        <div class="modal-header"><h2 id="repository-branch-title"></h2></div>
+        <p id="repository-branch-base" class="modal-intro"></p>
+        <p id="repository-branch-help" class="modal-intro"></p>
+        <label class="field"><span id="repository-branch-name-label"></span><input id="repository-branch-name" type="text" required maxlength="255" autocomplete="off" spellcheck="false" placeholder="feature/new-work"></label>
+        <p id="repository-branch-error" class="repository-link-form-error" role="alert" hidden></p>
+        <div class="modal-actions"><button id="repository-branch-cancel" class="button button--ghost" type="button"></button><button id="repository-branch-submit" class="button button--primary" type="submit"></button></div>
+      </form>
+    </dialog>
+
     <dialog id="new-repository-link-dialog" class="modal">
       <form id="repository-link-form" method="dialog">
         <div class="modal-header">

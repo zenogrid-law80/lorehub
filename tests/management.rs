@@ -135,6 +135,10 @@ case "${1:-}:${2:-}" in
         ;;
     esac
     ;;
+  branch:switch)
+    [ "$3 $4 $5" = '--bare -- main-id' ]
+    [ "$6" = REV ]
+    ;;
   --repository:.)
     if [ -f "WORK/root-push" ]; then
       printf '%s\n' '{"tagName":"linkEntry","data":{"link":"22222222222222222222222222222222","linkPath":"Test","sourcePath":"Test","branch":"main-id","tracking":true,"revision":"REV"}}'
@@ -308,8 +312,11 @@ printf '%s\n' '{"tagName":"complete","data":{"status":0}}'
         "push\n",
         "policy changes must not push Lore"
     );
-    sqlx::query("INSERT INTO repository_link_snapshots(root_resource_id,root_branch,root_revision) VALUES('urc-11111111111111111111111111111111','main',$1)").bind("a".repeat(64)).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO repository_link_dependencies(root_resource_id,root_branch,root_revision,link_path,source_resource_id,source_branch_id,source_revision,tracking) VALUES('urc-11111111111111111111111111111111','main',$1,'Test','urc-22222222222222222222222222222222','main-id',$1,true)").bind("a".repeat(64)).execute(&pool).await.unwrap();
+    // Creation already indexes the link. Check its real index rather than
+    // inserting a duplicate snapshot before testing the summary.
+    let indexed: (String, String) = sqlx::query_as("SELECT source_branch_id,source_revision FROM repository_link_dependencies WHERE root_resource_id='urc-11111111111111111111111111111111' AND root_branch='main' AND link_path='Test'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(indexed, ("main-id".into(), "a".repeat(64)));
     let summary = request(
         &app,
         Some(owner),

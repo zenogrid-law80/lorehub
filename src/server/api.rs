@@ -95,7 +95,7 @@ pub fn router_with_releases(
         )
         .route(
             "/api/v1/repositories/{name}/branches",
-            get(list_repository_branches),
+            get(list_repository_branches).post(create_repository_branch),
         )
         .route("/api/v1/repositories/{name}/tree", get(repository_tree))
         .route(
@@ -813,6 +813,42 @@ async fn list_repository_branches(
             .branches_on(&name, backend, &access_token)
             .await?,
     ))
+}
+
+#[derive(Deserialize)]
+struct CreateRepositoryBranch {
+    name: String,
+    from_branch: String,
+    expected_revision: String,
+}
+
+async fn create_repository_branch(
+    State(state): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(name): Path<String>,
+    Json(input): Json<CreateRepositoryBranch>,
+) -> Result<(StatusCode, Json<Branch>), ApiError> {
+    let resource = require_repository_access(&state.pool, &name, &session).await?;
+    let token = user_access_token(&state, &session).await?;
+    let backend = state.repositories.storage_backend(&name, &token).await?;
+    let mut tx = state.pool.begin().await?;
+    super::triggers::acquire_link_branch_lock(&mut tx, &resource, &input.name).await?;
+    let branch = state
+        .repositories
+        .create_branch_on(
+            &name,
+            &input.name,
+            &input.from_branch,
+            &input.expected_revision,
+            backend,
+            &token,
+        )
+        .await?;
+    // Keep manual sync choices when the watcher indexes the new Root branch.
+    sqlx::query("INSERT INTO repository_link_policies(root_resource_id,root_branch,link_path,auto_update) SELECT root_resource_id,$3,link_path,auto_update FROM repository_link_policies WHERE root_resource_id=$1 AND root_branch=$2 ON CONFLICT(root_resource_id,root_branch,link_path) DO UPDATE SET auto_update=EXCLUDED.auto_update")
+        .bind(&resource).bind(&input.from_branch).bind(&input.name).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok((StatusCode::CREATED, Json(branch)))
 }
 
 #[derive(Deserialize)]

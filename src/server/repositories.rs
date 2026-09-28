@@ -1,3 +1,4 @@
+pub mod branches;
 pub mod tree;
 
 use std::{
@@ -411,7 +412,13 @@ impl RepositoryService {
                 message: format!("branch '{branch}' was not found"),
             })?;
         let (_workspace, repository) = self
-            .checkout(name, &current.revision, storage_backend, access_token)
+            .checkout(
+                name,
+                &current.id,
+                &current.revision,
+                storage_backend,
+                access_token,
+            )
             .await?;
         let output = self
             .run(
@@ -512,7 +519,13 @@ impl RepositoryService {
             return Ok(false);
         }
         let (_workspace, repository) = self
-            .checkout(name, &current.revision, storage_backend, access_token)
+            .checkout(
+                name,
+                &current.id,
+                &current.revision,
+                storage_backend,
+                access_token,
+            )
             .await?;
         let mut candidate = repository.clone();
         let mut exists = true;
@@ -637,7 +650,13 @@ impl RepositoryService {
             });
         }
         let (_workspace, repository) = self
-            .checkout(name, expected_revision, storage_backend, access_token)
+            .checkout(
+                name,
+                &current.id,
+                expected_revision,
+                storage_backend,
+                access_token,
+            )
             .await?;
         let is_update = matches!(&mutation, LinkMutation::Update { .. });
         let (args, message) = match mutation {
@@ -755,6 +774,7 @@ impl RepositoryService {
     async fn checkout(
         &self,
         name: &str,
+        branch_id: &str,
         revision: &str,
         storage_backend: StorageBackend,
         access_token: &str,
@@ -773,6 +793,13 @@ impl RepositoryService {
                 "repository",
             ],
             Some(workspace.path()),
+            access_token,
+        )
+        .await?;
+        // Shared revisions do not identify the branch used to resolve tracking links.
+        self.run(
+            ["branch", "switch", "--bare", "--", branch_id, revision],
+            Some(&repository),
             access_token,
         )
         .await?;
@@ -1627,6 +1654,10 @@ case "${{1:-}}:${{2:-}}" in
     [ "$3" = {old_revision} ]
     mkdir -p "$6"
     ;;
+  branch:switch)
+    [ "$3 $4 $5" = '--bare -- branch-id' ]
+    [ "$6" = {old_revision} ]
+    ;;
   stage:--scan)
     [ "$3" = -- ]
     [ "$4" = Libraries/Shared ]
@@ -1707,6 +1738,10 @@ case "${{1:-}}:${{2:-}}" in
   clone:--revision)
     [ "$3" = {root_revision} ]
     mkdir -p "$6"
+    ;;
+  branch:switch)
+    [ "$3 $4 $5" = '--bare -- root-branch' ]
+    [ "$6" = {root_revision} ]
     ;;
   --repository:.)
     [ "$3" = --remote ]

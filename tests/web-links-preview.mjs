@@ -7,6 +7,7 @@ const source = { id: "urc-source", name: "developer", url: "lores://fixture/deve
 const root = { id: "urc-root", name: "game", url: "lores://fixture/game", storage_backend: "dynamodb_s3" };
 const links = [{ path: "Test", source_repository_id: source.id, source_path: "Test", source_branch_id: "source-main-id", source_branch_name: "main", source_revision: revision, latest_revision: "b".repeat(64), auto_update: true, tracking: true, status: "outdated", last_success_at: new Date().toISOString() }];
 const operations = [];
+const branches = new Map([source, root].map(repository => [repository.name, [{ name: "main", revision }, { name: "release", revision }]]));
 const pipelines = [source, root].map(repository => ({
   id: `${repository.name}-run`, pipeline_name: `${repository.name}-build`, repository_url: repository.url,
   branch: "main", revision, revision_number: 1, runner_os: "linux", status: "succeeded",
@@ -74,7 +75,17 @@ createServer(async (req, res) => {
       if (path === "unavailable") { status = 403; data = { error: "Linked repository access denied (fixture)" }; }
       else data = folders[path] || [];
     }
-    else if (url.pathname.endsWith("/branches")) data = [{ name: "main", revision }, { name: "release", revision }];
+    else if (url.pathname.endsWith("/branches")) {
+      const repository = decodeURIComponent(url.pathname.split("/").at(-2));
+      const list = branches.get(repository);
+      if (req.method === "POST") {
+        if (list.some(branch => branch.name === input.name)) { status = 409; data = { error: "branch already exists" }; }
+        else {
+          data = { name: input.name, revision }; list.push(data); status = 201;
+          if (repository === root.name && !branches.get(source.name).some(branch => branch.name === input.name)) branches.get(source.name).push(data);
+        }
+      } else data = list;
+    }
     else if (url.pathname.endsWith("/link-operations")) data = url.pathname.includes("/game/") && url.searchParams.get("branch") === "main" ? operations : [];
     else if (url.pathname.endsWith("/retry")) {
       const id = url.pathname.split("/").at(-2);
