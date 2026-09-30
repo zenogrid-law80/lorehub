@@ -678,41 +678,6 @@ async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool
             .0,
         StatusCode::NO_CONTENT
     );
-    let group = request(
-        &app,
-        Some(admin),
-        "POST",
-        "/api/v1/account-groups",
-        json!({"name":"Admin group", "description":"", "member_ids":[]}),
-        true,
-    )
-    .await;
-    assert_eq!(group.0, StatusCode::CREATED);
-    let group_path = format!(
-        "/api/v1/account-groups/{}/views",
-        group.1["id"].as_str().unwrap()
-    );
-    let selection_path = format!("{group_path}/urc-test");
-    assert_eq!(
-        request(
-            &app,
-            Some(admin),
-            "POST",
-            &selection_path,
-            json!({"view_id":view.1["id"]}),
-            true
-        )
-        .await
-        .0,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        request(&app, Some(admin), "GET", &group_path, Value::Null, false)
-            .await
-            .1[0]["can_manage"],
-        true
-    );
-
     sqlx::query("UPDATE users SET role='user' WHERE id=$1")
         .bind(admin)
         .execute(&pool)
@@ -770,25 +735,6 @@ async fn admin_can_use_another_users_repository_and_demotion_removes_access(pool
         request(&app, Some(admin), "POST", &view_path, update, true)
             .await
             .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(&app, Some(admin), "GET", &group_path, Value::Null, false)
-            .await
-            .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(admin),
-            "POST",
-            &selection_path,
-            json!({"view_id":view.1["id"]}),
-            true
-        )
-        .await
-        .0,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
@@ -1149,7 +1095,6 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         .0,
         StatusCode::FORBIDDEN
     );
-    let selection_path = format!("{group_path}/views/urc-owned");
     let view = json!({"name":"Backend", "resource_id":"urc-owned", "mode":"sparse", "rules":"**\n!/src/\n/src/generated/\n"});
     assert_eq!(
         request(
@@ -1245,83 +1190,8 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         request(
             &app,
             Some(member),
-            "POST",
-            &selection_path,
-            json!({"view_id":view_id}),
-            true
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(owner),
-            "POST",
-            &format!("{group_path}/views/urc-other"),
-            json!({"view_id":view_id}),
-            true
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(owner),
-            "POST",
-            &selection_path,
-            json!({"view_id":view_id}),
-            true
-        )
-        .await
-        .0,
-        StatusCode::NO_CONTENT
-    );
-    let views = request(
-        &app,
-        Some(member),
-        "GET",
-        &format!("{group_path}/views"),
-        Value::Null,
-        false,
-    )
-    .await;
-    assert_eq!(views.0, StatusCode::FORBIDDEN);
-    let administrator_group_views = request(
-        &app,
-        Some(other_admin),
-        "GET",
-        &format!("{group_path}/views"),
-        Value::Null,
-        false,
-    )
-    .await;
-    assert_eq!(administrator_group_views.0, StatusCode::OK);
-    assert_eq!(administrator_group_views.1[0]["rules"], view["rules"]);
-    assert_eq!(administrator_group_views.1[0]["view_id"], view_id);
-    assert_eq!(administrator_group_views.1[0]["can_manage"], false);
-    assert_eq!(
-        request(
-            &app,
-            Some(member),
             "GET",
             "/api/v1/sparse-views",
-            Value::Null,
-            false
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(outsider),
-            "GET",
-            &format!("{group_path}/views"),
             Value::Null,
             false
         )
@@ -1360,19 +1230,6 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         .await
         .0,
         StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(owner),
-            "GET",
-            &format!("{group_path}/views"),
-            Value::Null,
-            false
-        )
-        .await
-        .1[0]["rules"],
-        ""
     );
     // A failed membership edit rolls back the name and all membership changes.
     assert_eq!(
@@ -1418,56 +1275,10 @@ async fn account_groups_and_views_enforce_ownership_and_persist(pool: PgPool) {
         .bind(member).fetch_one(&pool).await.unwrap();
     assert!(!member_granted);
     assert_eq!(
-        request(
-            &app,
-            Some(member),
-            "GET",
-            &format!("{group_path}/views"),
-            Value::Null,
-            false
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(owner),
-            "DELETE",
-            &selection_path,
-            Value::Null,
-            true
-        )
-        .await
-        .0,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        request(
-            &app,
-            Some(owner),
-            "POST",
-            &selection_path,
-            json!({"view_id":view_id}),
-            true
-        )
-        .await
-        .0,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(
         request(&app, Some(owner), "DELETE", &group_path, Value::Null, true)
             .await
             .0,
         StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM account_group_view_selections")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
-        0
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM repository_account_group_access")
@@ -1716,5 +1527,175 @@ async fn operations_requires_live_admin_and_excludes_unregistered_execution_data
             .await
             .0,
         StatusCode::FORBIDDEN
+    );
+}
+
+#[sqlx::test]
+#[ignore = "requires DATABASE_URL pointing to a disposable PostgreSQL instance"]
+async fn group_owner_transfer_requires_an_admin_member_and_moves_edit_rights(pool: PgPool) {
+    let app = api::router(
+        pool.clone(),
+        AuthService::new(
+            pool.clone(),
+            AuthConfig::new("test".into(), "test".into(), "http://127.0.0.1:8080").unwrap(),
+        )
+        .unwrap(),
+        RepositoryService::new(
+            "/usr/bin/false",
+            "lores://127.0.0.1:41337",
+            "lores://127.0.0.1:41337",
+        )
+        .unwrap(),
+        None,
+    );
+    let owner = Uuid::new_v4();
+    let successor = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    let regular_member = Uuid::new_v4();
+    for (id, role) in [
+        (owner, "admin"),
+        (successor, "admin"),
+        (outsider, "admin"),
+        (regular_member, "user"),
+    ] {
+        sqlx::query("INSERT INTO users(id,google_sub,email,role) VALUES($1,$2,$3,$4)")
+            .bind(id)
+            .bind(id.to_string())
+            .bind(format!("{id}@zenogrid.co.kr"))
+            .bind(role)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')")
+            .bind(Sha256::digest(id.to_string().as_bytes()).to_vec())
+            .bind(id)
+            .bind(Sha256::digest(b"test-csrf").to_vec())
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let group_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO account_groups(id,name,description,owner_id) VALUES($1,'Engine','Build team',$2)")
+        .bind(group_id).bind(owner).execute(&pool).await.unwrap();
+    for id in [owner, successor, regular_member] {
+        sqlx::query("INSERT INTO account_group_members(group_id,user_id) VALUES($1,$2)")
+            .bind(group_id)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let role_path = format!("/api/v1/accounts/{owner}/role");
+    assert_eq!(
+        request(
+            &app,
+            Some(successor),
+            "POST",
+            &role_path,
+            json!({"role":"user"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let path = format!("/api/v1/account-groups/{group_id}/owner");
+    for (caller, target, csrf, expected) in [
+        (owner, successor, false, StatusCode::FORBIDDEN),
+        (outsider, successor, true, StatusCode::FORBIDDEN),
+        (owner, owner, true, StatusCode::BAD_REQUEST),
+        (owner, outsider, true, StatusCode::BAD_REQUEST),
+        (owner, regular_member, true, StatusCode::BAD_REQUEST),
+        (regular_member, successor, true, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            request(
+                &app,
+                Some(caller),
+                "POST",
+                &path,
+                json!({"owner_id":target}),
+                csrf
+            )
+            .await
+            .0,
+            expected
+        );
+    }
+    // The destination owner's unique group name remains enforced.
+    let duplicate_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO account_groups(id,name,owner_id) VALUES($1,'Engine',$2)")
+        .bind(duplicate_id)
+        .bind(successor)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            Some(owner),
+            "POST",
+            &path,
+            json!({"owner_id":successor}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    sqlx::query("DELETE FROM account_groups WHERE id=$1")
+        .bind(duplicate_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, transferred) = request(
+        &app,
+        Some(owner),
+        "POST",
+        &path,
+        json!({"owner_id":successor}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{transferred}");
+    assert_eq!(transferred["owner_id"], successor.to_string());
+    assert!(
+        transferred["member_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(owner))
+    );
+    assert!(
+        transferred["member_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(successor))
+    );
+    let edit_path = format!("/api/v1/account-groups/{group_id}");
+    let edit = json!({"name":"Engine", "description":"New description", "member_ids":[owner,successor,regular_member]});
+    assert_eq!(
+        request(&app, Some(owner), "POST", &edit_path, edit.clone(), true)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(&app, Some(successor), "POST", &edit_path, edit, true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            &app,
+            Some(successor),
+            "POST",
+            &role_path,
+            json!({"role":"user"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
     );
 }

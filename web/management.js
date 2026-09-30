@@ -1,7 +1,7 @@
 "use strict";
 
 const MANAGEMENT_SECTIONS = ["accounts", "account-groups", "repository-access", "workspace-views", "operations"];
-const management = { accounts: [], groups: [], repositories: [], repositoryAccess: { repositories: [], groups: [] }, views: [], assignments: [], groupId: "", resourceId: "", loaded: false, request: 0, dirty: false };
+const management = { accounts: [], groups: [], repositories: [], repositoryAccess: { repositories: [], groups: [] }, views: [], loaded: false, request: 0, dirty: false };
 const managementCopy = {
   operationsMenu: ["운영 상태", "Operations", "运行状态"],
   accounts: ["계정 관리", "Accounts", "账号管理"], groups: ["계정 그룹 관리", "Account groups", "账号组管理"], repositoryAccess: ["Repository 접근 권한", "Repository access", "仓库访问权限"], views: ["Sparse View", "Sparse View", "稀疏视图"],
@@ -9,13 +9,13 @@ const managementCopy = {
   accountIntro: ["조직 계정을 확인하고 관리자는 계정 등급을 변경할 수 있습니다.", "Browse organization accounts. Administrators can change account roles.", "查看组织账号。管理员可以更改账号等级。"],
   groupIntro: ["함께 작업할 계정을 그룹으로 묶고 구성원을 관리합니다. 관리자는 모든 그룹을 볼 수 있습니다.", "Organize accounts into groups and manage membership. Administrators can view every group.", "将账号整理为组并管理成员。管理员可以查看所有组。"],
   accessIntro: ["Repository와 Account Group을 연결해 그룹 구성원에게 접근 권한을 부여합니다.", "Connect repositories to account groups to grant access to every group member.", "将仓库连接到账号组，为所有组成员授予访问权限。"],
-  viewIntro: ["재사용 가능한 Sparse View를 만들고 그룹별로 선택합니다. 관리자는 모든 View를 볼 수 있습니다.", "Create reusable Sparse Views and select them for each group. Administrators can view every View.", "创建可复用的稀疏视图并为每个组进行选择。管理员可以查看所有视图。"],
+  viewIntro: ["CI가 필요한 파일만 받을 수 있도록 Sparse View를 관리합니다. 파이프라인은 .lore-ci.toml에서 View 이름을 지정합니다.", "Manage Sparse Views so CI fetches only the files it needs. Pipelines select a View by name in .lore-ci.toml.", "管理稀疏视图，让 CI 只获取所需文件。流水线在 .lore-ci.toml 中按名称指定视图。"],
   profile: ["내 프로필", "My profile", "我的资料"], name: ["표시 이름", "Display name", "显示名称"], email: ["이메일", "Email", "电子邮件"], login: ["최근 로그인", "Last sign-in", "最近登录"], joined: ["가입일", "Joined", "加入时间"],
-  role: ["등급", "Role", "等级"], roleUser: ["일반 사용자", "Regular user", "普通用户"], roleAdmin: ["관리자", "Administrator", "管理员"], roleHint: ["관리자만 계정 등급을 변경할 수 있습니다. 마지막 관리자는 일반 사용자로 변경할 수 없습니다.", "Only administrators can change roles. The last administrator cannot be changed to a regular user.", "只有管理员可以更改等级。最后一名管理员不能更改为普通用户。"],
+  role: ["등급", "Role", "等级"], roleUser: ["일반 사용자", "Regular user", "普通用户"], roleAdmin: ["관리자", "Administrator", "管理员"], roleHint: ["관리자만 계정 등급을 변경할 수 있습니다. 그룹 소유자는 소유권을 이전한 뒤 일반 사용자로 변경할 수 있습니다. 마지막 관리자는 변경할 수 없습니다.", "Only administrators can change roles. Transfer group ownership before changing an owner to a regular user; the last administrator cannot be demoted.", "只有管理员可以更改等级。组所有者降为普通用户前必须转让所有权，最后一名管理员不能降级。"],
   save: ["저장", "Save", "保存"], saved: ["저장했습니다.", "Saved.", "已保存。"], saving: ["저장 중…", "Saving…", "正在保存…"], cancel: ["취소", "Cancel", "取消"], edit: ["수정", "Edit", "编辑"], remove: ["삭제", "Delete", "删除"], close: ["닫기", "Close", "关闭"],
   newGroup: ["새 그룹", "New group", "新建组"], groupName: ["그룹 이름", "Group name", "组名称"], description: ["설명", "Description", "描述"], members: ["구성원", "Members", "成员"], owner: ["소유자", "Owner", "所有者"], member: ["구성원", "Member", "成员"], adminView: ["관리자 열람", "Administrator view", "管理员查看"], me: ["나", "You", "您"],
   emptyAccounts: ["검색 결과가 없습니다.", "No matching accounts.", "没有匹配的账号。"], emptyGroups: ["표시할 그룹이 없습니다. 새 그룹을 만들어 시작하세요.", "No groups to display. Create a group to get started.", "暂无组。创建一个组以开始。"],
-  groupHint: ["그룹 생성자만 이름과 구성원을 변경할 수 있습니다. 소유자는 항상 구성원으로 포함됩니다.", "Only the creator can edit the group. The owner is always a member.", "只有创建者可以编辑组。所有者始终是成员。"],
+  groupHint: ["현재 소유자만 그룹을 수정·삭제하거나 소유권을 넘길 수 있습니다. 소유자는 항상 구성원입니다.", "The current owner can edit, delete or transfer the group. The owner is always a member.", "只有当前所有者可以编辑、删除或转让组。所有者始终是成员。"],
   groupSelect: ["계정 그룹", "Account group", "账号组"], repoSelect: ["리포지토리", "Repository", "仓库"], chooseGroup: ["그룹을 선택하세요", "Choose a group", "选择组"], chooseRepo: ["리포지토리를 선택하세요", "Choose a repository", "选择仓库"],
   noGroup: ["먼저 계정 그룹을 생성하거나 그룹에 참여하세요.", "Create or join an account group first.", "请先创建或加入账号组。"],
   noRepo: ["설정 가능한 리포지토리가 없습니다. 리포지토리 소유자와 관리자가 설정을 추가할 수 있습니다.", "No repositories available. Repository owners and administrators can add presets.", "暂无可用仓库。仓库所有者和管理员可以添加预设。"],
@@ -25,19 +25,18 @@ const managementCopy = {
   noManageableRepositories: ["권한을 설정할 수 있는 Repository가 없습니다.", "No repositories are available for access management.", "没有可管理访问权限的仓库。"],
   full: ["전체 workspace", "Full workspace", "完整工作区"], sparse: ["Sparse workspace", "Sparse workspace", "稀疏工作区"], mode: ["Workspace 범위", "Workspace scope", "工作区范围"],
   rules: ["View 규칙", "View rules", "视图规则"], ruleHint: ["한 줄에 규칙 하나. 일반 패턴은 제외, ! 패턴은 포함입니다. 뒤의 규칙이 우선하며 #은 주석입니다.", "One rule per line. Patterns exclude; ! patterns include. Later rules win; # starts a comment.", "每行一条规则。普通模式排除，! 模式包含。后面的规则优先；# 表示注释。"],
-  presetHint: ["Sparse View는 리포지토리별 재사용 프리셋입니다. 그룹은 목록에서 하나를 선택하며, 선택만으로 리포지토리 접근 권한이 부여되지는 않습니다.", "Sparse Views are reusable repository presets. Groups select one from the list; selection does not grant repository access.", "稀疏视图是可复用的仓库预设。组从列表中选择一个；选择不会授予仓库访问权限。"],
+  presetHint: ["Sparse View는 리포지토리별 CI 프리셋입니다. .lore-ci.toml의 파이프라인에 sparse_view = \"View 이름\"을 지정하세요.", "Sparse Views are repository-specific CI presets. Set sparse_view = \"View name\" in a pipeline in .lore-ci.toml.", "稀疏视图是按仓库管理的 CI 预设。在 .lore-ci.toml 的流水线中设置 sparse_view = \"视图名称\"。"],
   fullHint: ["모든 경로를 포함합니다. 다운로드한 view 파일은 비어 있습니다.", "Includes all paths. The downloaded view file is empty.", "包含所有路径。下载的视图文件为空。"],
   download: ["view 파일 다운로드", "Download view file", "下载视图文件"], applyHint: ["다운로드한 파일은 새 clone에서 lore repository clone --view <파일> <URL>로 사용하세요.", "Use the downloaded file with lore repository clone --view <file> <URL> for a new clone.", "新克隆时使用 lore repository clone --view <文件> <URL>。"],
   unsaved: ["저장되지 않음", "Not saved", "未保存"], stored: ["저장된 설정", "Saved preset", "已保存预设"], readonly: ["그룹 구성원은 저장된 설정을 확인하고 다운로드할 수 있습니다.", "Group members can view and download saved presets.", "组成员可以查看和下载已保存的预设。"],
-  deleteGroup: ["이 그룹과 Sparse View 선택 정보를 삭제할까요? Sparse View 목록과 계정, 리포지토리는 유지됩니다.", "Delete this group and its Sparse View selections? The Sparse View library, accounts, and repositories will be kept.", "删除此组及其稀疏视图选择？稀疏视图库、账号和仓库将保留。"],
-  deleteView: ["이 Sparse View를 삭제할까요? 이 View를 사용한 모든 그룹의 선택도 해제됩니다.", "Delete this Sparse View? It will also be unselected from every group using it.", "删除此稀疏视图？使用它的所有组也将取消选择。"],
+  deleteGroup: ["이 그룹을 삭제하면 그룹을 통한 Repository 접근 권한도 해제됩니다. 삭제할까요?", "Deleting this group also removes its repository access grants. Delete the group?", "删除此组也会移除通过该组授予的仓库访问权限。确认删除？"],
+  deleteView: ["이 Sparse View를 삭제할까요? 이미 생성된 CI 실행의 View 규칙은 유지됩니다.", "Delete this Sparse View? View rules already saved in CI runs remain unchanged.", "删除此稀疏视图？已创建的 CI 运行中保存的视图规则保持不变。"],
   discard: ["저장하지 않은 변경사항을 버릴까요?", "Discard unsaved changes?", "放弃未保存的更改？"],
   loading: ["불러오는 중…", "Loading…", "正在加载…"], retry: ["다시 시도", "Retry", "重试"],
   search: ["계정 또는 그룹 검색…", "Search accounts or groups…", "搜索账号或组…"], accessSearch: ["Repository 또는 그룹 검색…", "Search repositories or groups…", "搜索仓库或组…"], viewSearch: ["Sparse View 검색…", "Search Sparse Views…", "搜索稀疏视图…"], navigation: ["페이지 이동", "Go to page", "前往页面"],
   invalidRules: ["10,000바이트 이하의 규칙을 입력하세요. Sparse 모드는 주석 외 규칙이 필요합니다.", "Enter at most 10,000 bytes of rules. Sparse mode requires a non-comment rule.", "规则不能超过 10,000 字节。稀疏模式需要非注释规则。"],
   viewList: ["Sparse View 목록", "Sparse View library", "稀疏视图列表"], newView: ["새 Sparse View", "New Sparse View", "新建稀疏视图"], editView: ["Sparse View 수정", "Edit Sparse View", "编辑稀疏视图"], viewName: ["View 이름", "View name", "视图名称"],
-  emptyViews: ["표시할 Sparse View가 없습니다.", "No Sparse Views to display.", "没有可显示的稀疏视图。"], assignments: ["그룹별 Sparse View 선택", "Sparse View selections by group", "按组选择稀疏视图"], assignmentHint: ["그룹 소유자는 리포지토리별로 목록의 View 하나를 선택할 수 있습니다.", "Group owners can select one listed View for each repository.", "组所有者可以为每个仓库选择一个列表中的视图。"],
-  unassigned: ["선택 안 함", "Not selected", "未选择"], saveSelection: ["선택 저장", "Save selection", "保存选择"], createViewFirst: ["먼저 이 리포지토리의 Sparse View를 만드세요.", "Create a Sparse View for this repository first.", "请先为此仓库创建稀疏视图。"], noAssignedViews: ["이 그룹에 선택된 Sparse View가 없습니다.", "No Sparse Views are selected for this group.", "此组尚未选择稀疏视图。"]
+  emptyViews: ["표시할 Sparse View가 없습니다.", "No Sparse Views to display.", "没有可显示的稀疏视图。"]
 };
 function mt(key) { return managementCopy[key][state.locale === "ko" ? 0 : state.locale === "zh-CN" ? 2 : 1]; }
 function mn(tag, className, text) {
@@ -88,6 +87,10 @@ function setManagementVisibility(visible) {
   }
   if (!visible) {
     management.request++;
+    if (activeGroupEditor) { const dialog = activeGroupEditor.dialog; activeGroupEditor = null; management.dirty = false; dialog.close(); }
+    if (activeGroupTransfer) { const dialog = activeGroupTransfer.dialog; activeGroupTransfer = null; management.dirty = false; dialog.close(); }
+    groupBrowser.filter = "all";
+    document.getElementById("account-groups-page").replaceChildren();
     if (repositoryAccessEditor.drafts.size) management.dirty = false;
     resetRepositoryAccessEditor();
     management.repositoryAccess = { repositories: [], groups: [] };
@@ -131,13 +134,11 @@ async function loadManagement() {
     const [accounts, groups, repositories] = await Promise.all([api("/api/v1/accounts"), api("/api/v1/account-groups"), api("/api/v1/workspace-repositories")]);
     if (serial !== management.request) return;
     Object.assign(management, { accounts, groups, repositories, loaded: true });
-    if (!groups.some(g => g.id === management.groupId)) management.groupId = groups[0]?.id || "";
     const repositoryAccess = section === "repository-access" ? await api("/api/v1/repository-group-access") : management.repositoryAccess;
     const views = section === "workspace-views" ? await api("/api/v1/sparse-views") : management.views;
-    const assignments = section === "workspace-views" && management.groupId ? await api(`/api/v1/account-groups/${management.groupId}/views`) : [];
     if (serial !== management.request) return;
     if (section === "repository-access") management.repositoryAccess = repositoryAccess;
-    if (section === "workspace-views") Object.assign(management, { views, assignments });
+    if (section === "workspace-views") management.views = views;
     if (state.section === section && !management.dirty) renderManagement();
   } catch (error) {
     if (serial !== management.request || state.section !== section) return;
@@ -215,48 +216,276 @@ function renderAccounts() {
   if (!accounts.length) panel.append(mn("p", "management-note", mt("emptyAccounts")));
   page.append(panel);
 }
+const groupBrowser = { filter: "all" };
+let activeGroupEditor = null;
+let activeGroupTransfer = null;
+Object.assign(managementCopy, {
+  groupOwned: ["내가 소유한 그룹", "Groups you own", "我拥有的组"],
+  groupJoined: ["내가 참여한 그룹", "Groups you belong to", "我加入的组"],
+  groupAll: ["전체 그룹", "All groups", "所有组"],
+  groupPeople: ["그룹에 속한 계정", "Accounts in groups", "组内账号"],
+  groupSearch: ["그룹·소유자·구성원 검색…", "Search groups, owners or members…", "搜索组、所有者或成员…"],
+  groupNoResults: ["검색 조건에 맞는 그룹이 없습니다.", "No groups match these filters.", "没有符合筛选条件的组。"],
+  groupClear: ["검색 및 필터 초기화", "Clear search and filters", "清除搜索和筛选"],
+  groupViewMembers: ["전체 구성원 보기", "View all members", "查看所有成员"],
+  groupEdit: ["그룹 수정", "Edit group", "编辑组"],
+  groupNoDescription: ["설명이 없습니다.", "No description yet.", "暂无描述。"],
+  groupReadOnly: ["이 그룹은 소유자만 수정·삭제하거나 소유권을 이전할 수 있습니다.", "Only the owner can edit, delete or transfer this group.", "只有所有者可以编辑、删除或转让此组。"],
+  groupMemberSearch: ["구성원 이름 또는 이메일 검색", "Search member names or emails", "搜索成员姓名或邮箱"],
+  groupSelectedOnly: ["선택한 계정만 보기", "Show selected accounts only", "仅显示已选账号"],
+  groupSelected: ["선택한 구성원", "Selected members", "已选成员"],
+  groupOwnerRequired: ["소유자 · 필수", "Owner · required", "所有者 · 必选"],
+  groupAdd: ["추가할 구성원", "Members to add", "要添加的成员"],
+  groupRemove: ["제외할 구성원", "Members to remove", "要移除的成员"],
+  groupUnchanged: ["구성원 변경이 없습니다.", "Membership is unchanged.", "成员未更改。"],
+  groupLimit: ["소유자를 포함해 최대 200명까지 선택할 수 있습니다.", "Select up to 200 members, including the owner.", "最多选择 200 名成员（含所有者）。"],
+  groupRemovalHint: ["제외한 구성원은 이 그룹을 통해 받은 Repository 접근 권한을 잃습니다. 다른 그룹이나 소유자·관리자 권한은 유지됩니다.", "Removed members lose repository access granted through this group. Access from other groups, ownership or administrator privileges remains.", "移除成员将撤销通过此组获得的仓库访问权限，其他组、所有者或管理员权限仍保留。"],
+  groupSavingWait: ["그룹을 저장하고 있습니다. 완료 후 닫아주세요.", "The group is being saved. Wait before closing.", "正在保存组，请完成后再关闭。"],
+  groupNameRequired: ["그룹 이름을 입력하세요.", "Enter a group name.", "请输入组名称。"],
+  groupTransfer: ["소유권 이전", "Transfer ownership", "转让所有权"],
+  groupNewOwner: ["새 소유자", "New owner", "新所有者"],
+  groupTransferHint: ["현재 그룹 구성원인 관리자에게 소유권을 넘깁니다. 이전 소유자는 구성원으로 남고 그룹 수정·삭제 권한은 새 소유자에게 넘어갑니다.", "Transfer to an administrator who is already a group member. The previous owner remains a member; the new owner can edit and delete the group.", "将所有权转给已加入此组的管理员。原所有者仍是成员，新所有者可编辑和删除此组。"],
+  groupTransferEmpty: ["이전할 관리자 구성원이 없습니다. 계정 관리에서 관리자를 지정하고 이 그룹에 추가하세요.", "No administrator member is available. Assign an administrator in Accounts and add them to this group first.", "没有可转让的管理员成员。请先在账号管理中指定管理员并将其加入此组。"],
+  groupTransferConfirm: ["소유권 이전 확인", "Confirm transfer", "确认转让"],
+  groupTransferred: ["그룹 소유권을 이전했습니다.", "Group ownership transferred.", "组所有权已转让。"],
+});
+function accountGroupMatches(group, query, accounts = new Map(management.accounts.map(account => [account.id, account]))) {
+  const people = [...new Set([group.owner_id, ...group.member_ids])].map(id => {
+    const account = accounts.get(id);
+    return account ? `${account.name} ${account.email}` : id;
+  });
+  return [group.name, group.description, ...people].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+}
 function renderGroups() {
+  if (state.user?.role !== "admin") { document.getElementById("account-groups-page").replaceChildren(); return; }
   const page = managementShell("account-groups", "groups", "groupIntro");
   page.querySelector(".page-heading").append(mb(mt("newGroup"), () => openGroupEditor(), "primary"));
-  page.append(mn("p", "management-note", mt("groupHint")));
-  const list = mn("div", "management-group-grid");
-  const groups = management.groups.filter(g => `${g.name} ${g.description}`.toLowerCase().includes(state.query));
-  for (const group of groups) {
-    const card = mn("article", "pipeline-panel management-group-card");
-    const relationship = group.owner_id === state.user.id ? "owner" : group.member_ids.includes(state.user.id) ? "member" : "adminView";
-    const header = mn("header", "management-card-heading"); header.append(mn("h2", "", group.name), mn("span", "os-badge", mt(relationship)));
-    card.append(header, mn("p", "management-description", group.description || "—"), mn("h3", "", `${mt("members")} · ${group.member_ids.length}`));
-    const members = mn("div", "management-member-chips");
-    for (const id of group.member_ids) { const account = management.accounts.find(a => a.id === id); const chip = mn("span", "management-chip", account?.name || account?.email || id); chip.title = account?.email || id; members.append(chip); }
-    card.append(members); const actions = mn("div", "management-actions");
-    actions.append(mb(mt("views"), () => { management.groupId = group.id; management.resourceId = ""; window.location.hash = "workspace-views"; }));
-    if (group.owner_id === state.user.id) actions.append(mb(mt("edit"), () => openGroupEditor(group)), mb(mt("remove"), () => confirmManagement(mt("deleteGroup"), group.name, button => managementMutation(button, `/api/v1/account-groups/${group.id}`, "DELETE", undefined, async () => { document.getElementById("management-dialog").close(); await loadManagement(); })), "danger"));
-    card.append(actions); list.append(card);
+  const accounts = new Map(management.accounts.map(account => [account.id, account]));
+  const accountName = id => accounts.get(id)?.name || accounts.get(id)?.email || id;
+  const summary = mn("div", "group-summary");
+  for (const [key, count] of [["groupAll", management.groups.length], ["groupOwned", management.groups.filter(group => group.owner_id === state.user.id).length], ["groupPeople", new Set(management.groups.flatMap(group => group.member_ids)).size]]) {
+    const card = mn("div"); card.append(mn("span", "", mt(key)), mn("strong", "", String(count))); summary.append(card);
   }
-  if (!groups.length) list.append(mn("p", "management-note", mt("emptyGroups"))); page.append(list);
+  const tools = mn("div", "group-tools");
+  const search = mi("group-search", state.query || "", 256); search.type = "search"; search.placeholder = mt("groupSearch"); search.setAttribute("aria-label", mt("groupSearch"));
+  const filters = mn("div", "group-filters"); filters.setAttribute("role", "group"); filters.setAttribute("aria-label", mt("groupSelect"));
+  const list = mn("div", "management-group-grid");
+  const count = mn("p", "management-note"); count.setAttribute("role", "status");
+  const paint = () => {
+    for (const button of filters.children) button.setAttribute("aria-pressed", String(button.dataset.filter === groupBrowser.filter));
+    const groups = management.groups.filter(group => accountGroupMatches(group, state.query || "", accounts) && (groupBrowser.filter === "all" || (groupBrowser.filter === "owned" ? group.owner_id === state.user.id : group.member_ids.includes(state.user.id))));
+    count.textContent = `${mt("groups")} · ${groups.length} / ${management.groups.length}`;
+    list.replaceChildren();
+    for (const group of groups) {
+      const card = mn("article", "pipeline-panel management-group-card");
+      const relationship = group.owner_id === state.user.id ? "owner" : group.member_ids.includes(state.user.id) ? "member" : "adminView";
+      const header = mn("header", "management-card-heading");
+      const identity = mn("div", "group-card-identity");
+      const avatar = mn("span", "group-avatar", Array.from(group.name.trim())[0] || "#"); avatar.setAttribute("aria-hidden", "true");
+      identity.append(avatar, mn("h2", "", group.name));
+      header.append(identity, mn("span", `os-badge group-relationship group-relationship--${relationship}`, mt(relationship)));
+      const owner = accounts.get(group.owner_id);
+      const ownerLine = mn("p", "group-owner", `${mt("owner")} · ${accountName(group.owner_id)}`); ownerLine.title = owner?.email || group.owner_id;
+      card.append(header, mn("p", "management-description", group.description || mt("groupNoDescription")), ownerLine);
+      const memberHeading = mn("h3", "group-members-heading");
+      memberHeading.append(mn("span", "", mt("members")), mn("span", "group-member-count", String(group.member_ids.length)));
+      card.append(memberHeading);
+      const chips = ids => {
+        const members = mn("div", "management-member-chips");
+        for (const id of ids) { const chip = mn("span", "management-chip", accountName(id)); chip.title = accounts.get(id)?.email || id; members.append(chip); }
+        return members;
+      };
+      card.append(chips(group.member_ids.slice(0, 6)));
+      if (group.member_ids.length > 6) {
+        const more = mn("details", "group-more-members"); more.append(mn("summary", "", `${mt("groupViewMembers")} · ${group.member_ids.length}`), chips(group.member_ids.slice(6))); card.append(more);
+      }
+      if (group.owner_id === state.user.id) {
+        const actions = mn("div", "management-actions group-card-actions");
+        actions.append(mb(mt("groupEdit"), () => openGroupEditor(group)), mb(mt("groupTransfer"), () => openGroupOwnershipTransfer(group)), mb(mt("remove"), () => confirmManagement(mt("deleteGroup"), group.name, button => managementMutation(button, `/api/v1/account-groups/${group.id}`, "DELETE", undefined, async () => { document.getElementById("management-dialog").close(); await loadManagement(); })), "danger"));
+        card.append(actions);
+      } else card.append(mn("p", "management-note group-card-readonly", mt("groupReadOnly")));
+      list.append(card);
+    }
+    if (!groups.length) {
+      const empty = mn("div", "group-empty pipeline-panel"); empty.append(mn("p", "management-note", mt(management.groups.length ? "groupNoResults" : "emptyGroups")));
+      if (management.groups.length) empty.append(mb(mt("groupClear"), () => { state.query = ""; search.value = ""; elements["pipeline-search"].value = ""; groupBrowser.filter = "all"; paint(); }));
+      list.append(empty);
+    }
+  };
+  for (const [value, key] of [["all", "groupAll"], ["owned", "groupOwned"], ["joined", "groupJoined"]]) {
+    const button = mb(mt(key), () => { groupBrowser.filter = value; paint(); }); button.dataset.filter = value; filters.append(button);
+  }
+  search.addEventListener("input", () => { state.query = search.value; elements["pipeline-search"].value = search.value; paint(); });
+  tools.append(search, filters); page.append(summary, tools, count, list, mn("p", "management-note", mt("groupHint"))); paint();
 }
-function managementDialog(title) {
+function managementDialog(title, requestClose) {
   document.getElementById("management-dialog")?.remove();
   const dialog = mn("dialog", "modal"); dialog.id = "management-dialog";
   const form = mn("form"); const header = mn("div", "modal-header"); const heading = mn("h2", "", title); heading.id = "management-dialog-title"; dialog.setAttribute("aria-labelledby", heading.id);
-  header.append(heading, mb(mt("close"), () => dialog.close())); form.append(header); dialog.append(form); document.body.append(dialog); return { dialog, form };
+  header.append(heading, mb(mt("close"), () => requestClose ? requestClose() : dialog.close())); form.append(header); dialog.append(form); document.body.append(dialog); return { dialog, form };
+}
+function groupDraftChanges(group, name, description, selected) {
+  const baseline = new Set(group?.member_ids || []);
+  const added = [...selected].filter(id => !baseline.has(id)), removed = [...baseline].filter(id => !selected.has(id));
+  return { added, removed, dirty: name !== (group?.name || "") || description !== (group?.description || "") || Boolean(group && (added.length || removed.length)) || (!group && selected.size > 1) };
 }
 function openGroupEditor(group) {
-  const { dialog, form } = managementDialog(group ? mt("edit") : mt("newGroup"));
+  if (state.user?.role !== "admin" || (group && group.owner_id !== state.user.id) || activeGroupEditor) return;
+  const userId = state.user.id, ownerId = group?.owner_id || userId;
+  const selected = new Set(group?.member_ids || []); selected.add(ownerId);
+  let saving = false, saved = false;
+  const requestClose = () => {
+    if (saving) { toast(mt("groupSavingWait"), "error"); return false; }
+    if (changes().dirty && !window.confirm(mt("discard"))) return false;
+    management.dirty = false;
+    dialog.close(); return true;
+  };
+  const { dialog, form } = managementDialog(group ? mt("groupEdit") : mt("newGroup"), requestClose);
+  dialog.classList.add("group-editor");
+  const editor = { dialog, requestClose, get saving() { return saving; } }; activeGroupEditor = editor;
+  const current = () => activeGroupEditor === editor && state.user?.id === userId && state.user?.role === "admin";
   const name = mi("group-name", group?.name || "", 100); name.required = true;
-  const description = mi("group-description", group?.description || "", 500);
+  const description = mn("textarea"); description.id = "group-description"; description.value = group?.description || ""; description.maxLength = 500; description.rows = 3;
+  const changes = () => groupDraftChanges(group, name.value, description.value, selected);
   form.append(field(mt("groupName"), name), field(mt("description"), description));
-  const members = mn("fieldset", "management-member-picker"); members.append(mn("legend", "", mt("members")));
-  for (const account of management.accounts) {
-    const label = mn("label", "management-member-option"); const checkbox = mn("input"); checkbox.type = "checkbox"; checkbox.value = account.id;
-    checkbox.checked = account.id === state.user.id || Boolean(group?.member_ids.includes(account.id)); checkbox.disabled = account.id === state.user.id;
-    label.append(checkbox, mn("span", "", `${account.name || account.email} · ${account.email}`)); members.append(label);
-  }
-  form.append(members, mn("p", "management-note", mt("groupHint")));
+  const search = mi("group-member-search", "", 256); search.type = "search"; search.placeholder = mt("groupMemberSearch"); search.setAttribute("aria-label", mt("groupMemberSearch"));
+  const selectedOnly = mn("input"); selectedOnly.type = "checkbox";
+  const filter = mn("label", "group-selected-filter"); filter.append(selectedOnly, mn("span", "", mt("groupSelectedOnly")));
+  const count = mn("p", "management-note"); count.setAttribute("role", "status");
+  const members = mn("fieldset", "management-member-picker");
+  const review = mn("div", "group-member-review"); review.setAttribute("role", "status");
+  const error = mn("p", "group-editor-error"); error.setAttribute("role", "alert"); error.hidden = true;
   const actions = mn("div", "modal-actions"); const save = mb(mt("save"), () => {}, "primary"); save.type = "submit";
-  actions.append(mb(mt("cancel"), () => dialog.close()), save); form.append(actions);
-  form.addEventListener("submit", event => { event.preventDefault(); void managementMutation(save, `/api/v1/account-groups${group ? `/${group.id}` : ""}`, "POST", { name: name.value, description: description.value, member_ids: [...members.querySelectorAll("input:checked")].map(input => input.value) }, async () => { dialog.close(); await loadManagement(); }); });
-  dialog.showModal(); name.focus();
+  actions.append(mb(mt("cancel"), requestClose), save);
+  form.append(search, filter, count, members, review, mn("p", "management-note", mt("groupLimit")), error, actions);
+  const accounts = new Map(management.accounts.map(account => [account.id, account]));
+  for (const id of selected) if (!accounts.has(id)) accounts.set(id, { id, name: id, email: "" });
+  const displayName = id => accounts.get(id)?.name || accounts.get(id)?.email || id;
+  const paintChanges = () => {
+    const diff = changes(); management.dirty = diff.dirty;
+    count.textContent = `${mt("groupSelected")}: ${selected.size} / 200`;
+    review.replaceChildren();
+    for (const [key, ids] of [["groupAdd", diff.added], ["groupRemove", diff.removed]]) {
+      if (!ids.length) continue;
+      const row = mn("div"); row.append(mn("strong", "", `${mt(key)} · ${ids.length}`));
+      const chips = mn("div", "management-member-chips");
+      for (const id of ids) chips.append(mn("span", "management-chip", displayName(id)));
+      row.append(chips); review.append(row);
+    }
+    if (!diff.added.length && !diff.removed.length) review.append(mn("p", "management-note", mt("groupUnchanged")));
+    if (diff.removed.length) review.append(mn("p", "management-note", mt("groupRemovalHint")));
+    if (selected.size > 200) review.append(mn("p", "group-editor-error", mt("groupLimit")));
+    name.setCustomValidity(name.value && !name.value.trim() ? mt("groupNameRequired") : "");
+    save.disabled = saving || !name.value.trim() || selected.size > 200 || Boolean(group && !diff.dirty);
+    save.textContent = mt(saving ? "saving" : "save");
+  };
+  const paintMembers = () => {
+    members.replaceChildren(mn("legend", "", mt("members")));
+    const query = search.value.trim().toLocaleLowerCase();
+    const visible = [...accounts.values()].filter(account => (!selectedOnly.checked || selected.has(account.id)) && `${account.name} ${account.email}`.toLocaleLowerCase().includes(query));
+    for (const account of visible) {
+      const label = mn("label", "management-member-option"); const checkbox = mn("input"); checkbox.type = "checkbox"; checkbox.value = account.id;
+      checkbox.checked = selected.has(account.id); checkbox.disabled = saving || account.id === ownerId;
+      const copy = mn("span", "group-member-identity"); copy.append(mn("strong", "", displayName(account.id)), mn("small", "", account.email));
+      label.append(checkbox, copy);
+      if (account.id === ownerId) label.append(mn("span", "group-owner-label", mt("groupOwnerRequired")));
+      checkbox.addEventListener("change", () => {
+        checkbox.checked ? selected.add(account.id) : selected.delete(account.id);
+        error.hidden = true; paintChanges();
+        if (selectedOnly.checked && !checkbox.checked) { paintMembers(); selectedOnly.focus(); }
+      });
+      members.append(label);
+    }
+    if (!visible.length) members.append(mn("p", "management-note", mt("emptyAccounts")));
+  };
+  name.addEventListener("input", () => { error.hidden = true; paintChanges(); });
+  description.addEventListener("input", () => { error.hidden = true; paintChanges(); });
+  search.addEventListener("input", paintMembers); selectedOnly.addEventListener("change", paintMembers);
+  search.addEventListener("keydown", event => { if (event.key === "Enter") event.preventDefault(); });
+  dialog.addEventListener("cancel", event => { event.preventDefault(); requestClose(); });
+  dialog.addEventListener("close", () => {
+    if (activeGroupEditor !== editor) return;
+    activeGroupEditor = null; management.dirty = false;
+    if (saved && state.section === "account-groups") renderGroups();
+  });
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (saving || save.disabled || !current() || !form.reportValidity()) return;
+    saving = true; error.hidden = true; dialog.setAttribute("aria-busy", "true");
+    for (const control of form.querySelectorAll("input, textarea, button")) control.disabled = true;
+    paintChanges();
+    try {
+      const result = await api(`/api/v1/account-groups${group ? `/${group.id}` : ""}`, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify({ name: name.value.trim(), description: description.value.trim(), member_ids: [...selected] }) });
+      if (!current()) return;
+      management.request++;
+      management.groups = [...management.groups.filter(item => item.id !== result.id), result].sort((a, b) => a.name.localeCompare(b.name, state.locale));
+      saved = true; saving = false; toast(mt("saved"), "success"); dialog.close();
+    } catch (failure) {
+      if (current()) { error.textContent = failure.message; error.hidden = false; }
+    } finally {
+      if (current() && !saved) {
+        saving = false; dialog.setAttribute("aria-busy", "false");
+        for (const control of form.querySelectorAll("input, textarea, button")) control.disabled = false;
+        paintMembers(); paintChanges();
+      }
+    }
+  });
+  paintMembers(); paintChanges(); dialog.showModal(); name.focus();
+}
+function eligibleGroupOwners(group) {
+  const members = new Set(group.member_ids);
+  return management.accounts.filter(account => account.id !== group.owner_id && members.has(account.id) && account.role === "admin");
+}
+function openGroupOwnershipTransfer(group) {
+  if (state.user?.role !== "admin" || group.owner_id !== state.user.id || activeGroupEditor || activeGroupTransfer) return;
+  const userId = state.user.id, candidates = eligibleGroupOwners(group);
+  let saving = false;
+  const requestClose = () => {
+    if (saving) { toast(mt("groupSavingWait"), "error"); return false; }
+    dialog.close(); return true;
+  };
+  const { dialog, form } = managementDialog(mt("groupTransfer"), requestClose);
+  dialog.classList.add("group-transfer-dialog");
+  const transfer = { dialog, requestClose }; activeGroupTransfer = transfer;
+  const current = () => activeGroupTransfer === transfer && state.user?.id === userId && state.user?.role === "admin";
+  form.append(mn("strong", "group-transfer-name", group.name), mn("p", "modal-intro", mt("groupTransferHint")));
+  const select = mn("select"); select.id = "group-new-owner"; select.required = true;
+  for (const account of candidates) {
+    const option = mn("option", "", `${account.name || account.email} · ${account.email}`);
+    option.value = account.id; select.append(option);
+  }
+  if (candidates.length) select.value = candidates[0].id;
+  form.append(field(mt("groupNewOwner"), select));
+  if (!candidates.length) form.append(mn("p", "management-note", mt("groupTransferEmpty")));
+  const error = mn("p", "group-editor-error"); error.setAttribute("role", "alert"); error.hidden = true;
+  const actions = mn("div", "modal-actions"), save = mb(mt("groupTransferConfirm"), () => {}, "primary"); save.type = "submit"; save.disabled = !candidates.length;
+  actions.append(mb(mt("cancel"), requestClose), save); form.append(error, actions);
+  dialog.addEventListener("cancel", event => { event.preventDefault(); requestClose(); });
+  dialog.addEventListener("close", () => { if (activeGroupTransfer === transfer) activeGroupTransfer = null; });
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (saving || !candidates.length || !current() || !form.reportValidity()) return;
+    saving = true; management.dirty = true; error.hidden = true; dialog.setAttribute("aria-busy", "true");
+    for (const control of form.querySelectorAll("select, button")) control.disabled = true;
+    save.textContent = mt("saving");
+    try {
+      const result = await api(`/api/v1/account-groups/${group.id}/owner`, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify({ owner_id: select.value }) });
+      if (!current()) return;
+      management.request++;
+      management.groups = management.groups.map(item => item.id === group.id ? result : item);
+      management.dirty = false; saving = false;
+      toast(mt("groupTransferred"), "success"); dialog.close();
+      if (state.section === "account-groups") renderGroups();
+    } catch (failure) {
+      if (current()) { error.textContent = failure.message; error.hidden = false; }
+    } finally {
+      if (current() && saving) {
+        saving = false; management.dirty = false; dialog.setAttribute("aria-busy", "false");
+        for (const control of form.querySelectorAll("select, button")) control.disabled = false;
+      }
+    }
+  });
+  dialog.showModal(); if (candidates.length) select.focus();
 }
 function confirmManagement(message, name, action) {
   const { dialog, form } = managementDialog(mt("remove"));
@@ -265,6 +494,8 @@ function confirmManagement(message, name, action) {
   form.addEventListener("submit", event => event.preventDefault()); dialog.showModal();
 }
 function discardManagement() {
+  if (activeGroupEditor && !activeGroupEditor.requestClose()) return false;
+  if (activeGroupTransfer && !activeGroupTransfer.requestClose()) return false;
   if (repositoryAccessEditor.saving.size) { toast(mt("accessSavingWait"), "error"); return false; }
   if (management.dirty && !window.confirm(mt("discard"))) return false;
   resetRepositoryAccessEditor(); management.dirty = false; return true;
@@ -484,7 +715,6 @@ function renderViews() {
   if (management.repositories.length) page.querySelector(".page-heading").append(mb(mt("newView"), () => openViewEditor(), "primary"));
   page.append(mn("p", "management-notice", mt("presetHint")));
   renderViewLibrary(page);
-  renderGroupViewAssignments(page);
 }
 function renderViewLibrary(page) {
   const panel = mn("section", "pipeline-panel management-view-library");
@@ -503,39 +733,6 @@ function renderViewLibrary(page) {
   }
   if (!views.length) list.append(mn("p", "management-note", mt("emptyViews")));
   panel.append(list); page.append(panel);
-}
-function renderGroupViewAssignments(page) {
-  const panel = mn("section", "pipeline-panel management-assignment-panel");
-  const header = mn("header", "panel-header"); const heading = mn("div"); heading.append(mn("h2", "", mt("assignments")), mn("p", "", mt("assignmentHint"))); header.append(heading); panel.append(header);
-  if (!management.groups.length) { panel.append(mn("p", "management-note", mt("noGroup"))); page.append(panel); return; }
-  const groupSelect = mn("select"); groupSelect.id = "view-group";
-  management.groups.forEach(group => groupSelect.add(new Option(group.name, group.id))); groupSelect.value = management.groupId;
-  groupSelect.addEventListener("change", () => { management.groupId = groupSelect.value; management.assignments = []; panel.replaceChildren(mn("p", "management-note", mt("loading"))); void loadManagement(); });
-  const picker = mn("div", "management-assignment-picker"); picker.append(field(mt("groupSelect"), groupSelect, mt("assignmentHint"))); panel.append(picker);
-  const group = management.groups.find(item => item.id === management.groupId);
-  const canManage = group?.owner_id === state.user.id;
-  const repositories = new Map(management.assignments.map(item => [item.resource_id, { resource_id: item.resource_id, name: item.repository_name }]));
-  if (canManage) management.repositories.forEach(repository => repositories.set(repository.resource_id, repository));
-  const rows = mn("div", "management-assignment-list");
-  for (const repository of [...repositories.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-    const current = management.assignments.find(item => item.resource_id === repository.resource_id);
-    const row = mn("div", "management-assignment-row");
-    const copy = mn("div", "management-assignment-copy"); copy.append(mn("strong", "", repository.name), mn("small", "", current ? current.view_name : mt("unassigned"))); row.append(copy);
-    if (canManage) {
-      const select = mn("select"); select.add(new Option(mt("unassigned"), ""));
-      management.views.filter(view => view.can_manage && view.resource_id === repository.resource_id).forEach(view => select.add(new Option(view.name, view.id)));
-      select.value = current?.view_id || "";
-      const save = mb(mt("saveSelection"), () => {
-        if (select.value) void managementMutation(save, `/api/v1/account-groups/${management.groupId}/views/${encodeURIComponent(repository.resource_id)}`, "POST", { view_id: select.value }, loadManagement);
-        else if (current) void managementMutation(save, `/api/v1/account-groups/${management.groupId}/views/${encodeURIComponent(repository.resource_id)}`, "DELETE", undefined, loadManagement);
-      }, "primary");
-      save.disabled = select.value === (current?.view_id || ""); select.addEventListener("change", () => { save.disabled = select.value === (current?.view_id || ""); });
-      const controls = mn("div", "management-assignment-controls"); controls.append(select, save); row.append(controls);
-    } else if (current) row.append(mb(mt("download"), () => downloadSparseView(current)));
-    rows.append(row);
-  }
-  if (!repositories.size) rows.append(mn("p", "management-note", canManage ? mt("createViewFirst") : mt("noAssignedViews")));
-  panel.append(rows); page.append(panel);
 }
 function openViewEditor(view) {
   const { dialog, form } = managementDialog(view ? mt("editView") : mt("newView"));

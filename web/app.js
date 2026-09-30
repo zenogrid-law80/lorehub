@@ -754,7 +754,7 @@ function updateSectionSearch() {
     return;
   }
   if (isManagement()) {
-    const key = state.section === "workspace-views" ? "viewSearch" : state.section === "repository-access" ? "accessSearch" : "search";
+    const key = state.section === "workspace-views" ? "viewSearch" : state.section === "repository-access" ? "accessSearch" : state.section === "account-groups" ? "groupSearch" : "search";
     elements["pipeline-search"].placeholder = mt(key);
     elements["pipeline-search"].previousElementSibling.textContent = mt(key);
     return;

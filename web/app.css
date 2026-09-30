@@ -918,16 +918,6 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
 .management-view-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 18px; }
 .management-view-card { min-width: 0; display: flex; flex-direction: column; gap: 11px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: #fcfbfd; }
 .management-view-card .management-actions { padding-top: 7px; }
-.management-assignment-picker { max-width: 520px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
-.management-assignment-picker .field { margin: 0; }
-.management-assignment-list { display: grid; }
-.management-assignment-row { display: grid; grid-template-columns: minmax(150px, .75fr) minmax(280px, 1.25fr); align-items: center; gap: 20px; padding: 15px 22px; border-bottom: 1px solid var(--line); }
-.management-assignment-row:last-child { border-bottom: 0; }
-.management-assignment-copy { min-width: 0; display: grid; gap: 5px; }
-.management-assignment-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.management-assignment-copy small { color: var(--muted); font-size: 10px; }
-.management-assignment-controls { display: grid; grid-template-columns: minmax(160px, 1fr) auto; gap: 10px; }
-.management-assignment-controls select { min-width: 0; width: 100%; border: 1px solid #dcd8e5; border-radius: 8px; padding: 9px 11px; background: white; color: var(--ink); font: inherit; }
 .mobile-page-select { display: none; }
 @media (max-width: 1100px) { .management-group-grid, .management-view-grid { grid-template-columns: 1fr; } }
 @media (max-width: 780px) {
@@ -938,15 +928,13 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
   .management-page .page-heading .button { font-size: 12px; }
   .management-table th, .management-table td { display: table-cell; }
   .management-page .page-heading { gap: 16px; }
-  .management-assignment-row { grid-template-columns: 1fr; gap: 10px; }
 }
-@media (max-width: 500px) { .management-assignment-controls { grid-template-columns: 1fr; } }
 
 :root[data-color-scheme="dark"] .login-card-wrap,
 :root[data-color-scheme="dark"] .login-view {
   background: var(--canvas);
 }
-:root[data-color-scheme="dark"] :is(.login-card, dialog, .drawer-shell, .language-picker select, .field input, .field select, .field textarea, .storage-backend-option, .button--ghost, .button--download, .toast, .management-page .field select, .management-page .field textarea, .management-role-controls select, .management-assignment-controls select, .mobile-page-select) {
+:root[data-color-scheme="dark"] :is(.login-card, dialog, .drawer-shell, .language-picker select, .field input, .field select, .field textarea, .storage-backend-option, .button--ghost, .button--download, .toast, .management-page .field select, .management-page .field textarea, .management-role-controls select, .mobile-page-select) {
   border-color: var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -1140,4 +1128,74 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
   .repository-access-stat { padding: 13px; flex-direction: column; align-items: start; gap: 6px; }
   .repository-access-heading, .repository-access-body { padding: 18px; }
   .repository-access-actions { padding: 14px 18px; }
+}
+
+/* Account groups */
+.group-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.group-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.group-summary span { color: var(--muted); font-size: 12px; }
+.group-summary strong { font-size: 25px; font-variant-numeric: tabular-nums; }
+.group-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.group-tools > input { flex: 1 1 240px; min-width: 0; }
+.group-tools > input, .group-editor input[type="search"], .group-editor textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.group-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-filters .button { padding: 8px 12px; font-size: 12px; }
+.group-filters .button[aria-pressed="true"] { color: var(--purple); background: var(--purple-soft); border-color: var(--purple); }
+.group-owner { margin: 0; font-size: 12px; overflow-wrap: anywhere; color: var(--ink); }
+.group-more-members summary { cursor: pointer; color: var(--purple); font-size: 12px; }
+.group-more-members .management-member-chips { margin-top: 12px; }
+.group-empty { grid-column: 1 / -1; padding: 28px; text-align: center; }
+#account-groups-page .management-chip, .group-editor .management-chip { color: var(--ink); }
+#account-groups-page .management-group-card > .management-note { padding: 0; margin: 0; }
+.group-editor { width: min(660px, calc(100vw - 32px)); }
+.group-editor textarea { resize: vertical; min-height: 80px; }
+.group-selected-filter { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted); }
+.group-selected-filter input { accent-color: var(--purple); }
+.group-editor .management-member-picker { margin: 8px 0 16px; max-height: 280px; }
+.group-editor .management-member-option { border-bottom: 1px solid var(--line); padding: 12px 4px; cursor: pointer; }
+.group-editor .management-member-option:last-child { border-bottom: 0; }
+.group-member-identity { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.group-member-identity small { color: var(--muted); font-size: 11px; }
+.group-owner-label { color: var(--purple); font-size: 10px; }
+.group-member-review { display: grid; gap: 12px; padding: 14px; border-radius: 8px; background: var(--canvas); }
+.group-member-review strong { display: block; font-size: 12px; margin-bottom: 8px; }
+.group-member-review .management-note { margin: 0; }
+.group-editor-error { color: var(--red); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.group-editor :is(input, textarea, button):focus-visible, .group-filters button:focus-visible, .group-more-members summary:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+@media (max-width: 780px) {
+  .group-summary { gap: 8px; }
+  .group-summary > div { padding: 13px; flex-direction: column; align-items: start; }
+  .group-filters .button { padding: 8px; font-size: 11px; }
+  .group-editor .management-member-picker { max-height: 220px; }
+}
+.group-transfer-dialog { width: min(520px, calc(100vw - 32px)); }
+.group-transfer-name { display: block; margin: 10px 0; font-size: 14px; overflow-wrap: anywhere; }
+.group-transfer-dialog .field { margin: 18px 0 8px; }
+.group-transfer-dialog select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.group-transfer-dialog select:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+
+/* Group card hierarchy and responsive actions. */
+#account-groups-page .management-group-card { min-width: 0; gap: 16px; }
+.group-card-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.group-card-identity h2 { margin: 0; font-size: 16px; line-height: 1.5; }
+.group-avatar { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border: 1px solid var(--line); border-radius: 12px; background: var(--purple-soft); color: var(--purple); font-size: 18px; font-weight: 700; text-transform: uppercase; }
+.group-relationship--owner { background: var(--purple-soft); color: var(--purple); }
+#account-groups-page .management-description { min-height: 40px; white-space: pre-wrap; }
+#account-groups-page .group-owner { padding-bottom: 16px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.group-members-heading { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 600; }
+.group-member-count { padding: 3px 7px; border-radius: 6px; background: var(--canvas); color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#account-groups-page .group-card-actions { border-top: 1px solid var(--line); padding-top: 16px; }
+.group-card-actions .button { min-height: 36px; padding: 8px 12px; font-size: 12px; }
+.group-card-actions .button--danger { margin-left: auto; }
+#account-groups-page .management-group-card > .group-card-readonly { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+.group-tools > input:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.group-editor .management-member-option:has(input:checked) { background: var(--purple-soft); }
+.group-editor .management-member-option { padding-inline: 8px; border-radius: 6px; }
+@media (max-width: 600px) {
+  #account-groups-page .management-group-card { padding: 18px; }
+  #account-groups-page .management-card-heading { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .group-tools > input { flex-basis: 100%; }
+  .group-filters { width: 100%; }
+  .group-filters .button { flex: 1; }
+  .group-card-actions .button { flex-grow: 1; }
 }

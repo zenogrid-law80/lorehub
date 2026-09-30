@@ -27,6 +27,10 @@ pub(super) fn router() -> Router<AppState> {
             "/api/v1/account-groups/{id}",
             post(update_group).delete(delete_group),
         )
+        .route(
+            "/api/v1/account-groups/{id}/owner",
+            post(transfer_group_owner),
+        )
         .route("/api/v1/workspace-repositories", get(repositories))
         .route(
             "/api/v1/repository-group-access",
@@ -43,11 +47,6 @@ pub(super) fn router() -> Router<AppState> {
         .route(
             "/api/v1/sparse-views/{id}",
             post(update_sparse_view).delete(delete_sparse_view),
-        )
-        .route("/api/v1/account-groups/{id}/views", get(group_views))
-        .route(
-            "/api/v1/account-groups/{id}/views/{resource}",
-            post(select_view).delete(unselect_view),
         )
         .route_layer(middleware::from_fn(require_admin))
 }
@@ -130,6 +129,17 @@ async fn update_account_role(
         return Err(ApiError(StatusCode::NOT_FOUND, "Account not found.".into()));
     };
     if current == "admin" && input.role == "user" {
+        let owns_group: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM account_groups WHERE owner_id=$1)")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if owns_group {
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                "Transfer ownership of this account's groups before changing its role.".into(),
+            ));
+        }
         let administrator_count: i64 =
             sqlx::query_scalar("SELECT count(*) FROM users WHERE role='admin'")
                 .fetch_one(&mut *tx)
@@ -292,6 +302,65 @@ async fn update_group(
 ) -> Result<Json<Group>, ApiError> {
     store_group(s, session.user.id, id, input, false).await
 }
+#[derive(Deserialize)]
+struct TransferGroupOwnerInput {
+    owner_id: Uuid,
+}
+async fn transfer_group_owner(
+    State(s): State<AppState>,
+    Extension(session): Extension<AuthSession>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<TransferGroupOwnerInput>,
+) -> Result<Json<Group>, ApiError> {
+    let mut tx = s.pool.begin().await?;
+    let current_owner: Option<Uuid> =
+        sqlx::query_scalar("SELECT owner_id FROM account_groups WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(current_owner) = current_owner else {
+        return Err(ApiError(StatusCode::NOT_FOUND, "Group not found.".into()));
+    };
+    if current_owner != session.user.id {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Group owner required.".into(),
+        ));
+    }
+    if input.owner_id == current_owner {
+        return Err(bad("Choose a different group member as the new owner."));
+    }
+    // Lock the destination account while checking its role so a concurrent
+    // demotion cannot leave the group owned by someone unable to manage it.
+    let new_owner_role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM users WHERE id=$1 FOR UPDATE")
+            .bind(input.owner_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM account_group_members WHERE group_id=$1 AND user_id=$2)",
+    )
+    .bind(id)
+    .bind(input.owner_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let eligible = new_owner_role.as_deref() == Some("admin") && member;
+    if !eligible {
+        return Err(bad(
+            "The new owner must be an administrator and a current group member.",
+        ));
+    }
+    sqlx::query("UPDATE account_groups SET owner_id=$1 WHERE id=$2")
+        .bind(input.owner_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(conflict)?;
+    let group: Group = sqlx::query_as("SELECT g.id,g.name,g.description,g.owner_id,ARRAY(SELECT user_id FROM account_group_members WHERE group_id=g.id ORDER BY user_id) AS member_ids FROM account_groups g WHERE g.id=$1")
+        .bind(id).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Json(group))
+}
 async fn delete_group(
     State(s): State<AppState>,
     Extension(session): Extension<AuthSession>,
@@ -435,36 +504,8 @@ async fn sparse_views(
     State(s): State<AppState>,
     Extension(session): Extension<AuthSession>,
 ) -> Result<Json<Vec<SparseWorkspaceView>>, ApiError> {
-    Ok(Json(sqlx::query_as("SELECT v.id,v.name,v.resource_id,r.name AS repository_name,v.mode,v.rules,v.owner_id,v.updated_at,(v.owner_id=$1 AND (r.owner_subject=$2 OR $3)) AS can_manage FROM sparse_workspace_views v JOIN lore_resources r USING(resource_id) WHERE $3 OR v.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_view_selections selected JOIN account_groups g ON g.id=selected.group_id WHERE selected.view_id=v.id AND (g.owner_id=$1 OR EXISTS(SELECT 1 FROM account_group_members member WHERE member.group_id=g.id AND member.user_id=$1))) ORDER BY lower(v.name),v.id")
+    Ok(Json(sqlx::query_as("SELECT v.id,v.name,v.resource_id,r.name AS repository_name,v.mode,v.rules,v.owner_id,v.updated_at,(v.owner_id=$1 AND (r.owner_subject=$2 OR $3)) AS can_manage FROM sparse_workspace_views v JOIN lore_resources r USING(resource_id) WHERE $3 OR v.owner_id=$1 ORDER BY lower(v.name),v.id")
         .bind(session.user.id).bind(session.user.id.to_string()).bind(session.user.role == "admin").fetch_all(&s.pool).await?))
-}
-
-#[derive(Serialize, FromRow)]
-struct GroupViewSelection {
-    resource_id: String,
-    repository_name: String,
-    view_id: Uuid,
-    view_name: String,
-    mode: String,
-    rules: String,
-    updated_at: DateTime<Utc>,
-    can_manage: bool,
-}
-async fn group_views(
-    State(s): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Vec<GroupViewSelection>>, ApiError> {
-    let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM account_groups g WHERE g.id=$1 AND ($3 OR g.owner_id=$2 OR EXISTS(SELECT 1 FROM account_group_members m WHERE m.group_id=g.id AND m.user_id=$2)))")
-        .bind(id).bind(session.user.id).bind(session.user.role == "admin").fetch_one(&s.pool).await?;
-    if !visible {
-        return Err(ApiError(
-            StatusCode::FORBIDDEN,
-            "Group membership required.".into(),
-        ));
-    }
-    Ok(Json(sqlx::query_as("SELECT selected.resource_id,r.name AS repository_name,v.id AS view_id,v.name AS view_name,v.mode,v.rules,v.updated_at,(g.owner_id=$2 AND v.owner_id=$2 AND (r.owner_subject=$3 OR EXISTS(SELECT 1 FROM users WHERE id=$2 AND role='admin'))) AS can_manage FROM account_group_view_selections selected JOIN sparse_workspace_views v ON v.id=selected.view_id AND v.resource_id=selected.resource_id JOIN lore_resources r ON r.resource_id=selected.resource_id JOIN account_groups g ON g.id=selected.group_id WHERE selected.group_id=$1 ORDER BY lower(r.name)")
-        .bind(id).bind(session.user.id).bind(session.user.id.to_string()).fetch_all(&s.pool).await?))
 }
 #[derive(Deserialize)]
 struct ViewRulesInput {
@@ -615,47 +656,6 @@ async fn delete_sparse_view(
         return Err(ApiError(
             StatusCode::NOT_FOUND,
             "Sparse View not found or ownership required.".into(),
-        ));
-    }
-    Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(Deserialize)]
-struct SelectViewInput {
-    view_id: Uuid,
-}
-async fn select_view(
-    State(s): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path((group_id, resource_id)): Path<(Uuid, String)>,
-    Json(input): Json<SelectViewInput>,
-) -> Result<StatusCode, ApiError> {
-    let mut tx = s.pool.begin().await?;
-    let allowed: Option<Uuid> = sqlx::query_scalar("SELECT g.id FROM account_groups g JOIN sparse_workspace_views v ON v.id=$3 JOIN lore_resources r ON r.resource_id=$4 WHERE g.id=$1 AND g.owner_id=$2 AND v.owner_id=$2 AND v.resource_id=$4 AND (r.owner_subject=$5 OR EXISTS(SELECT 1 FROM users WHERE id=$2 AND role='admin')) FOR UPDATE OF g,v,r")
-        .bind(group_id).bind(session.user.id).bind(input.view_id).bind(&resource_id).bind(session.user.id.to_string()).fetch_optional(&mut *tx).await?;
-    if allowed.is_none() {
-        return Err(ApiError(
-            StatusCode::FORBIDDEN,
-            "Group and Sparse View ownership, and repository access required.".into(),
-        ));
-    }
-    sqlx::query("INSERT INTO account_group_view_selections(group_id,resource_id,view_id) VALUES($1,$2,$3) ON CONFLICT(group_id,resource_id) DO UPDATE SET view_id=EXCLUDED.view_id,selected_at=now()")
-        .bind(group_id).bind(resource_id).bind(input.view_id).execute(&mut *tx).await?;
-    tx.commit().await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn unselect_view(
-    State(s): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path((group_id, resource_id)): Path<(Uuid, String)>,
-) -> Result<StatusCode, ApiError> {
-    let deleted = sqlx::query("DELETE FROM account_group_view_selections selected USING account_groups g WHERE selected.group_id=g.id AND selected.group_id=$1 AND selected.resource_id=$2 AND g.owner_id=$3")
-        .bind(group_id).bind(resource_id).bind(session.user.id).execute(&s.pool).await?;
-    if deleted.rows_affected() == 0 {
-        return Err(ApiError(
-            StatusCode::NOT_FOUND,
-            "Group view selection not found or ownership required.".into(),
         ));
     }
     Ok(StatusCode::NO_CONTENT)
