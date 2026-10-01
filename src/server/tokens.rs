@@ -223,6 +223,20 @@ impl TokenIssuer {
         )
     }
 
+    pub(crate) fn issue_restore(
+        &self,
+        operation: uuid::Uuid,
+        resources: Vec<String>,
+    ) -> Result<IssuedToken> {
+        self.issue(
+            format!("lorehub-worker:restore:{operation}"),
+            "LoreHub restore".into(),
+            "lorehub-worker@zenogrid.co.kr".into(),
+            60 * 60,
+            resources,
+        )
+    }
+
     pub fn issuer(&self) -> &str {
         &self.inner.issuer
     }

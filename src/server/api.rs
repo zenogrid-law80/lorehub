@@ -38,6 +38,7 @@ pub struct AppState {
     pub repositories: RepositoryService,
     pub tokens: Option<TokenIssuer>,
     pub runner_releases: RunnerReleases,
+    pub backup_paths: super::backups::BackupPaths,
 }
 
 pub fn router(
@@ -56,14 +57,34 @@ pub fn router_with_releases(
     tokens: Option<TokenIssuer>,
     runner_releases: RunnerReleases,
 ) -> Router {
+    router_with_backup_paths(
+        pool,
+        auth,
+        repositories,
+        tokens,
+        runner_releases,
+        super::backups::BackupPaths::from_env(),
+    )
+}
+
+pub fn router_with_backup_paths(
+    pool: PgPool,
+    auth: AuthService,
+    repositories: RepositoryService,
+    tokens: Option<TokenIssuer>,
+    runner_releases: RunnerReleases,
+    backup_paths: super::backups::BackupPaths,
+) -> Router {
     let state = AppState {
         pool,
         repositories,
         tokens,
         runner_releases,
+        backup_paths,
     };
     let private = Router::new()
         .merge(management::router())
+        .merge(super::backups::router())
         .route("/api/v1/me", get(me))
         .route("/api/v1/overview", get(super::overview::overview))
         .route("/api/v1/pipelines", post(submit).get(list))
@@ -208,6 +229,7 @@ pub fn router_with_releases(
         .route("/assets/management.js", get(web::management_script))
         .route("/assets/operations.js", get(web::operations_script))
         .route("/assets/overview.js", get(web::overview_script))
+        .route("/assets/backups.js", get(web::backups_script))
         .route(
             "/assets/repository-context.js",
             get(web::repository_context_script),

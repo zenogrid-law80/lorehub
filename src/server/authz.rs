@@ -4,9 +4,11 @@ use std::{
 };
 
 use anyhow::Result;
+use chrono::Utc;
 use sqlx::PgPool;
 use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status, metadata::MetadataMap, transport::Server};
+use uuid::Uuid;
 
 use super::{
     auth::{User, random_token, token_hash},
@@ -47,9 +49,32 @@ impl AuthzService {
         identity: &VerifiedToken,
         resource_id: &str,
     ) -> Result<bool, Status> {
+        if identity.subject.starts_with("lorehub-worker:restore:") {
+            return self.restore_access(identity, resource_id).await;
+        }
         super::repository_access::can_access(&self.pool, &identity.subject, resource_id)
             .await
             .map_err(|_| Status::internal("check Lore resource access"))
+    }
+
+    async fn restore_access(
+        &self,
+        identity: &VerifiedToken,
+        resource: &str,
+    ) -> Result<bool, Status> {
+        let Some(operation) = identity
+            .subject
+            .strip_prefix("lorehub-worker:restore:")
+            .and_then(|id| Uuid::parse_str(id).ok())
+        else {
+            return Ok(false);
+        };
+        if !identity.has_exact_resource(resource) {
+            return Ok(false);
+        }
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_restores r JOIN repository_restore_quarantine q ON q.restore_id=r.id WHERE r.id=$1 AND r.status='running' AND q.resource_id=$2 AND r.target_resource_id=$2)")
+            .bind(operation).bind(resource).fetch_one(&self.pool).await
+            .map_err(|_| Status::internal("check active restore"))
     }
 }
 
@@ -72,8 +97,12 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
         let mut allowed = Vec::new();
         let mut denied = Vec::new();
         for resource_id in request.into_inner().resource_id {
-            let authorized = if identity.subject.starts_with("lorehub-worker:") {
-                identity.has_exact_resource(&resource_id)
+            let authorized = if identity.subject.starts_with("lorehub-worker:restore:") {
+                self.restore_access(&identity, &resource_id).await?
+            } else if identity.subject.starts_with("lorehub-worker:") {
+                let quarantined: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_restore_quarantine WHERE resource_id=$1)")
+                    .bind(&resource_id).fetch_one(&self.pool).await.map_err(|_| Status::internal("check quarantine"))?;
+                identity.has_exact_resource(&resource_id) && !quarantined
             } else {
                 identity.has_exact_resource(&resource_id)
                     && self.can_access(&identity, &resource_id).await?
@@ -254,6 +283,27 @@ impl epic_urc::urc_auth_api_server::UrcAuthApi for AuthzService {
                 return Err(Status::permission_denied("repository access denied"));
             }
         }
+        if let Some(operation) = identity.subject.strip_prefix("lorehub-worker:restore:") {
+            let issued = self
+                .tokens
+                .issue_restore(
+                    Uuid::parse_str(operation)
+                        .map_err(|_| Status::permission_denied("invalid restore"))?,
+                    resources,
+                )
+                .map_err(|_| Status::internal("issue restore token"))?;
+            return Ok(Response::new(
+                epic_urc::ExchangeUserTokenForMultiresourceTokenResponse {
+                    token: Some(epic_urc::UserToken {
+                        user_token: issued.access_token,
+                        expires_at: Utc::now().timestamp_millis()
+                            + (issued.expires_in * 1000) as i64,
+                        user_id: identity.subject,
+                        user_name: "LoreHub restore".into(),
+                    }),
+                },
+            ));
+        }
         let user: User =
             sqlx::query_as("SELECT id,email,name,picture_url,role FROM users WHERE id::text=$1")
                 .bind(&identity.subject)
@@ -313,12 +363,36 @@ impl ucs::auth::rebac_api_server::RebacApi for AuthzService {
         if !identity.has_wildcard() || !resource.resource_id.starts_with("urc-") {
             return Err(Status::permission_denied("repository creation denied"));
         }
+        let owner = if identity.subject.starts_with("lorehub-worker:restore:") {
+            if !self
+                .restore_access(&identity, &resource.resource_id)
+                .await?
+            {
+                return Err(Status::permission_denied("inactive restore"));
+            }
+            sqlx::query_scalar::<_, String>("SELECT requested_by::text FROM repository_restores WHERE target_resource_id=$1 AND target_name=$2 AND status='running'")
+                .bind(&resource.resource_id).bind(&resource.resource_name).fetch_optional(&self.pool).await
+                .map_err(|_| Status::internal("load restore owner"))?
+                .ok_or_else(|| Status::permission_denied("restore target mismatch"))?
+        } else {
+            let reserved: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM repository_restore_quarantine WHERE resource_id=$1)",
+            )
+            .bind(&resource.resource_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|_| Status::internal("check reserved target"))?;
+            if reserved {
+                return Err(Status::permission_denied("restore target is reserved"));
+            }
+            identity.subject.clone()
+        };
         let inserted = sqlx::query(
             "INSERT INTO lore_resources (resource_id, name, owner_subject) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
         .bind(&resource.resource_id)
         .bind(&resource.resource_name)
-        .bind(&identity.subject)
+        .bind(&owner)
         .execute(&self.pool)
         .await
         .map_err(|_| Status::internal("store Lore resource"))?;
@@ -387,6 +461,162 @@ mod tests {
             .metadata_mut()
             .insert("authorization", format!("Bearer {token}").parse().unwrap());
         request
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires disposable PostgreSQL"]
+    async fn restore_tokens_only_access_their_active_quarantined_target(pool: PgPool) {
+        let tokens = TokenIssuer::from_files(
+            "tests/fixtures/test-private.pem",
+            "tests/fixtures/test-jwks.json",
+            "http://127.0.0.1:8080",
+            "127.0.0.1",
+        )
+        .unwrap();
+        let owner = Uuid::new_v4();
+        sqlx::query("INSERT INTO users(id,google_sub,email) VALUES($1,$2,$3)")
+            .bind(owner)
+            .bind(owner.to_string())
+            .bind(format!("{owner}@zenogrid.co.kr"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let backup = Uuid::new_v4();
+        let operation = Uuid::new_v4();
+        sqlx::query("INSERT INTO repository_backups(id,resource_id,repository_name,storage_backend,requested_by,status) VALUES($1,'urc-source','source','local_file',$2,'succeeded')").bind(backup).bind(owner).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_restores(id,backup_id,requested_by,target_name,target_backend,target_resource_id,status) VALUES($1,$2,$3,'target','local_file','urc-target','running')").bind(operation).bind(backup).bind(owner).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO repository_restore_quarantine(resource_id,restore_id) VALUES('urc-target',$1)").bind(operation).execute(&pool).await.unwrap();
+        let service = AuthzService {
+            pool: pool.clone(),
+            tokens: tokens.clone(),
+            public_url: "http://127.0.0.1:8080".into(),
+        };
+        let creation = tokens
+            .issue_restore(operation, vec!["urc-*".into(), "urc-target".into()])
+            .unwrap()
+            .access_token;
+        let mut resource = ucs::auth::CreateResourceRequest {
+            resource_id: "urc-other".into(),
+            resource_name: "other".into(),
+        };
+        assert!(
+            service
+                .create_resource(request(resource.clone(), &creation))
+                .await
+                .is_err()
+        );
+        resource.resource_id = "urc-target".into();
+        resource.resource_name = "target".into();
+        service
+            .create_resource(request(resource, &creation))
+            .await
+            .unwrap();
+        let recorded: String = sqlx::query_scalar(
+            "SELECT owner_subject FROM lore_resources WHERE resource_id='urc-target'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(recorded, owner.to_string());
+        let issued = service
+            .exchange_user_token_for_multiresource_token(request(
+                epic_urc::ExchangeUserTokenForMultiresourceTokenRequest {
+                    resource_id: vec!["urc-target".into()],
+                },
+                &creation,
+            ))
+            .await
+            .unwrap()
+            .into_inner()
+            .token
+            .unwrap()
+            .user_token;
+        let result = service
+            .check_user_permission(request(
+                epic_urc::CheckUserPermissionRequest {
+                    target_user: None,
+                    resource_id: vec!["urc-target".into(), "urc-other".into()],
+                },
+                &issued,
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(result.allowed_resource_permission.len(), 1);
+        assert_eq!(result.denied_resource_permission.len(), 1);
+        assert!(
+            !super::super::repository_access::can_access(&pool, &owner.to_string(), "urc-target")
+                .await
+                .unwrap()
+        );
+        let worker = tokens
+            .issue_worker("unrelated", "urc-target".into())
+            .unwrap()
+            .access_token;
+        assert!(
+            service
+                .check_user_permission(request(
+                    epic_urc::CheckUserPermissionRequest {
+                        target_user: None,
+                        resource_id: vec!["urc-target".into()]
+                    },
+                    &worker
+                ))
+                .await
+                .unwrap()
+                .into_inner()
+                .allowed_resource_permission
+                .is_empty()
+        );
+        sqlx::query("UPDATE repository_restores SET status='failed' WHERE id=$1")
+            .bind(operation)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            service
+                .check_user_permission(request(
+                    epic_urc::CheckUserPermissionRequest {
+                        target_user: None,
+                        resource_id: vec!["urc-target".into()]
+                    },
+                    &issued
+                ))
+                .await
+                .unwrap()
+                .into_inner()
+                .allowed_resource_permission
+                .is_empty()
+        );
+        assert!(
+            !super::super::repository_access::can_access(&pool, &owner.to_string(), "urc-target")
+                .await
+                .unwrap()
+        );
+        sqlx::query("DELETE FROM repository_restore_quarantine WHERE resource_id='urc-target'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            super::super::repository_access::can_access(&pool, &owner.to_string(), "urc-target")
+                .await
+                .unwrap()
+        );
+        assert!(
+            service
+                .check_user_permission(request(
+                    epic_urc::CheckUserPermissionRequest {
+                        target_user: None,
+                        resource_id: vec!["urc-target".into()]
+                    },
+                    &issued
+                ))
+                .await
+                .unwrap()
+                .into_inner()
+                .allowed_resource_permission
+                .is_empty()
+        );
     }
 
     #[sqlx::test]

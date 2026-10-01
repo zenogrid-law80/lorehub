@@ -81,7 +81,7 @@ pub async fn run(
             _ = interval.tick() => {}
         }
         let repositories = match sqlx::query_as::<_, WatchedRepository>(
-            "SELECT resource.resource_id, resource.name, resource.owner_subject, resource.storage_backend, COALESCE(settings.branches, ARRAY['main']::TEXT[]) AS enabled_branches FROM lore_resources resource LEFT JOIN ci_repository_pipeline_branches settings USING(resource_id) WHERE resource.owner_subject IS NOT NULL"
+            "SELECT resource.resource_id, resource.name, resource.owner_subject, resource.storage_backend, COALESCE(settings.branches, ARRAY['main']::TEXT[]) AS enabled_branches FROM lore_resources resource LEFT JOIN ci_repository_pipeline_branches settings USING(resource_id) WHERE resource.owner_subject IS NOT NULL AND NOT EXISTS (SELECT 1 FROM repository_restore_quarantine q WHERE q.resource_id=resource.resource_id)"
         ).fetch_all(&pool).await {
             Ok(repositories) => repositories,
             Err(error) => { tracing::warn!(%error, "cannot list push trigger repositories"); continue; }

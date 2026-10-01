@@ -141,6 +141,13 @@ pub struct CommandError {
     pub message: String,
 }
 
+impl std::fmt::Display for CommandError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+impl std::error::Error for CommandError {}
+
 impl RepositoryService {
     pub fn new(
         binary: impl Into<OsString>,
@@ -1049,6 +1056,21 @@ impl RepositoryService {
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
+        self.run_with_timeout(args, working_directory, access_token, COMMAND_TIMEOUT)
+            .await
+    }
+
+    async fn run_with_timeout<I, S>(
+        &self,
+        args: I,
+        working_directory: Option<&Path>,
+        access_token: &str,
+        duration: Duration,
+    ) -> Result<String, CommandError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
         let mut command = Command::new(&self.binary);
         command.args(["--json", "--non-interactive", "--no-pager"]);
         if !access_token.is_empty() {
@@ -1068,7 +1090,7 @@ impl RepositoryService {
         if let Some(working_directory) = working_directory {
             command.current_dir(working_directory);
         }
-        let output = timeout(COMMAND_TIMEOUT, command.output())
+        let output = timeout(duration, command.output())
             .await
             .map_err(|_| CommandError {
                 message: "Lore repository operation timed out".into(),

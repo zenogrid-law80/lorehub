@@ -17,7 +17,7 @@ pub(super) const ACCESS: &str = "(
               )
           )
     )
-)";
+) AND NOT EXISTS (SELECT 1 FROM repository_restore_quarantine q WHERE q.resource_id = lore_resources.resource_id)";
 
 const MANAGE: &str =
     "(owner_subject = $1 OR EXISTS (SELECT 1 FROM users WHERE id::text = $1 AND role = 'admin'))";
@@ -38,6 +38,20 @@ pub(crate) async fn by_name(
 ) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar(&format!(
         "SELECT resource_id FROM lore_resources WHERE {ACCESS} AND name = $2"
+    ))
+    .bind(subject)
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+}
+
+pub(crate) async fn manageable_by_name(
+    pool: &PgPool,
+    subject: &str,
+    name: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(&format!(
+        "SELECT resource_id FROM lore_resources WHERE {MANAGE} AND name=$2"
     ))
     .bind(subject)
     .bind(name)

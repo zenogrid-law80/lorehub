@@ -5,7 +5,7 @@ set -eu
 check_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$check_root"
 
-for check_tool in cargo rustfmt node protoc; do
+for check_tool in cargo rustfmt node protoc python3; do
     if ! command -v "$check_tool" >/dev/null 2>&1; then
         echo "Missing prerequisite: $check_tool. See README.md: verification." >&2
         exit 1
@@ -18,6 +18,10 @@ cargo clippy --locked --no-default-features --all-targets -- -D warnings
 
 echo 'Running JavaScript regression tests'
 node --test tests/*.test.mjs
+
+echo 'Running folder archive regression tests'
+python3 -B tests/folder_archive_test.py
+python3 -B tests/server_snapshot_test.py
 
 echo 'Validating the Lore CI configuration'
 cargo run --locked --no-default-features -- validate .lore-ci.toml

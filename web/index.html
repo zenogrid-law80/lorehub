@@ -17,6 +17,7 @@
     <script src="/assets/operations.js" defer></script>
     <script src="/assets/repository-context.js" defer></script>
     <script src="/assets/overview.js" defer></script>
+    <script src="/assets/backups.js" defer></script>
   </head>
   <body>
     <div id="loading-view" class="loading-view" aria-live="polite">
@@ -86,6 +87,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5C5 4.12 8.13 3 12 3s7 1.12 7 2.5S15.87 8 12 8 5 6.88 5 5.5Zm0 0v6C5 12.88 8.13 14 12 14s7-1.12 7-2.5v-6m-14 6v6C5 18.88 8.13 20 12 20s7-1.12 7-2.5v-6"/></svg>
               <span>Repositories</span>
               <span id="nav-repository-count" class="nav-count nav-count--neutral" hidden>0</span>
+            </a>
+            <a class="nav-item" href="#backups" data-section="backups" data-nav-scope="global">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v5H4zM5 9v11h14V9M9 13h6"/></svg>
+              <span data-backup-label="all">모든 백업</span>
             </a>
             <a class="nav-item" href="#runners" data-section="runners" data-nav-scope="global">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/></svg>
@@ -167,6 +172,7 @@
         </header>
 
         <main class="page-content">
+          <section id="backups-page" hidden aria-labelledby="backups-title"></section>
           <aside id="operations-alert-banner" class="operations-alert-banner" hidden aria-label="Operations alerts">
             <span id="operations-alert-summary" role="status"></span>
             <a id="operations-alert-link" class="button button--ghost" href="#operations">View alerts</a>

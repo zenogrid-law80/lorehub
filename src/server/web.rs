@@ -104,6 +104,14 @@ pub async fn overview_script() -> Response {
     )
 }
 
+pub async fn backups_script() -> Response {
+    asset(
+        include_str!("../../web/backups.js"),
+        "text/javascript; charset=utf-8",
+        false,
+    )
+}
+
 pub async fn management_script() -> Response {
     asset(MANAGEMENT_SCRIPT, "text/javascript; charset=utf-8", false)
 }

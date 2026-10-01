@@ -18,6 +18,9 @@ test("repository routes round-trip complete URLs and keep global pages unscoped"
   assert.equal(get("repositoryRoute(repositorySectionHash('pipelines', scope)).repository"), url);
   assert.equal(get("repositoryRoute(repositorySectionHash('graphs', scope)).section"), "graphs");
   assert.equal(get("repositorySectionHash('runners', scope)"), "#runners");
+  assert.equal(get("repositorySectionHash('backups', scope, 'main')"), "#backups");
+  assert.equal(get("repositoryRoute('#backups?repository=lores%3A%2F%2Fhost%2Fgame&branch=main').repository"), "");
+  assert.equal(get("repositoryNavigationValue('backups', scope)"), "backups");
   assert.equal(get("repositoryRoute('#operations?repository=anything').repository"), "");
   assert.equal(get("repositoryRoute('#pipelines').repository"), "");
 });

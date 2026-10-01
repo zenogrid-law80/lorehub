@@ -8,6 +8,7 @@ use crate::ci::db;
 pub mod api;
 pub mod auth;
 pub mod authz;
+pub mod backups;
 mod execution;
 mod links;
 mod management;
@@ -43,6 +44,7 @@ pub async fn serve(
     shutdown: CancellationToken,
 ) -> Result<()> {
     let pool = db::connect(database_url).await?;
+    backups::recover_interrupted(&pool).await?;
     let auth_config = auth::AuthConfig::new(
         config.google_client_id,
         config.google_client_secret,

@@ -487,6 +487,8 @@ function applyLocale(rerender) {
   renderUpdatedLabels();
   if (state.section === "ci-settings") renderRepositoryConfig();
   if (state.section === "repository-links") renderRepositoryLinks();
+  if (state.section === "backups") renderBackups();
+  localizeBackupNavigation();
   if (state.selectedId && elements["pipeline-detail-dialog"].open) void loadPipelineDetail(state.selectedId);
 }
 
@@ -655,7 +657,7 @@ function sectionFromHash() {
 }
 
 function availableSections() {
-  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
+  return ["pipelines", "graphs", "repositories", "ci-settings", "repository-links", "backups", "runners", ...(state.user?.role === "admin" ? MANAGEMENT_SECTIONS : [])];
 }
 
 async function showSection(section) {
@@ -680,6 +682,7 @@ async function showSection(section) {
     return;
   }
   if (state.section !== section && state.section === "ci-settings") resetRepositoryConfig();
+  if (section === "backups") history.replaceState(history.state, "", "#backups");
   if (scopeChanged || branchChanged) {
     state.repositoryScope = scope;
     state.pipelineRepositoryFilter = scope;
@@ -705,6 +708,8 @@ async function showSection(section) {
   if (scope) { repositoryBranchSelections.set(scope, branch); rememberRepositorySelection(scope); }
   repositoryNavigationRequest++;
   state.section = section;
+  stopBackupRefresh();
+  if (section !== "backups") closeBackupDialog();
   workspaceOverview.request++;
   workspaceOverview.loading = false;
   rememberPipelinePage(window.location.hash);
@@ -719,6 +724,7 @@ async function showSection(section) {
   elements["repositories-page"].hidden = section !== "repositories";
   elements["ci-settings-page"].hidden = section !== "ci-settings";
   elements["repository-links-page"].hidden = section !== "repository-links";
+  document.getElementById("backups-page").hidden = section !== "backups";
   elements["runners-page"].hidden = section !== "runners";
   invalidatePipelineHistory();
   restorePipelineHistoryFilters(window.location.hash);
@@ -730,6 +736,7 @@ async function showSection(section) {
   else if (section === "repositories") await loadRepositories(false);
   else if (section === "ci-settings") await loadCiSettings(false);
   else if (section === "repository-links") await loadRepositoryLinksPage(state.repositoryLinksName);
+  else if (section === "backups") await loadBackups();
   else if (section === "runners") await loadRunners(false);
   else if (section === "graphs") await loadPipelineGraphs(false);
   else if (section === "overview") await Promise.all([loadOverview(), loadRepositories(false), loadPipelines(false)]);
@@ -738,6 +745,12 @@ async function showSection(section) {
 }
 
 function updateSectionSearch() {
+  if (state.section === "backups") {
+    elements["pipeline-search"].disabled = true;
+    elements["pipeline-search"].placeholder = bt("all");
+    elements["pipeline-search"].previousElementSibling.textContent = bt("all");
+    return;
+  }
   if (["overview", "pipelines"].includes(state.section)) elements["pipeline-search"].maxLength = 256;
   else elements["pipeline-search"].removeAttribute("maxlength");
   if (state.section === "operations") {
@@ -1448,6 +1461,7 @@ function refreshSection(notify) {
   if (state.section === "overview") return Promise.all([loadOverview(), loadRepositories(false), loadPipelines(notify)]);
   if (isManagement()) return discardManagement() ? loadManagement() : Promise.resolve();
   if (state.section === "repositories") return loadRepositories(notify);
+  if (state.section === "backups") return loadBackups();
   if (state.section === "ci-settings") return discardRepositoryConfigEdit() ? loadCiSettings(notify) : Promise.resolve();
   if (state.section === "repository-links") return loadRepositoryLinksPage(state.repositoryLinksName, notify);
   if (state.section === "runners") return loadRunners(notify);
