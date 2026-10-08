@@ -1,6 +1,6 @@
 # LoreHub
 
-LoreHub is a Lore VCS development platform that brings CI execution into a coordinator and worker service. The web dashboard manages Lore repositories, starts pipelines for a specific revision, and shows status, jobs, logs, and cancellation controls. Pipeline settings are read from the `.lore-ci.toml` included in the requested revision.
+LoreHub is a Lore VCS development platform that brings CI execution into a coordinator and worker service. The web dashboard manages Lore repositories, starts pipelines for a specific revision, and shows status, jobs, logs, and cancellation controls. CI settings are versioned in PostgreSQL by repository and branch. Each database-backed run freezes its configuration and code revision; branches that have not been imported continue reading `.lore-ci.toml` from the requested revision.
 
 LoreHub does not use Git checkouts, GitLab APIs, or Git commit SHAs. It uses Lore's 64-character revision hashes.
 
@@ -16,7 +16,7 @@ User ── Google login (`@zenogrid.co.kr`)
                            │
                  lore clone --revision HASH
                            │
-                    .lore-ci.toml
+               frozen execution specification
                            │
                      /bin/sh -e
 ```
@@ -81,7 +81,7 @@ The Links view uses `GET /api/v1/repositories/{name}/tree?revision=HASH&path=PAT
 
 **CI settings** provides Visual and TOML editing for the selected repository and branch, dependency edges, change-path preview, server validation, undo/redo, and line-based diffs. Preview and analysis do not commit, push, or run pipelines.
 
-Repositories used as a Lore link's **Source Repository** are read-only in CI settings so their source content remains controlled by the link relationship. When `.lore-ci.toml` is missing, LoreHub offers a starter build template; editing and saving the template creates the configuration in a new revision. New pipeline runs are started from this page after reviewing the selected branch configuration.
+Repositories used as a Lore link's **Source Repository** are read-only in CI settings so their source content remains controlled by the link relationship. When configuration is missing, LoreHub offers a starter build template. **Save to database** creates an immutable CI configuration version without committing, pushing, or starting a run. Existing file-based branches switch to database mode on their first save. The editor supports TOML import/export, copying another branch into a draft, version diffs and restoration. New pipeline runs are started from this page after reviewing the selected branch configuration. See [database CI configuration and rollout](docs/ci-database.md).
 
 ![CI settings page](./web/CISettings.png)
 
@@ -140,7 +140,7 @@ After login, the Repository page can issue a one-hour CLI access token. Treat it
 
 ## Pipeline configuration
 
-Place `.lore-ci.toml` at the Lore repository root and push the revision before running it. See [examples/.lore-ci.toml](examples/.lore-ci.toml) and [examples/monorepo.lore-ci.toml](examples/monorepo.lore-ci.toml).
+Create or import configuration in **CI settings**, then save it to the database. For branches still using file mode, place `.lore-ci.toml` at the Lore repository root and push the revision before running it. See [examples/.lore-ci.toml](examples/.lore-ci.toml) and [examples/monorepo.lore-ci.toml](examples/monorepo.lore-ci.toml).
 
 Automatic `[[pipelines]]` routes use exact, case-sensitive paths and `directory/**` patterns. `needs` may reference earlier or same-stage jobs; unknown, duplicate, self, and cyclic dependencies are rejected. Each job runs in its own `/bin/sh -e -c` process, while commands in one job share a shell. Output is bounded and the working directory is removed after completion.
 

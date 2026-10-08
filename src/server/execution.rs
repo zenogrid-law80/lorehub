@@ -70,12 +70,12 @@ async fn read_insights(
     let upstream_truncated = pipeline.pipeline_needs.len() > 100;
     let names: Vec<_> = pipeline.pipeline_needs.iter().take(100).cloned().collect();
     let upstream = access.query_as(&PipelineAccess::sql(
-        "SELECT dependency.name, latest.id AS run_id, latest.status, latest.created_at FROM unnest($4::text[]) WITH ORDINALITY AS dependency(name, pos) LEFT JOIN LATERAL (SELECT id,status,created_at FROM accessible_pipelines WHERE repository_url = $5 AND branch IS NOT DISTINCT FROM $6 AND revision = $7 AND pipeline_name = dependency.name ORDER BY created_at DESC,id DESC LIMIT 1) latest ON true ORDER BY dependency.pos"
-    )).bind(&names).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision)
+        "SELECT dependency.name, latest.id AS run_id, latest.status, latest.created_at FROM unnest($4::text[]) WITH ORDINALITY AS dependency(name, pos) LEFT JOIN LATERAL (SELECT id,status,created_at FROM accessible_pipelines WHERE repository_url = $5 AND branch IS NOT DISTINCT FROM $6 AND revision = $7 AND run_group_id IS NOT DISTINCT FROM $8 AND pipeline_name = dependency.name ORDER BY created_at DESC,id DESC LIMIT 1) latest ON true ORDER BY dependency.pos"
+    )).bind(&names).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision).bind(pipeline.run_group_id)
         .fetch_all(&mut *tx).await?;
     let mut downstream: Vec<RelatedRun> = access.query_as(&PipelineAccess::sql(
-        "SELECT pipeline_name AS name,id AS run_id,status,created_at FROM (SELECT DISTINCT ON (pipeline_name) * FROM accessible_pipelines WHERE repository_url = $4 AND branch IS NOT DISTINCT FROM $5 AND revision = $6 AND pipeline_name IS NOT NULL ORDER BY pipeline_name,created_at DESC,id DESC) latest WHERE $7 = ANY(pipeline_needs) AND id <> $8 ORDER BY pipeline_name LIMIT 101"
-    )).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision).bind(&pipeline.pipeline_name).bind(id)
+        "SELECT pipeline_name AS name,id AS run_id,status,created_at FROM (SELECT DISTINCT ON (pipeline_name) * FROM accessible_pipelines WHERE repository_url = $4 AND branch IS NOT DISTINCT FROM $5 AND revision = $6 AND run_group_id IS NOT DISTINCT FROM $9 AND pipeline_name IS NOT NULL ORDER BY pipeline_name,created_at DESC,id DESC) latest WHERE $7 = ANY(pipeline_needs) AND id <> $8 ORDER BY pipeline_name LIMIT 101"
+    )).bind(&pipeline.repository_url).bind(&pipeline.branch).bind(&pipeline.revision).bind(&pipeline.pipeline_name).bind(id).bind(pipeline.run_group_id)
         .fetch_all(&mut *tx).await?;
     let downstream_truncated = downstream.len() > 100;
     downstream.truncate(100);
@@ -125,6 +125,9 @@ fn comparison_warnings(current: &RunRecord, previous: &RunRecord) -> Vec<&'stati
     let a = &current.pipeline;
     let b = &previous.pipeline;
     let mut warnings = Vec::new();
+    if a.config_revision_id != b.config_revision_id {
+        warnings.push("configuration");
+    }
     if a.runner_os != b.runner_os {
         warnings.push("runner_os");
     }

@@ -9,6 +9,8 @@ pub mod api;
 pub mod auth;
 pub mod authz;
 pub mod backups;
+mod ci_layout;
+mod ci_settings;
 mod execution;
 mod links;
 mod management;

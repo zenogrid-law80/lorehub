@@ -37,6 +37,12 @@ pub struct Pipeline {
     pub finished_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub logs_pruned_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub config_revision_id: Option<Uuid>,
+    #[serde(default)]
+    pub run_group_id: Option<Uuid>,
+    #[serde(default, skip_serializing)]
+    pub execution_spec: Option<sqlx::types::Json<super::settings::ExecutionSpec>>,
 }
 
 pub struct SelectedPipeline {
@@ -275,7 +281,7 @@ pub async fn remove_runner(pool: &PgPool, id: Uuid) -> sqlx::Result<RemoveRunner
 }
 
 pub async fn claim(pool: &PgPool, worker: Uuid) -> sqlx::Result<Option<Pipeline>> {
-    claim_inner(pool, worker, None).await
+    claim_inner(pool, worker, None, false).await
 }
 
 pub async fn claim_with_request(
@@ -283,13 +289,23 @@ pub async fn claim_with_request(
     worker: Uuid,
     request: Uuid,
 ) -> sqlx::Result<Option<Pipeline>> {
-    claim_inner(pool, worker, Some(request)).await
+    claim_inner(pool, worker, Some(request), false).await
+}
+
+pub async fn claim_with_spec_support(
+    pool: &PgPool,
+    worker: Uuid,
+    request: Option<Uuid>,
+    supports_spec: bool,
+) -> sqlx::Result<Option<Pipeline>> {
+    claim_inner(pool, worker, request, supports_spec).await
 }
 
 async fn claim_inner(
     pool: &PgPool,
     worker: Uuid,
     request: Option<Uuid>,
+    supports_spec: bool,
 ) -> sqlx::Result<Option<Pipeline>> {
     let mut tx = pool.begin().await?;
     // All claim routes, including legacy Runners, serialize with maintenance
@@ -318,7 +334,10 @@ async fn claim_inner(
             let active: bool = sqlx::query_scalar("SELECT COALESCE(status = 'running' AND NOT cancel_requested AND lease_until > clock_timestamp(), false) FROM pipelines WHERE id = $1")
                 .bind(previous.id).fetch_one(&mut *tx).await?;
             tx.commit().await?;
-            return Ok(active.then_some(previous));
+            return Ok(
+                (active && (previous.execution_spec.is_none() || supports_spec))
+                    .then_some(previous),
+            );
         }
         let busy: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pipelines WHERE worker_id = $1 AND status = 'running' AND lease_until > clock_timestamp())")
             .bind(worker).fetch_one(&mut *tx).await?;
@@ -334,13 +353,14 @@ async fn claim_inner(
         return Ok(None);
     }
     sqlx::query(
-        "UPDATE pipelines dependent SET status = 'failed', error = (SELECT 'pipeline dependency ' || dependency.name || ' ' || latest.status || ': ' || COALESCE(NULLIF(latest.error, ''), latest.status) FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status, upstream.error FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled') LIMIT 1), finished_at = now() WHERE dependent.status = 'queued' AND EXISTS (SELECT 1 FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled'))",
+        "UPDATE pipelines dependent SET status = 'failed', error = (SELECT 'pipeline dependency ' || dependency.name || ' ' || latest.status || ': ' || COALESCE(NULLIF(latest.error, ''), latest.status) FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status, upstream.error FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.run_group_id IS NOT DISTINCT FROM dependent.run_group_id AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled') LIMIT 1), finished_at = now() WHERE dependent.status = 'queued' AND EXISTS (SELECT 1 FROM unnest(dependent.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = dependent.repository_url AND upstream.branch IS NOT DISTINCT FROM dependent.branch AND upstream.revision = dependent.revision AND upstream.run_group_id IS NOT DISTINCT FROM dependent.run_group_id AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status IN ('failed', 'canceled'))",
     )
     .execute(&mut *tx)
     .await?;
-    let pipeline = sqlx::query_as("UPDATE pipelines SET status = 'running', worker_id = $1, claim_request_id = $2, started_at = clock_timestamp(), lease_until = clock_timestamp() + interval '30 seconds' WHERE id = (SELECT candidate.id FROM pipelines candidate WHERE candidate.status = 'queued' AND NOT candidate.cancel_requested AND (candidate.runner_os IS NULL OR candidate.runner_os = (SELECT os FROM runners WHERE id = $1 AND stopped_at IS NULL)) AND NOT EXISTS (SELECT 1 FROM unnest(candidate.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = candidate.repository_url AND upstream.branch IS NOT DISTINCT FROM candidate.branch AND upstream.revision = candidate.revision AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded') ORDER BY candidate.created_at, candidate.id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")
+    let pipeline = sqlx::query_as("UPDATE pipelines SET status = 'running', worker_id = $1, claim_request_id = $2, started_at = clock_timestamp(), lease_until = clock_timestamp() + interval '30 seconds' WHERE id = (SELECT candidate.id FROM pipelines candidate WHERE candidate.status = 'queued' AND NOT candidate.cancel_requested AND (candidate.execution_spec IS NULL OR $3) AND (candidate.runner_os IS NULL OR candidate.runner_os = (SELECT os FROM runners WHERE id = $1 AND stopped_at IS NULL)) AND NOT EXISTS (SELECT 1 FROM unnest(candidate.pipeline_needs) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM pipelines upstream WHERE upstream.repository_url = candidate.repository_url AND upstream.branch IS NOT DISTINCT FROM candidate.branch AND upstream.revision = candidate.revision AND upstream.run_group_id IS NOT DISTINCT FROM candidate.run_group_id AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded') ORDER BY candidate.created_at, candidate.id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")
         .bind(worker)
         .bind(request)
+        .bind(supports_spec)
         .fetch_optional(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -385,6 +405,12 @@ pub async fn create_jobs(
     let active: Option<Uuid> = sqlx::query_scalar("SELECT id FROM pipelines WHERE id = $1 AND worker_id = $2 AND status = 'running' AND NOT cancel_requested AND lease_until > now() FOR UPDATE")
         .bind(id).bind(worker).fetch_optional(&mut *tx).await?;
     anyhow::ensure!(active.is_some(), "pipeline is no longer active");
+    let stored: Option<sqlx::types::Json<super::settings::ExecutionSpec>> =
+        sqlx::query_scalar("SELECT execution_spec FROM pipelines WHERE id=$1")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let config = stored.as_ref().map_or(config, |spec| &spec.config);
     let mut jobs = Vec::new();
     for (position, job) in config.jobs.iter().enumerate() {
         jobs.push(sqlx::query_as("INSERT INTO jobs (id,pipeline_id,position,name,stage) VALUES ($1,$2,$3,$4,$5) RETURNING *")

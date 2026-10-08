@@ -3,3 +3,4 @@ pub mod analysis;
 pub mod config;
 pub mod db;
 pub mod retention;
+pub mod settings;

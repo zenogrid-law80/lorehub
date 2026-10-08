@@ -253,15 +253,18 @@ impl Worker {
         let sparse_view_path = if let Some(rules) = pipeline.sparse_view_rules.as_deref() {
             let path = root.join("pipeline-sparse.view");
             let mut effective_rules = rules.trim_end().to_owned();
-            effective_rules.push_str("\n!/.lore-ci.toml\n");
+            if pipeline.execution_spec.is_none() {
+                effective_rules.push_str("\n!/.lore-ci.toml\n");
+            }
             tokio::fs::write(&path, effective_rules).await?;
             Some(path)
         } else {
             None
         };
-        let dependency_branch = (!pipeline.pipeline_needs.is_empty())
-            .then_some(pipeline.branch.as_deref())
-            .flatten();
+        let dependency_branch = (pipeline.execution_spec.is_none()
+            && !pipeline.pipeline_needs.is_empty())
+        .then_some(pipeline.branch.as_deref())
+        .flatten();
         let clone_source = dependency_branch.map_or(
             lore::CloneSource::Revision(&pipeline.revision),
             lore::CloneSource::Branch,
@@ -293,26 +296,44 @@ impl Worker {
             "Lore clone failed"
         );
         ensure!(!cancel.is_cancelled(), "pipeline canceled");
-        let config_path = checkout
-            .join(".lore-ci.toml")
-            .canonicalize()
-            .context("find .lore-ci.toml in requested revision")?;
-        ensure!(
-            config_path.starts_with(&checkout),
-            ".lore-ci.toml must stay inside the checkout"
-        );
-        ensure!(
-            tokio::fs::metadata(&config_path).await?.is_file(),
-            ".lore-ci.toml must be a regular file"
-        );
-        let file = tokio::fs::File::open(config_path).await?;
-        let mut source = String::new();
-        file.take(256 * 1024 + 1)
-            .read_to_string(&mut source)
-            .await?;
-        let file = PipelineFile::parse(&source)?;
-        let (config, working_directory, runner_os, sparse_view) =
-            file.select(pipeline.pipeline_name.as_deref())?;
+        let spec = if let Some(spec) = &pipeline.execution_spec {
+            let mut spec = spec.0.clone();
+            spec.validate()?;
+            spec
+        } else {
+            let config_path = checkout
+                .join(".lore-ci.toml")
+                .canonicalize()
+                .context("find .lore-ci.toml in requested revision")?;
+            ensure!(
+                config_path.starts_with(&checkout),
+                ".lore-ci.toml must stay inside the checkout"
+            );
+            ensure!(
+                tokio::fs::metadata(&config_path).await?.is_file(),
+                ".lore-ci.toml must be a regular file"
+            );
+            let file = tokio::fs::File::open(config_path).await?;
+            let mut source = String::new();
+            file.take(256 * 1024 + 1)
+                .read_to_string(&mut source)
+                .await?;
+            let file = PipelineFile::parse(&source)?;
+            let (config, working_directory, runner_os, sparse_view) =
+                file.select(pipeline.pipeline_name.as_deref())?;
+            crate::ci::settings::ExecutionSpec {
+                schema_version: 1,
+                config,
+                working_directory: working_directory.to_owned(),
+                runner_os: runner_os.map(str::to_owned),
+                sparse_view_name: sparse_view.map(str::to_owned),
+                sparse_view_rules: pipeline.sparse_view_rules.clone(),
+            }
+        };
+        let config = spec.config;
+        let working_directory = spec.working_directory.as_str();
+        let runner_os = spec.runner_os.as_deref();
+        let sparse_view = spec.sparse_view_name.as_deref();
         ensure!(
             runner_os == pipeline.runner_os.as_deref(),
             "queued runner OS differs from revision configuration"

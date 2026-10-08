@@ -115,7 +115,7 @@ pub(super) async fn overview(
          WHEN EXISTS(SELECT 1 FROM unnest(p.pipeline_needs) dependency(name) JOIN LATERAL ( \
              SELECT upstream.status FROM accessible_pipelines upstream \
              WHERE upstream.repository_url=p.repository_url AND upstream.branch IS NOT DISTINCT FROM p.branch \
-               AND upstream.revision=p.revision AND upstream.pipeline_name=dependency.name \
+               AND upstream.revision=p.revision AND upstream.run_group_id IS NOT DISTINCT FROM p.run_group_id AND upstream.pipeline_name=dependency.name \
              ORDER BY upstream.created_at DESC,upstream.id DESC LIMIT 1 \
          ) latest ON true WHERE latest.status <> 'succeeded') THEN 'dependencies' \
          WHEN NOT EXISTS(SELECT 1 FROM runners r WHERE r.stopped_at IS NULL AND r.last_seen >= now()-interval '15 seconds' \

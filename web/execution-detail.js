@@ -7,6 +7,7 @@
 let executionDetailRequest = 0;
 let executionDetailSession = 0;
 const pendingPipelineCancellations = new Set();
+const pendingPipelineReruns = new Set();
 
 function bindPipelineDetailEvents() {
   document.querySelectorAll(".drawer-close").forEach((button) => button.addEventListener("click", () => elements["pipeline-detail-dialog"].close()));
@@ -126,7 +127,7 @@ async function loadPipelineDetail(id) {
     pipeline.category && pipelineCategory(pipeline),
   ].filter(Boolean).join(" / ");
   elements["detail-title"].textContent = pipeline.pipeline_name || revisionLabel(pipeline);
-  renderDetailSummary(pipeline, detail.sparse_view_rules);
+  renderDetailSummary(pipeline, detail.sparse_view_rules, detail.execution_spec);
   renderExecutionGraph(pipeline, detail.jobs, detail.graph, detail.queue_reason);
   renderJobs(detail.jobs);
   const cancellable = ["queued", "running"].includes(pipeline.status) && !pipeline.cancel_requested;
@@ -195,7 +196,7 @@ function renderExecutionGraph(pipeline, jobs, snapshot, queueReason) {
   renderExecutionWorkspace(graph, { pipeline, jobs, graph: snapshot, queue_reason: queueReason }, `drawer:${pipeline.id}`);
 }
 
-function renderDetailSummary(pipeline, sparseViewRules) {
+function renderDetailSummary(pipeline, sparseViewRules, executionSpec) {
   elements["detail-summary"].replaceChildren();
   const values = [
     [t("Status"), statusLabel(pipeline.status)],
@@ -204,6 +205,7 @@ function renderDetailSummary(pipeline, sparseViewRules) {
     [t("Duration"), duration(pipeline.started_at, pipeline.finished_at)],
   ];
   if (pipeline.branch) values.splice(2, 0, [t("Branch"), pipeline.branch]);
+  if (pipeline.config_revision_id) values.push([t("Configuration version"), pipeline.config_revision_id]);
   if (pipeline.category) values.push([t("Category"), pipelineCategory(pipeline)]);
   if (pipeline.pipeline_name) values.push([t("Pipeline"), pipeline.pipeline_name], [t("Runner OS"), osLabel(pipeline.runner_os)]);
   values.push([t("Sparse View"), pipeline.sparse_view_name || t("dynamic.noSparseView")]);
@@ -225,6 +227,29 @@ function renderDetailSummary(pipeline, sparseViewRules) {
     const content = document.createElement("code"); content.textContent = sparseViewRules.trim();
     item.append(title, content); elements["detail-summary"].append(item);
   }
+  if (executionSpec) {
+    const item = document.createElement("details"); item.className = "summary-item summary-item--view-rules";
+    const title = document.createElement("summary"); title.textContent = t("Execution specification");
+    const content = document.createElement("pre"); content.className = "ci-version-diff"; content.textContent = JSON.stringify(executionSpec, null, 2);
+    item.append(title, content); elements["detail-summary"].append(item);
+    const button = document.createElement("button"); button.type = "button"; button.className = "button button--secondary";
+    button.textContent = t("Rerun original group"); button.disabled = pendingPipelineReruns.has(pipeline.id);
+    button.addEventListener("click", async () => {
+      if (pendingPipelineReruns.has(pipeline.id)) return;
+      pendingPipelineReruns.add(pipeline.id); button.disabled = true;
+      try {
+        const run = await api(`/api/v1/pipelines/${encodeURIComponent(pipeline.id)}/rerun`, {
+          method: "POST", headers: { "X-CSRF-Token": csrfToken() },
+        });
+        toast(t("dynamic.pipelineQueued"), "success");
+        await loadPipelines(false);
+        if (state.selectedId === pipeline.id) await openPipeline(run.id);
+      } catch (error) { toast(error.message, "error"); }
+      finally { pendingPipelineReruns.delete(pipeline.id); button.disabled = false; }
+    });
+    elements["detail-summary"].append(button);
+  }
+
 }
 
 function renderJobs(jobs) {

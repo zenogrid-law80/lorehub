@@ -7,7 +7,9 @@ const fn = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.in
 function setup(api) {
   const state = { repositoryConfigName: "game", repositoryConfigRequest: 0, repositoryConfigMode: "visual" };
   const elements = { "repository-config-branch": { value: "main" }, "repository-config-editor": { value: "" } };
-  const context = vm.createContext({ state, elements, api, ciElement: () => ({}), rememberRepositoryBranch() {}, renderRepositoryConfig() {}, toast() {}, cloneCiModel: value => JSON.parse(JSON.stringify(value)) });
+  const context = vm.createContext({ state, elements, api, document: { getElementById() { return null; } }, t: value => value, validateCiBeforeSave: async () => true, csrfToken: () => "test-csrf", ciElement: () => ({}), rememberRepositoryBranch() {}, renderRepositoryConfig() {}, toast() {}, cloneCiModel: value => JSON.parse(JSON.stringify(value)) });
+  vm.runInContext(fn("function applyCiStorageMetadata(", "function renderCiStorage("), context);
+  vm.runInContext(fn("async function saveRepositoryConfig(", "function resetRepositoryConfig("), context);
   vm.runInContext(fn("const DEFAULT_CI_CONFIG", "const I18N"), context);
   vm.runInContext(fn("async function loadRepositoryConfig()", "function renderRepositoryConfig()"), context);
   vm.runInContext(fn("function setRepositoryConfigEditing(", "async function setRepositoryConfigMode("), context);
@@ -107,4 +109,38 @@ test("pipeline inspector edits parallelism on the root or selected named pipelin
     field.update("8");
     assert.equal(legacy ? context.model.max_parallel_jobs : context.selected.pipeline.max_parallel_jobs, 8);
   }
+});
+
+test("database metadata is distinct from the code revision and is sent with optimistic locking", async () => {
+  const requests = [];
+  const config = { revision: "unchanged-code", content: "old", configuration: { stages: [], jobs: [] }, source_mode: "db", lock_version: 7, config_revision_id: "v7", config_version: 7 };
+  const { state, elements, get } = setup(async (url, options) => {
+    if (!options) return config;
+    requests.push(JSON.parse(options.body));
+    return { ...config, content: "new", lock_version: 8, config_version: 8, config_revision_id: "v8" };
+  });
+  await get("loadRepositoryConfig()");
+  assert.equal(state.repositoryConfigVersionId, "v7");
+  get("setRepositoryConfigEditing(true)");
+  state.repositoryConfigMode = "toml"; elements["repository-config-editor"].value = "new";
+  await get("saveRepositoryConfig({ preventDefault() {} })");
+  assert.deepEqual(requests[0], { branch: "main", expected_revision: "unchanged-code", expected_lock_version: 7, content: "new" });
+  assert.equal(state.repositoryConfigRevision, "unchanged-code");
+  assert.equal(state.repositoryConfigVersionId, "v8");
+  assert.equal(state.repositoryConfigLockVersion, 8);
+  assert.equal(state.repositoryConfigEditing, false);
+});
+
+test("a conflicting save preserves the draft and the original lock version", async () => {
+  const { state, elements, get } = setup(async (url, options) => {
+    if (options) throw new Error("CI settings changed");
+    return { revision: "code", content: "saved", configuration: { jobs: [], stages: [] }, source_mode: "db", lock_version: 4, config_revision_id: "v4" };
+  });
+  await get("loadRepositoryConfig()"); get("setRepositoryConfigEditing(true)");
+  state.repositoryConfigMode = "toml"; elements["repository-config-editor"].value = "unsaved";
+  await get("saveRepositoryConfig({ preventDefault() {} })");
+  assert.equal(state.repositoryConfigEditing, true);
+  assert.equal(state.repositoryConfigContent, "saved");
+  assert.equal(elements["repository-config-editor"].value, "unsaved");
+  assert.equal(state.repositoryConfigLockVersion, 4);
 });

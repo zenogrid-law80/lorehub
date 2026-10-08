@@ -19,7 +19,7 @@ Object.assign(I18N.ko, {
   "ci.matched": "경로 일치", "ci.dependency": "의존성만 있음 · 자동 실행 안 됨", "ci.unmatched": "경로 불일치",
   "ci.summary": "{total}개 중 {count}개 경로 일치", "ci.rules": "일치 규칙", "ci.files": "일치 파일", "ci.referenced": "참조한 파이프라인",
   "ci.pipelineLegend": "선행 → 후행 의존성 · 카드를 선택해 설정 확인 · ‘단계·작업’에서 상세 보기",
-  "ci.jobLegend": "단계는 왼쪽부터 실행됩니다. 작업은 needs와 최대 병렬 작업 수를 따릅니다.",
+  "ci.jobLegend": "단계는 표시된 번호 순서로 실행됩니다. 작업은 needs와 최대 병렬 작업 수를 따릅니다.",
   "ci.layer": "의존성 단계 {number}", "ci.cycle": "순환 의존성 또는 그 영향 · 설정 검사 확인",
   "ci.line": "{line}행", "ci.openIssue": "오류 위치로 이동", "ci.inspectorError": "이 항목의 오류", "ci.noNeeds": "선행 파이프라인 없음",
 });
@@ -30,7 +30,7 @@ Object.assign(I18N.en, {
   "ci.manual": "Manual pipeline · no automatic path trigger", "ci.matched": "Path match", "ci.dependency": "Dependency only · not triggered", "ci.unmatched": "No path match",
   "ci.summary": "{count} of {total} pipelines match", "ci.rules": "Matching rules", "ci.files": "Matching files", "ci.referenced": "Referenced by",
   "ci.pipelineLegend": "Prerequisite → dependent · select a card for settings · open Stages & jobs for details",
-  "ci.jobLegend": "Stages run left to right. Jobs follow needs and the maximum parallel job setting.",
+  "ci.jobLegend": "Stages run in numbered order. Jobs follow needs and the maximum parallel job setting.",
   "ci.layer": "Dependency level {number}", "ci.cycle": "Cycle or affected dependency · check validation",
   "ci.line": "Line {line}", "ci.openIssue": "Go to error", "ci.inspectorError": "Issue in this item", "ci.noNeeds": "No prerequisite pipelines",
 });
@@ -46,7 +46,7 @@ Object.assign(I18N["zh-CN"], {
   "ci.enterPaths": "输入变更文件路径以查看匹配的流水线和规则。", "ci.previewInvalid": "修复配置错误后可预览路径。", "ci.manual": "手动流水线 · 不会因路径变更自动触发",
   "ci.matched": "路径匹配", "ci.dependency": "仅依赖 · 不触发", "ci.unmatched": "路径不匹配", "ci.summary": "{total} 条流水线中有 {count} 条匹配",
   "ci.rules": "匹配规则", "ci.files": "匹配文件", "ci.referenced": "引用方", "ci.pipelineLegend": "前置 → 后续依赖 · 选择卡片查看设置 · 打开阶段与任务查看详情",
-  "ci.jobLegend": "阶段从左到右运行，任务遵循 needs 依赖和最大并行任务数。", "ci.layer": "依赖层级 {number}",
+  "ci.jobLegend": "阶段按编号顺序运行，任务遵循 needs 依赖和最大并行任务数。", "ci.layer": "依赖层级 {number}",
   "ci.cycle": "循环或受影响的依赖 · 请检查配置", "ci.line": "第 {line} 行", "ci.openIssue": "转到错误", "ci.inspectorError": "此项有问题", "ci.noNeeds": "无前置流水线",
 });
 

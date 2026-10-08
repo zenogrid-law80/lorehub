@@ -96,6 +96,10 @@ pub fn router_with_backup_paths(
             get(super::execution::insights),
         )
         .route("/api/v1/pipelines/{id}/cancel", post(cancel))
+        .route(
+            "/api/v1/pipelines/{id}/rerun",
+            post(super::ci_settings::rerun),
+        )
         .route("/api/v1/pipelines/{id}/logs", get(logs))
         .route("/api/v1/runners", get(list_runners))
         .route("/api/v1/runners/{id}", delete(remove_runner))
@@ -149,9 +153,31 @@ pub fn router_with_backup_paths(
         )
         .route(
             "/api/v1/repositories/{name}/ci-config",
-            get(repository_ci_config)
-                .post(update_repository_ci_config)
+            get(super::ci_settings::read)
+                .post(super::ci_settings::save)
                 .layer(DefaultBodyLimit::max(300 * 1024)),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/history",
+            get(super::ci_settings::history),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/layout",
+            get(super::ci_layout::read)
+                .post(super::ci_layout::save)
+                .layer(DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/versions/{id}",
+            get(super::ci_settings::version),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/restore",
+            post(super::ci_settings::restore),
+        )
+        .route(
+            "/api/v1/repositories/{name}/ci-config/file-mode",
+            post(super::ci_settings::file_mode),
         )
         .route(
             "/api/v1/repositories/{name}/ci-config/parse",
@@ -217,6 +243,7 @@ pub fn router_with_backup_paths(
         .route("/assets/app.js", get(web::script))
         .route("/assets/ci-visual.js", get(web::ci_script))
         .route("/assets/ci-editor.js", get(web::ci_editor_script))
+        .route("/assets/ci-layout.js", get(web::ci_layout_script))
         .route(
             "/assets/execution-detail.js",
             get(web::execution_detail_script),
@@ -391,7 +418,10 @@ async fn runner_claim(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let worker = require_runner_token(&state, &headers)?;
-    runner_claim_response(db::claim(&state.pool, worker).await?)
+    runner_claim_response(
+        db::claim_with_spec_support(&state.pool, worker, None, supports_execution_spec(&headers))
+            .await?,
+    )
 }
 
 async fn runner_claim_with_request(
@@ -400,7 +430,21 @@ async fn runner_claim_with_request(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let worker = require_runner_token(&state, &headers)?;
-    runner_claim_response(db::claim_with_request(&state.pool, worker, request_id).await?)
+    runner_claim_response(
+        db::claim_with_spec_support(
+            &state.pool,
+            worker,
+            Some(request_id),
+            supports_execution_spec(&headers),
+        )
+        .await?,
+    )
+}
+
+fn supports_execution_spec(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-lorehub-execution-spec-version")
+        .is_some_and(|value| value == "1")
 }
 
 fn runner_claim_response(pipeline: Option<Pipeline>) -> Result<Json<serde_json::Value>, ApiError> {
@@ -409,10 +453,15 @@ fn runner_claim_response(pipeline: Option<Pipeline>) -> Result<Json<serde_json::
     };
     let rules = pipeline.sparse_view_rules.clone();
     let graph = pipeline.graph_definition.clone();
+    let spec = pipeline.execution_spec.clone();
     let mut value = serde_json::to_value(pipeline).map_err(internal_error)?;
     let object = value
         .as_object_mut()
         .expect("pipeline serializes as an object");
+    object.insert(
+        "execution_spec".into(),
+        serde_json::to_value(spec).map_err(internal_error)?,
+    );
     object.insert(
         "sparse_view_rules".into(),
         serde_json::to_value(rules).map_err(internal_error)?,
@@ -602,7 +651,7 @@ async fn runner_access_token(
     ))
 }
 
-fn internal_error(error: impl std::fmt::Display) -> ApiError {
+pub(super) fn internal_error(error: impl std::fmt::Display) -> ApiError {
     tracing::error!(%error, "runner API operation failed");
     ApiError(
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -1306,133 +1355,14 @@ async fn remove_repository_link(
     Ok(Json(RepositoryLinkChange { revision }))
 }
 
-#[derive(Deserialize)]
-struct RepositoryCiConfigQuery {
-    branch: String,
-}
-
-#[derive(Serialize)]
-struct RepositoryCiConfig {
-    branch: String,
-    revision: Option<String>,
-    content: Option<String>,
-    configuration: Option<PipelineFile>,
-    is_link_source: bool,
-}
-
-async fn repository_is_link_source(pool: &PgPool, resource: &str) -> Result<bool, sqlx::Error> {
+pub(super) async fn repository_is_link_source(
+    pool: &PgPool,
+    resource: &str,
+) -> Result<bool, sqlx::Error> {
     // Incoming references determine eligibility, regardless of branch, tracking,
     // auto-update policy, or the caller's access to the referencing repository.
     sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repository_link_dependencies WHERE source_resource_id=$1 AND root_resource_id<>$1)")
         .bind(resource).fetch_one(pool).await
-}
-
-async fn repository_ci_config(
-    State(state): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path(name): Path<String>,
-    Query(query): Query<RepositoryCiConfigQuery>,
-) -> Result<(HeaderMap, Json<RepositoryCiConfig>), ApiError> {
-    let resource = require_repository_access(&state.pool, &name, &session).await?;
-    let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    if repository_is_link_source(&state.pool, &resource).await? {
-        return Ok((
-            headers,
-            Json(RepositoryCiConfig {
-                branch: query.branch,
-                revision: None,
-                content: None,
-                configuration: None,
-                is_link_source: true,
-            }),
-        ));
-    }
-    let access_token = user_access_token(&state, &session).await?;
-    let backend = state
-        .repositories
-        .storage_backend(&name, &access_token)
-        .await?;
-    let branch = state
-        .repositories
-        .branches_on(&name, backend, &access_token)
-        .await?
-        .into_iter()
-        .find(|branch| branch.name == query.branch)
-        .ok_or_else(|| {
-            ApiError(
-                StatusCode::NOT_FOUND,
-                format!("branch '{}' was not found", query.branch),
-            )
-        })?;
-    let content = state
-        .repositories
-        .pipeline_source_on(&name, &branch.revision, backend, &access_token)
-        .await?;
-    let configuration = content
-        .as_deref()
-        .and_then(|source| PipelineFile::parse(source).ok());
-    Ok((
-        headers,
-        Json(RepositoryCiConfig {
-            branch: branch.name,
-            revision: Some(branch.revision),
-            content,
-            configuration,
-            is_link_source: false,
-        }),
-    ))
-}
-
-#[derive(Deserialize)]
-struct UpdateRepositoryCiConfig {
-    branch: String,
-    expected_revision: String,
-    content: String,
-}
-
-async fn update_repository_ci_config(
-    State(state): State<AppState>,
-    Extension(session): Extension<AuthSession>,
-    Path(name): Path<String>,
-    Json(input): Json<UpdateRepositoryCiConfig>,
-) -> Result<Json<RepositoryCiConfig>, ApiError> {
-    let resource = require_repository_access(&state.pool, &name, &session).await?;
-    if repository_is_link_source(&state.pool, &resource).await? {
-        return Err(ApiError(
-            StatusCode::CONFLICT,
-            "CI settings are unavailable for Lore link source repositories.".into(),
-        ));
-    }
-    let configuration = PipelineFile::parse(&input.content).map_err(|error| {
-        ApiError(
-            StatusCode::BAD_REQUEST,
-            format!("invalid .lore-ci.toml: {error}"),
-        )
-    })?;
-    let access_token = user_access_token(&state, &session).await?;
-    let backend = state
-        .repositories
-        .storage_backend(&name, &access_token)
-        .await?;
-    let revision = state
-        .repositories
-        .update_pipeline_source_on(
-            &name,
-            &input.branch,
-            &input.expected_revision,
-            &input.content,
-            backend,
-            &access_token,
-        )
-        .await?;
-    Ok(Json(RepositoryCiConfig {
-        branch: input.branch,
-        revision: Some(revision),
-        content: Some(input.content),
-        configuration: Some(configuration),
-        is_link_source: false,
-    }))
 }
 
 #[derive(Deserialize)]
@@ -1479,10 +1409,14 @@ async fn parse_repository_ci_config(
 #[derive(Deserialize)]
 struct PipelineRevision {
     revision: String,
+    branch: Option<String>,
 }
 
 #[derive(Serialize, sqlx::FromRow)]
 struct PipelineChoice {
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_revision_id: Option<Uuid>,
     name: Option<String>,
     category: Option<String>,
     runner_os: Option<String>,
@@ -1501,11 +1435,41 @@ async fn list_repository_pipelines(
         ));
     }
     let resource_id = require_repository_access(&state.pool, &name, &session).await?;
+    if let Some(branch) = query.branch.as_deref() {
+        let mut conn = state.pool.acquire().await?;
+        if let Some(active) = crate::ci::settings::active(&mut conn, &resource_id, branch)
+            .await
+            .map_err(super::ci_settings::error)?
+        {
+            let config = active.definition;
+            let choices = if config.pipelines.is_empty() {
+                vec![PipelineChoice {
+                    name: None,
+                    category: None,
+                    runner_os: None,
+                    config_revision_id: Some(active.id),
+                }]
+            } else {
+                config
+                    .pipelines
+                    .iter()
+                    .map(|p| PipelineChoice {
+                        name: Some(p.name.clone()),
+                        category: Some(p.category.clone()),
+                        runner_os: Some(p.runner_os.clone()),
+                        config_revision_id: Some(active.id),
+                    })
+                    .collect()
+            };
+            return Ok(Json(choices));
+        }
+    }
     let routes: Vec<PipelineChoice> = sqlx::query_as(
-        "SELECT pipeline_name AS name, category, runner_os FROM ci_pipeline_routes WHERE resource_id = $1 AND revision = $2 ORDER BY category, pipeline_name",
+        "SELECT pipeline_name AS name, category, runner_os FROM ci_pipeline_routes WHERE resource_id = $1 AND revision = $2 AND ($3::text IS NULL OR branch=$3) AND NOT EXISTS(SELECT 1 FROM ci_configs c WHERE c.resource_id=ci_pipeline_routes.resource_id AND c.branch=ci_pipeline_routes.branch AND c.source_mode='db') ORDER BY category, pipeline_name",
     )
     .bind(&resource_id)
     .bind(&query.revision)
+    .bind(&query.branch)
     .fetch_all(&state.pool)
     .await?;
     if !routes.is_empty() {
@@ -1531,6 +1495,7 @@ async fn list_repository_pipelines(
             .select(None)
             .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
         return Ok(Json(vec![PipelineChoice {
+            config_revision_id: None,
             name: None,
             category: None,
             runner_os: None,
@@ -1541,6 +1506,7 @@ async fn list_repository_pipelines(
             .pipelines
             .iter()
             .map(|pipeline| PipelineChoice {
+                config_revision_id: None,
                 name: Some(pipeline.name.clone()),
                 category: Some(pipeline.category.clone()),
                 runner_os: Some(pipeline.runner_os.clone()),
@@ -1704,11 +1670,28 @@ pub(super) async fn require_repository_access(
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SubmitRequest {
+    repository_url: String,
+    revision: String,
+    branch: Option<String>,
+    pipeline_name: Option<String>,
+    config_revision_id: Option<Uuid>,
+}
+
 async fn submit(
     State(state): State<AppState>,
     Extension(session): Extension<AuthSession>,
-    Json(mut input): Json<SubmitPipeline>,
+    Json(request): Json<SubmitRequest>,
 ) -> Result<(StatusCode, Json<Pipeline>), ApiError> {
+    let config_revision_id = request.config_revision_id;
+    let mut input = SubmitPipeline {
+        repository_url: request.repository_url,
+        revision: request.revision,
+        branch: request.branch,
+        pipeline_name: request.pipeline_name,
+    };
     input
         .validate()
         .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -1756,6 +1739,70 @@ async fn submit(
         }
     }
     input.repository_url = expected_repository_url;
+    if let Some(branch) = input.branch.as_deref() {
+        let mut tx = state.pool.begin().await?;
+        crate::ci::settings::lock(&mut tx, &resource_id)
+            .await
+            .map_err(super::ci_settings::error)?;
+        if let Some(active) = crate::ci::settings::active(&mut tx, &resource_id, branch)
+            .await
+            .map_err(super::ci_settings::error)?
+        {
+            if repository_is_link_source(&state.pool, &resource_id).await? {
+                return Err(ApiError(
+                    StatusCode::CONFLICT,
+                    "CI settings are unavailable for Lore link source repositories.".into(),
+                ));
+            }
+            let version = if let Some(id) = config_revision_id {
+                crate::ci::settings::revision(&mut tx, active.config_id, id)
+                    .await
+                    .map_err(super::ci_settings::error)?
+            } else {
+                active
+            };
+            version
+                .definition
+                .select(input.pipeline_name.as_deref())
+                .map_err(super::ci_settings::error)?;
+            let group = crate::ci::settings::group(
+                &mut tx,
+                &resource_id,
+                branch,
+                &input.revision,
+                version.id,
+                "manual",
+            )
+            .await
+            .map_err(super::ci_settings::error)?
+            .unwrap();
+            let pipeline = crate::ci::settings::enqueue(
+                &mut tx,
+                crate::ci::settings::Run {
+                    group,
+                    resource: &resource_id,
+                    url: &input.repository_url,
+                    branch,
+                    code_revision: &input.revision,
+                    previous_revision: None,
+                    actor: session.user.id,
+                    revision: &version,
+                    pipeline_name: input.pipeline_name.as_deref(),
+                    changes: &[],
+                },
+            )
+            .await
+            .map_err(super::ci_settings::error)?;
+            tx.commit().await?;
+            return Ok((StatusCode::CREATED, Json(pipeline)));
+        }
+    }
+    if config_revision_id.is_some() {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "select a branch using database CI settings".into(),
+        ));
+    }
     if let Some(pipeline_name) = input.pipeline_name.as_deref() {
         let config = state
             .repositories
@@ -2234,6 +2281,7 @@ struct Detail {
     graph: Option<serde_json::Value>,
     sparse_view_rules: Option<String>,
     queue_reason: Option<&'static str>,
+    execution_spec: Option<sqlx::types::Json<crate::ci::settings::ExecutionSpec>>,
 }
 async fn detail(
     State(state): State<AppState>,
@@ -2269,12 +2317,13 @@ async fn detail(
         Some("canceling")
     } else {
         let (blocked,): (bool,) = access.query_as(&PipelineAccess::sql(
-            "SELECT EXISTS(SELECT 1 FROM unnest($4::text[]) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM accessible_pipelines upstream WHERE upstream.repository_url = $5 AND upstream.branch IS NOT DISTINCT FROM $6 AND upstream.revision = $7 AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded')",
+            "SELECT EXISTS(SELECT 1 FROM unnest($4::text[]) AS dependency(name) JOIN LATERAL (SELECT upstream.status FROM accessible_pipelines upstream WHERE upstream.repository_url = $5 AND upstream.branch IS NOT DISTINCT FROM $6 AND upstream.revision = $7 AND upstream.run_group_id IS NOT DISTINCT FROM $8 AND upstream.pipeline_name = dependency.name ORDER BY upstream.created_at DESC, upstream.id DESC LIMIT 1) latest ON true WHERE latest.status <> 'succeeded')",
         ))
         .bind(&pipeline.pipeline_needs)
         .bind(&pipeline.repository_url)
         .bind(&execution_branch)
         .bind(&pipeline.revision)
+        .bind(pipeline.run_group_id)
         .fetch_one(&state.pool)
         .await?;
         Some(if blocked {
@@ -2286,6 +2335,7 @@ async fn detail(
         })
     };
     Ok(Json(Detail {
+        execution_spec: pipeline.execution_spec.clone(),
         pipeline,
         jobs,
         graph,

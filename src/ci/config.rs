@@ -218,9 +218,19 @@ pub fn valid_relative_path(path: &str) -> bool {
 impl PipelineFile {
     pub fn parse(source: &str) -> Result<Self> {
         ensure!(source.len() <= 256 * 1024, ".lore-ci.toml exceeds 256 KiB");
-        let mut file: Self = toml::from_str(source)?;
+        let file: Self = toml::from_str(source)?;
+        file.validate()
+    }
+
+    pub fn validate(mut self) -> Result<Self> {
+        let file = &mut self;
         if file.pipelines.is_empty() {
-            let config = PipelineConfig::parse(source)?;
+            let mut config = PipelineConfig {
+                max_parallel_jobs: file.max_parallel_jobs,
+                stages: file.stages.clone(),
+                jobs: file.jobs.clone(),
+            };
+            config.validate()?;
             file.stages = config.stages;
             file.jobs = config.jobs;
         } else {
@@ -350,7 +360,7 @@ impl PipelineFile {
                 }
             }
         }
-        Ok(file)
+        Ok(self)
     }
 
     pub fn select(

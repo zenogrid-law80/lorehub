@@ -124,7 +124,8 @@ impl CoordinatorClient {
         Ok(self
             .client
             .request(method, self.base_url.join(path)?)
-            .bearer_auth(token))
+            .bearer_auth(token)
+            .header("x-lorehub-execution-spec-version", "1"))
     }
 
     async fn checked(response: Response) -> Result<Response> {

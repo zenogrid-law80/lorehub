@@ -10,6 +10,7 @@
     <script src="/assets/app.js" defer></script>
     <script src="/assets/ci-visual.js" defer></script>
     <script src="/assets/ci-editor.js" defer></script>
+    <script src="/assets/ci-layout.js" defer></script>
     <script src="/assets/execution-detail.js" defer></script>
     <script src="/assets/execution-graph.js" defer></script>
     <script src="/assets/execution-analysis.js" defer></script>
@@ -331,7 +332,7 @@
             </div>
             <form id="repository-config-form" class="pipeline-panel repository-config-page-form" novalidate>
               <div class="repository-config-page-header">
-                <div><p class="eyebrow">CI CONFIGURATION</p><h2>.lore-ci.toml</h2><p>선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.</p></div>
+                <div><p class="eyebrow">CI CONFIGURATION</p><h2>CI configuration</h2><p>선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.</p></div>
                 <div class="repository-config-actions">
                   <button id="ci-workspace-toggle" class="button button--secondary" type="button" aria-controls="ci-workspace-dialog" aria-expanded="false">Expand workspace</button>
                   <button id="ci-undo" class="button button--ghost" type="button" hidden>Undo</button>
@@ -344,7 +345,7 @@
               </div>
               <div class="repository-config-page-body">
                 <section id="ci-config-template" class="ci-config-template" hidden>
-                  <h3>Create .lore-ci.toml</h3>
+                  <h3>Create CI configuration</h3>
                   <p>This repository has no CI configuration. Start with a build template, edit the commands, then save.</p>
                   <pre id="ci-config-template-source"></pre>
                   <button id="ci-config-use-template" class="button button--primary" type="button">Use template</button>
@@ -354,6 +355,24 @@
                   <label class="field"><span>Branch</span><select id="repository-config-branch" required disabled></select></label>
                   <div class="repository-config-revision"><span>Revision</span><code id="repository-config-revision">—</code></div>
                 </div>
+                <section id="ci-storage-tools" class="ci-storage-tools" hidden>
+                  <p id="ci-storage-status" role="status"></p>
+                  <div class="ci-storage-actions">
+                    <button id="ci-export" class="button button--secondary" type="button">Export TOML</button>
+                    <button id="ci-import" class="button button--secondary" type="button">Import TOML</button>
+                    <input id="ci-import-file" type="file" accept=".toml,text/plain" hidden>
+                    <label class="field"><span>Copy from branch</span><select id="ci-copy-branch"></select></label>
+                    <button id="ci-copy" class="button button--secondary" type="button">Copy to editor</button>
+                    <button id="ci-history" class="button button--secondary" type="button">Version history</button>
+                    <button id="ci-file-mode" class="button button--ghost" type="button">Use committed TOML</button>
+                  </div>
+                  <div id="ci-version-panel" hidden>
+                    <label class="field"><span>Configuration version</span><select id="ci-version-list"></select></label>
+                    <p id="ci-version-info"></p>
+                    <pre id="ci-version-diff" class="ci-version-diff"></pre>
+                    <button id="ci-restore" class="button button--secondary" type="button">Restore this version</button>
+                  </div>
+                </section>
                 <div id="repository-config-mode" class="repository-config-mode" role="tablist" aria-label="Editor mode">
                   <button id="repository-config-visual-tab" class="is-active" type="button" role="tab" aria-selected="true">Visual</button>
                   <button id="repository-config-toml-tab" type="button" role="tab" aria-selected="false">TOML</button>
@@ -401,6 +420,12 @@
                       <button id="ci-toggle-inspector" type="button" aria-controls="ci-inspector-panel" aria-expanded="true">Hide settings</button>
                       <span>Drag empty space to pan</span>
                     </div>
+                    <div class="ci-layout-controls">
+                      <button id="ci-layout-reset" type="button" class="button button--ghost">Reset layout</button>
+                      <span id="ci-layout-status" role="status"></span>
+                      <button id="ci-layout-retry" type="button" class="button button--ghost" hidden>Retry layout</button>
+                      <small>Drag nodes to move; Alt + arrow keys also work. Layout does not change execution order.</small>
+                    </div>
                     <div id="ci-graph-viewport" class="ci-graph-viewport" tabindex="0" aria-label="Pipeline graph">
                       <div id="repository-config-stage-graph" class="config-stage-graph"></div>
                     </div>
@@ -414,7 +439,7 @@
                 <label id="repository-config-editor-field" class="field repository-config-editor" hidden>
                   <span class="sr-only">.lore-ci.toml editor</span>
                   <textarea id="repository-config-editor" rows="20" maxlength="262144" required spellcheck="false" autocomplete="off" aria-label=".lore-ci.toml editor"></textarea>
-                  <small>유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.</small>
+                  <small>저장하면 새 CI 설정 버전이 생성됩니다. 코드 revision은 변경되지 않습니다.</small>
                 </label>
               </div>
             </form>
@@ -525,7 +550,7 @@
         <label class="field"><span>Repository</span><select id="repository-url" name="repository_url" required></select><small>현재 Lore 서버에 등록된 저장소</small></label>
         <label class="field"><span>Branch</span><select id="branch" name="branch" required disabled></select><small>main branch가 기본으로 선택됩니다.</small></label>
         <label class="field"><span>Revision</span><input id="revision" name="revision" type="text" required minlength="64" maxlength="64" pattern="[0-9a-fA-F]{64}" spellcheck="false" autocomplete="off" readonly><small>선택한 branch의 최신 revision</small></label>
-        <label class="field"><span>Pipeline</span><select id="pipeline-name" name="pipeline_name" disabled></select><small>선택한 revision의 .lore-ci.toml에 정의된 pipeline</small></label>
+        <label class="field"><span>Pipeline</span><select id="pipeline-name" name="pipeline_name" disabled></select><small>선택한 branch의 CI 설정에 정의된 pipeline</small></label>
         <div class="modal-actions"><button class="button button--ghost modal-cancel" type="button">Cancel</button><button id="run-pipeline-button" class="button button--primary" type="submit"><span>Run pipeline</span><span class="button-spinner" hidden></span></button></div>
       </form>
     </dialog>

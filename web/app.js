@@ -109,7 +109,7 @@ Object.assign(I18N.en, {
   "워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.": "Review pipeline run history and current status for the workspace.",
   "실행할 Lore 저장소와 branch를 선택하세요.": "Choose the Lore repository and branch to run.", "Repository": "Repository", "Branch": "Branch", "Pipeline": "Pipeline", "현재 Lore 서버에 등록된 저장소": "Repositories registered on the current Lore server", "main branch가 기본으로 선택됩니다.": "The main branch is selected by default.", "선택한 branch의 최신 revision": "Latest revision of the selected branch", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "Pipeline defined in .lore-ci.toml at the selected revision", "dynamic.loadingBranches": "Loading branches…", "dynamic.loadingPipelines": "Loading pipelines…", "dynamic.defaultPipeline": "Default pipeline", "dynamic.noRepositories": "No repositories available", "dynamic.noBranches": "No active branches available", "dynamic.noPipelines": "No pipelines available",
   "Pipeline branches": "Pipeline branches", "저장소에서": "in the repository", "자동 실행을 감지할 branch를 선택하세요.": "Choose the branches monitored for automatic runs.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "Selecting no branches pauses automatic CI for this repository. Existing run history is kept.", "Save branches": "Save branches", "dynamic.pipelineBranches": "Auto CI branches", "dynamic.branchPolicySaved": "Automatic CI branches saved.", "dynamic.noRemoteBranches": "No active remote branches are available.",
-  "CI CONFIGURATION": "CI CONFIGURATION", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "View and edit the repository's CI configuration by branch.", "저장소와 branch별 CI 파이프라인을 편집합니다.": "Edit CI pipelines by repository and branch.", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "View and edit CI configuration for each branch of the selected repository.", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "Only valid TOML can be saved. Saving creates a new Lore revision.", "CI configuration": "CI configuration", "Edit": "Edit", "Save changes": "Save changes", "dynamic.loadingConfig": "Loading .lore-ci.toml…", "dynamic.noCiConfig": ".lore-ci.toml does not exist on this branch. Select Edit to create it.", "dynamic.configSaved": ".lore-ci.toml saved to a new revision.", "dynamic.saving": "Saving…", "dynamic.configRefreshed": "CI configuration refreshed.", "dynamic.discardConfig": "Discard unsaved CI configuration changes?",
+  "CI CONFIGURATION": "CI CONFIGURATION", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "View and edit the repository's CI configuration by branch.", "저장소와 branch별 CI 파이프라인을 편집합니다.": "Edit CI pipelines by repository and branch.", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "View and edit CI configuration for each branch of the selected repository.", "저장하면 새 CI 설정 버전이 생성됩니다. 코드 revision은 변경되지 않습니다.": "Saving creates a CI configuration version without changing the code revision.", "CI configuration": "CI configuration", "Edit": "Edit", "Save changes": "Save changes", "dynamic.loadingConfig": "Loading .lore-ci.toml…", "dynamic.noCiConfig": ".lore-ci.toml does not exist on this branch. Select Edit to create it.", "dynamic.configSaved": "CI configuration saved as a new database version.", "dynamic.saving": "Saving…", "dynamic.configRefreshed": "CI configuration refreshed.", "dynamic.discardConfig": "Discard unsaved CI configuration changes?",
   "Visual": "Visual", "Pipeline list": "Pipeline list", "Stages run from left to right": "Stages run from left to right", "Manual pipeline": "Manual pipeline", "Manual": "Manual", "No CI configuration": "No CI configuration", "Select Edit to create a pipeline graph.": "Select Edit to create a pipeline graph.", "Nothing selected": "Nothing selected", "Select a pipeline, stage, or job.": "Select a pipeline, stage, or job.", "Pipeline settings": "Pipeline settings", "Stage settings": "Stage settings", "Job settings": "Job settings", "Name": "Name", "Stage": "Stage", "Timeout (seconds)": "Timeout (seconds)", "Script": "Script", "one command per line": "one command per line", "Working directory": "Working directory", "Change paths": "Change paths", "one path per line": "one path per line", "Add pipeline": "Add pipeline", "Add stage": "Add stage", "Add job": "Add job", "Delete pipeline": "Delete pipeline", "Delete stage": "Delete stage", "Delete job": "Delete job", "Convert to auto pipeline": "Convert to auto pipeline", "This is a manual pipeline using root stages and jobs.": "This is a manual pipeline using root stages and jobs.", "dynamic.jobSteps": "{count} commands · {seconds}s"
 });
 Object.assign(I18N.ko, {
@@ -142,7 +142,7 @@ Object.assign(I18N.ko, {
   "dynamic.manualRun": "수동 실행",
   "실행할 Lore 저장소와 branch를 선택하세요.": "실행할 Lore 저장소와 branch를 선택하세요.", "Repository": "저장소", "Branch": "Branch", "Pipeline": "파이프라인", "현재 Lore 서버에 등록된 저장소": "현재 Lore 서버에 등록된 저장소", "main branch가 기본으로 선택됩니다.": "main branch가 기본으로 선택됩니다.", "선택한 branch의 최신 revision": "선택한 branch의 최신 revision", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "선택한 revision의 .lore-ci.toml에 정의된 파이프라인", "dynamic.loadingBranches": "Branch 불러오는 중…", "dynamic.loadingPipelines": "파이프라인 불러오는 중…", "dynamic.defaultPipeline": "기본 파이프라인", "dynamic.noRepositories": "사용 가능한 저장소가 없습니다", "dynamic.noBranches": "사용 가능한 branch가 없습니다", "dynamic.noPipelines": "사용 가능한 파이프라인이 없습니다",
   "Pipeline branches": "파이프라인 Branch", "저장소에서": "저장소에서", "자동 실행을 감지할 branch를 선택하세요.": "자동 실행을 감지할 branch를 선택하세요.", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.", "Save branches": "Branch 저장", "dynamic.pipelineBranches": "자동 CI Branch", "dynamic.branchPolicySaved": "자동 CI branch 설정을 저장했습니다.", "dynamic.noRemoteBranches": "사용 가능한 remote branch가 없습니다.",
-  "CI CONFIGURATION": "CI 설정", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "저장소의 branch별 CI 설정을 확인하고 편집합니다.", "저장소와 branch별 CI 파이프라인을 편집합니다.": "저장소와 branch별 CI 파이프라인을 편집합니다.", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.", "CI configuration": "CI 설정", "Edit": "편집", "Save changes": "변경 사항 저장", "dynamic.loadingConfig": ".lore-ci.toml 불러오는 중…", "dynamic.noCiConfig": "이 branch에 .lore-ci.toml이 없습니다. 편집을 선택해 새로 만드세요.", "dynamic.configSaved": ".lore-ci.toml을 새 revision으로 저장했습니다.", "dynamic.saving": "저장 중…", "dynamic.configRefreshed": "CI 설정을 새로고침했습니다.", "dynamic.discardConfig": "저장하지 않은 CI 설정 변경 사항을 버릴까요?",
+  "CI CONFIGURATION": "CI 설정", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "저장소의 branch별 CI 설정을 확인하고 편집합니다.", "저장소와 branch별 CI 파이프라인을 편집합니다.": "저장소와 branch별 CI 파이프라인을 편집합니다.", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.", "저장하면 새 CI 설정 버전이 생성됩니다. 코드 revision은 변경되지 않습니다.": "저장하면 새 CI 설정 버전이 생성됩니다. 코드 revision은 변경되지 않습니다.", "CI configuration": "CI 설정", "Edit": "편집", "Save changes": "변경 사항 저장", "dynamic.loadingConfig": ".lore-ci.toml 불러오는 중…", "dynamic.noCiConfig": "이 branch에 .lore-ci.toml이 없습니다. 편집을 선택해 새로 만드세요.", "dynamic.configSaved": "CI 설정을 새 DB 버전으로 저장했습니다.", "dynamic.saving": "저장 중…", "dynamic.configRefreshed": "CI 설정을 새로고침했습니다.", "dynamic.discardConfig": "저장하지 않은 CI 설정 변경 사항을 버릴까요?",
   "Visual": "시각화", "Pipeline list": "파이프라인 목록", "Stages run from left to right": "단계는 왼쪽에서 오른쪽으로 실행됩니다", "Manual pipeline": "수동 파이프라인", "Manual": "수동", "No CI configuration": "CI 설정 없음", "Select Edit to create a pipeline graph.": "편집을 선택해 파이프라인 그래프를 만드세요.", "Nothing selected": "선택 항목 없음", "Select a pipeline, stage, or job.": "파이프라인, 단계 또는 작업을 선택하세요.", "Pipeline settings": "파이프라인 설정", "Stage settings": "단계 설정", "Job settings": "작업 설정", "Name": "이름", "Stage": "단계", "Timeout (seconds)": "제한 시간(초)", "Script": "스크립트", "one command per line": "한 줄에 명령 하나", "Working directory": "작업 디렉터리", "Change paths": "변경 경로", "one path per line": "한 줄에 경로 하나", "Add pipeline": "파이프라인 추가", "Add stage": "단계 추가", "Add job": "작업 추가", "Delete pipeline": "파이프라인 삭제", "Delete stage": "단계 삭제", "Delete job": "작업 삭제", "Convert to auto pipeline": "자동 파이프라인으로 전환", "This is a manual pipeline using root stages and jobs.": "루트 stages와 jobs를 사용하는 수동 파이프라인입니다.", "dynamic.jobSteps": "명령 {count}개 · {seconds}초"
 });
 Object.assign(I18N["zh-CN"], {
@@ -182,7 +182,7 @@ Object.assign(I18N["zh-CN"], {
   "워크스페이스의 파이프라인 실행 이력과 현재 상태를 확인합니다.": "查看工作区的流水线运行历史和当前状态。",
   "실행할 Lore 저장소와 branch를 선택하세요.": "选择要运行的 Lore 仓库和分支。", "Repository": "仓库", "Branch": "分支", "Pipeline": "流水线", "현재 Lore 서버에 등록된 저장소": "当前 Lore 服务器上注册的仓库", "main branch가 기본으로 선택됩니다.": "默认选择 main 分支。", "선택한 branch의 최신 revision": "所选分支的最新修订", "선택한 revision의 .lore-ci.toml에 정의된 pipeline": "所选修订中 .lore-ci.toml 定义的流水线", "dynamic.loadingBranches": "正在加载分支…", "dynamic.loadingPipelines": "正在加载流水线…", "dynamic.defaultPipeline": "默认流水线", "dynamic.noRepositories": "没有可用的仓库", "dynamic.noBranches": "没有可用的活动分支", "dynamic.noPipelines": "没有可用的流水线",
   "Pipeline branches": "流水线分支", "저장소에서": "仓库中", "자동 실행을 감지할 branch를 선택하세요.": "选择要监控自动运行的分支。", "선택하지 않으면 이 저장소의 자동 CI가 중지됩니다. 기존 실행 이력은 유지됩니다.": "如果不选择分支，此仓库的自动 CI 将暂停。现有运行历史会保留。", "Save branches": "保存分支", "dynamic.pipelineBranches": "自动 CI 分支", "dynamic.branchPolicySaved": "自动 CI 分支设置已保存。", "dynamic.noRemoteBranches": "没有可用的远程分支。",
-  "CI CONFIGURATION": "CI 配置", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "按分支查看和编辑仓库的 CI 配置。", "저장소와 branch별 CI 파이프라인을 편집합니다.": "按仓库和分支编辑 CI 流水线。", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "查看和编辑所选仓库各分支的 CI 配置。", "유효한 TOML만 저장되며 저장 시 새 Lore revision이 생성됩니다.": "只能保存有效的 TOML；保存后会创建新的 Lore 修订。", "CI configuration": "CI 配置", "Edit": "编辑", "Save changes": "保存更改", "dynamic.loadingConfig": "正在加载 .lore-ci.toml…", "dynamic.noCiConfig": "此分支没有 .lore-ci.toml。选择编辑以创建。", "dynamic.configSaved": ".lore-ci.toml 已保存到新的修订。", "dynamic.saving": "正在保存…", "dynamic.configRefreshed": "CI 配置已刷新。", "dynamic.discardConfig": "要放弃未保存的 CI 配置更改吗？",
+  "CI CONFIGURATION": "CI 配置", "저장소의 branch별 CI 설정을 확인하고 편집합니다.": "按分支查看和编辑仓库的 CI 配置。", "저장소와 branch별 CI 파이프라인을 편집합니다.": "按仓库和分支编辑 CI 流水线。", "선택한 저장소의 branch별 CI 설정을 확인하고 편집합니다.": "查看和编辑所选仓库各分支的 CI 配置。", "저장하면 새 CI 설정 버전이 생성됩니다. 코드 revision은 변경되지 않습니다.": "保存会创建 CI 配置版本，不会修改代码修订。", "CI configuration": "CI 配置", "Edit": "编辑", "Save changes": "保存更改", "dynamic.loadingConfig": "正在加载 .lore-ci.toml…", "dynamic.noCiConfig": "此分支没有 .lore-ci.toml。选择编辑以创建。", "dynamic.configSaved": "CI 配置已保存为新的数据库版本。", "dynamic.saving": "正在保存…", "dynamic.configRefreshed": "CI 配置已刷新。", "dynamic.discardConfig": "要放弃未保存的 CI 配置更改吗？",
   "Visual": "可视化", "Pipeline list": "流水线列表", "Stages run from left to right": "阶段从左到右运行", "Manual pipeline": "手动流水线", "Manual": "手动", "No CI configuration": "无 CI 配置", "Select Edit to create a pipeline graph.": "选择编辑以创建流水线图。", "Nothing selected": "未选择项目", "Select a pipeline, stage, or job.": "请选择流水线、阶段或任务。", "Pipeline settings": "流水线设置", "Stage settings": "阶段设置", "Job settings": "任务设置", "Name": "名称", "Stage": "阶段", "Timeout (seconds)": "超时（秒）", "Script": "脚本", "one command per line": "每行一个命令", "Working directory": "工作目录", "Change paths": "变更路径", "one path per line": "每行一个路径", "Add pipeline": "添加流水线", "Add stage": "添加阶段", "Add job": "添加任务", "Delete pipeline": "删除流水线", "Delete stage": "删除阶段", "Delete job": "删除任务", "Convert to auto pipeline": "转换为自动流水线", "This is a manual pipeline using root stages and jobs.": "这是使用根级 stages 和 jobs 的手动流水线。", "dynamic.jobSteps": "{count} 条命令 · {seconds}秒"
 });
 Object.assign(I18N.en, { "Dependencies": "Dependencies", "Select jobs that must complete first.": "Select jobs that must complete first.", "No eligible dependency jobs": "No eligible dependency jobs", "dynamic.jobNeeds": "Needs {jobs}" });
@@ -493,6 +493,7 @@ function applyLocale(rerender) {
 }
 
 function bindEvents() {
+  bindCiStorageEvents();
   document.addEventListener("visibilitychange", refreshWhenAvailable);
   window.addEventListener("online", refreshWhenAvailable);
   document.querySelectorAll('a[href="/auth/google/login"]').forEach(link => link.addEventListener("click", rememberPipelineLogin));
@@ -2332,6 +2333,7 @@ async function loadRepositoryConfig() {
   ciElement("ci-list-search").value = "";
   const request = ++state.repositoryConfigRequest;
   state.repositoryConfigRevision = null;
+  applyCiStorageMetadata({});
   state.repositoryConfigContent = null;
   state.repositoryConfigModel = null;
   state.repositoryConfigDraft = null;
@@ -2343,6 +2345,7 @@ async function loadRepositoryConfig() {
   try {
     const config = await api(`/api/v1/repositories/${encodeURIComponent(name)}/ci-config?branch=${encodeURIComponent(branch)}`);
     if (request !== state.repositoryConfigRequest || state.repositoryConfigName !== name || elements["repository-config-branch"].value !== branch) return;
+    applyCiStorageMetadata(config);
     state.repositoryConfigRevision = config.revision;
     state.repositoryConfigContent = config.content;
     state.repositoryConfigModel = config.configuration;
@@ -2360,6 +2363,7 @@ async function loadRepositoryConfig() {
 }
 
 function renderRepositoryConfig() {
+  renderCiStorage();
   updateCiWorkspaceControl();
   syncCiEditor();
   const editing = state.repositoryConfigEditing;
@@ -2400,7 +2404,7 @@ function renderRepositoryConfig() {
   elements["repository-config-cancel-edit"].hidden = !editing;
   elements["repository-config-save"].hidden = !editing;
   elements["repository-config-save"].disabled = state.repositoryConfigSaving;
-  elements["repository-config-save"].querySelector("span:first-child").textContent = state.repositoryConfigSaving ? t("dynamic.saving") : t("Save changes");
+  elements["repository-config-save"].querySelector("span:first-child").textContent = state.repositoryConfigSaving ? t("dynamic.saving") : t("Save to database");
   elements["repository-config-save"].querySelector(".button-spinner").hidden = !state.repositoryConfigSaving;
   if (visual) renderRepositoryConfigVisual();
   scheduleCiAnalysis();
@@ -2477,9 +2481,10 @@ async function saveRepositoryConfig(event) {
     const config = await api(`/api/v1/repositories/${encodeURIComponent(name)}/ci-config`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-      body: JSON.stringify({ branch, expected_revision: state.repositoryConfigRevision, content }),
+      body: JSON.stringify({ branch, expected_revision: state.repositoryConfigRevision, expected_lock_version: state.repositoryConfigLockVersion ?? 0, content }),
     });
     if (state.repositoryConfigName !== name || elements["repository-config-branch"].value !== branch) return;
+    applyCiStorageMetadata(config);
     state.repositoryConfigRevision = config.revision;
     state.repositoryConfigContent = config.content;
     state.repositoryConfigModel = config.configuration;
@@ -2502,6 +2507,7 @@ function resetRepositoryConfig() {
   state.repositoryConfigRequest += 1;
   state.repositoryConfigName = null;
   state.repositoryConfigRevision = null;
+  applyCiStorageMetadata({});
   state.repositoryConfigContent = null;
   state.repositoryConfigModel = null;
   state.repositoryConfigDraft = null;
@@ -2519,6 +2525,128 @@ function discardRepositoryConfigEdit() {
   state.repositoryConfigDraft = null;
   resetCiEditor();
   return true;
+}
+
+function applyCiStorageMetadata(config) {
+  state.repositoryConfigSource = config.source_mode || "file";
+  state.repositoryConfigLockVersion = config.lock_version ?? 0;
+  state.repositoryConfigVersion = config.config_version ?? null;
+  state.repositoryConfigVersionId = config.config_revision_id ?? null;
+  const panel = document.getElementById("ci-version-panel");
+  if (panel) panel.hidden = true;
+}
+
+function renderCiStorage() {
+  const tools = document.getElementById("ci-storage-tools");
+  if (!tools) return;
+  const ready = state.repositoryConfigStatus === "ready";
+  tools.hidden = !ready;
+  const busy = state.repositoryConfigEditing || state.repositoryConfigSaving || !ready;
+  const database = state.repositoryConfigSource === "db";
+  document.getElementById("ci-storage-status").textContent = database
+    ? `${t("Database configuration")} · v${state.repositoryConfigVersion}`
+    : t("File configuration. Saving imports it into the database.");
+  for (const id of ["ci-export", "ci-import", "ci-copy", "ci-copy-branch", "ci-history", "ci-file-mode", "ci-version-list", "ci-restore"]) {
+    document.getElementById(id).disabled = busy;
+  }
+  document.getElementById("ci-export").disabled = busy || state.repositoryConfigContent === null;
+  document.getElementById("ci-file-mode").hidden = !database;
+  const copy = document.getElementById("ci-copy-branch");
+  const selected = copy.value;
+  copy.replaceChildren();
+  for (const option of elements["repository-config-branch"].options) {
+    if (option.value !== elements["repository-config-branch"].value) copy.add(new Option(option.textContent, option.value));
+  }
+  if ([...copy.options].some(option => option.value === selected)) copy.value = selected;
+  document.getElementById("ci-copy").disabled = busy || !copy.value;
+}
+
+function ciStorageScope() {
+  const name = state.repositoryConfigName;
+  const branch = elements["repository-config-branch"].value;
+  const request = state.repositoryConfigRequest;
+  return { name, branch, base: `/api/v1/repositories/${encodeURIComponent(name)}/ci-config`,
+    current: () => request === state.repositoryConfigRequest && name === state.repositoryConfigName && branch === elements["repository-config-branch"].value };
+}
+
+function editImportedCiSource(content) {
+  if (state.repositoryConfigEditing || state.repositoryConfigSaving) return;
+  setRepositoryConfigEditing(true);
+  state.repositoryConfigMode = "toml";
+  elements["repository-config-editor"].value = content;
+  renderRepositoryConfig();
+}
+
+async function loadCiVersionPreview() {
+  const scope = ciStorageScope();
+  const id = document.getElementById("ci-version-list").value;
+  const restore = document.getElementById("ci-restore");
+  restore.disabled = true;
+  if (!id) return;
+  try {
+    const version = await api(`${scope.base}/versions/${encodeURIComponent(id)}?branch=${encodeURIComponent(scope.branch)}`);
+    if (!scope.current() || document.getElementById("ci-version-list").value !== id) return;
+    document.getElementById("ci-version-info").textContent = `v${version.version} · ${formatDate(version.created_at)} · ${version.created_by}`;
+    document.getElementById("ci-version-diff").textContent = ciLineDiff(state.repositoryConfigContent || "", version.source_toml)
+      .map(row => `${row.kind === "add" ? "+" : row.kind === "remove" ? "-" : " "} ${row.text}`).join("\n");
+    restore.disabled = state.repositoryConfigSaving || state.repositoryConfigEditing || id === state.repositoryConfigVersionId;
+  } catch (error) { if (scope.current()) toast(error.message, "error"); }
+}
+
+function bindCiStorageEvents() {
+  const on = (id, event, handler) => document.getElementById(id).addEventListener(event, handler);
+  on("ci-export", "click", () => {
+    const url = URL.createObjectURL(new Blob([state.repositoryConfigContent || ""], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = ".lore-ci.toml"; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  on("ci-import", "click", () => document.getElementById("ci-import-file").click());
+  on("ci-import-file", "change", async event => {
+    const scope = ciStorageScope();
+    const file = event.target.files[0]; event.target.value = "";
+    if (!file) return;
+    if (file.size > 256 * 1024) { toast(t("TOML must be at most 256 KiB."), "error"); return; }
+    try { const content = await file.text(); if (scope.current()) editImportedCiSource(content); }
+    catch (error) { toast(error.message, "error"); }
+  });
+  on("ci-copy", "click", async () => {
+    const scope = ciStorageScope();
+    const branch = document.getElementById("ci-copy-branch").value;
+    if (!branch) return;
+    try {
+      const source = await api(`${scope.base}?branch=${encodeURIComponent(branch)}`);
+      if (!scope.current()) return;
+      if (!source.content) throw new Error(t("No CI configuration"));
+      editImportedCiSource(source.content);
+    } catch (error) { if (scope.current()) toast(error.message, "error"); }
+  });
+  on("ci-history", "click", async () => {
+    const scope = ciStorageScope();
+    try {
+      const history = await api(`${scope.base}/history?branch=${encodeURIComponent(scope.branch)}`);
+      if (!scope.current() || state.repositoryConfigEditing) return;
+      const list = document.getElementById("ci-version-list"); list.replaceChildren();
+      for (const version of history.versions) list.add(new Option(`v${version.version} · ${formatDate(version.created_at)}`, version.id));
+      document.getElementById("ci-version-panel").hidden = false;
+      document.getElementById("ci-version-info").textContent = history.versions.length ? "" : t("No saved versions");
+      document.getElementById("ci-version-diff").textContent = "";
+      await loadCiVersionPreview();
+    } catch (error) { if (scope.current()) toast(error.message, "error"); }
+  });
+  on("ci-version-list", "change", loadCiVersionPreview);
+  const mutate = async (action, extra = {}) => {
+    const scope = ciStorageScope();
+    if (state.repositoryConfigEditing || state.repositoryConfigSaving) return;
+    state.repositoryConfigSaving = true; renderRepositoryConfig();
+    try {
+      await api(`${scope.base}/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
+        body: JSON.stringify({ branch: scope.branch, expected_lock_version: state.repositoryConfigLockVersion, ...extra }) });
+      if (scope.current()) await loadRepositoryConfig();
+    } catch (error) { if (scope.current()) toast(error.message, "error"); }
+    finally { state.repositoryConfigSaving = false; renderRepositoryConfig(); }
+  };
+  on("ci-restore", "click", () => mutate("restore", { revision_id: document.getElementById("ci-version-list").value }));
+  on("ci-file-mode", "click", () => mutate("file-mode"));
 }
 
 function cloneCiModel(model) {
@@ -2559,6 +2687,7 @@ function renderRepositoryConfigVisual() {
     inspector.append(configEmptyState(t("Nothing selected"), t("Select a pipeline, stage, or job.")));
     elements["repository-config-graph-title"].textContent = t("Pipeline");
     elements["repository-config-inspector-title"].textContent = t("Pipeline settings");
+    prepareCiLayout();
     updateCiRevealControl();
     return;
   }
@@ -2592,6 +2721,7 @@ function renderRepositoryConfigVisual() {
   elements["repository-config-add-pipeline"].textContent = selected.legacy ? t("Convert to auto pipeline") : t("Add pipeline");
   if (ciVisual.scope === "overview") {
     renderCiOverview(entries);
+    prepareCiLayout();
     renderConfigInspector(selected, model);
     decorateCiAnalysis();
     setCiSavingState();
@@ -2656,6 +2786,7 @@ function renderRepositoryConfigVisual() {
   decorateCiAnalysis();
   setCiSavingState();
   updateCiRevealControl();
+  prepareCiLayout();
   window.requestAnimationFrame(() => renderConfigDependencyEdges(selected.pipeline));
 }
 
@@ -3285,8 +3416,9 @@ async function selectPipelineBranch() {
   elements["run-pipeline-button"].disabled = true;
   if (!repository || !revision) return;
   try {
-    const choices = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/pipelines?revision=${encodeURIComponent(revision)}`);
-    if (elements["repository-url"].value !== repositoryUrl || elements.revision.value !== revision) return;
+    const choices = await api(`/api/v1/repositories/${encodeURIComponent(repository.name)}/pipelines?revision=${encodeURIComponent(revision)}&branch=${encodeURIComponent(option.value)}`);
+    if (elements["repository-url"].value !== repositoryUrl || elements.revision.value !== revision || elements.branch.value !== option.value) return;
+    elements["pipeline-name"].dataset.configRevision = choices[0]?.config_revision_id || "";
     elements["pipeline-name"].replaceChildren();
     if (!choices.length) {
       elements["pipeline-name"].append(new Option(t("dynamic.noPipelines"), ""));
@@ -3329,6 +3461,7 @@ async function submitPipeline(event) {
         repository_url: repositoryUrl,
         branch: elements.branch.value,
         revision: elements.revision.value.trim(),
+        config_revision_id: elements["pipeline-name"].dataset.configRevision || undefined,
         pipeline_name: elements["pipeline-name"].selectedOptions[0]?.dataset.root === "true"
           ? undefined
           : elements["pipeline-name"].value,
@@ -3490,3 +3623,22 @@ function toast(message, kind = "info") {
   elements["toast-region"].append(item);
   window.setTimeout(() => item.remove(), 4500);
 }
+
+Object.assign(I18N.ko, {
+  "Create CI configuration": "CI 설정 만들기", "Save to database": "DB에 저장",
+  "Export TOML": "TOML 내보내기", "Import TOML": "TOML 가져오기", "Copy from branch": "복사할 브랜치",
+  "Copy to editor": "편집기로 복사", "Version history": "버전 이력", "Use committed TOML": "커밋된 TOML 사용",
+  "Configuration version": "설정 버전", "Restore this version": "이 버전 복원", "Database configuration": "DB 설정",
+  "File configuration. Saving imports it into the database.": "파일 설정입니다. 저장하면 DB 설정으로 전환됩니다.",
+  "No saved versions": "저장된 버전이 없습니다", "TOML must be at most 256 KiB.": "TOML은 256 KiB 이하여야 합니다.",
+  "Execution specification": "실행 설정", "Rerun original group": "원래 설정으로 실행 그룹 재실행",
+});
+Object.assign(I18N["zh-CN"], {
+  "Create CI configuration": "创建 CI 配置", "Save to database": "保存到数据库",
+  "Export TOML": "导出 TOML", "Import TOML": "导入 TOML", "Copy from branch": "源分支",
+  "Copy to editor": "复制到编辑器", "Version history": "版本历史", "Use committed TOML": "使用已提交的 TOML",
+  "Configuration version": "配置版本", "Restore this version": "恢复此版本", "Database configuration": "数据库配置",
+  "File configuration. Saving imports it into the database.": "当前使用文件配置，保存后将切换为数据库配置。",
+  "No saved versions": "没有已保存的版本", "TOML must be at most 256 KiB.": "TOML 不能超过 256 KiB。",
+  "Execution specification": "执行配置", "Rerun original group": "使用原始配置重新运行执行组",
+});

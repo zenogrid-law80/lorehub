@@ -559,6 +559,10 @@ async fn reconcile_repository(
         }
         let config = if revision.bytes().all(|byte| byte == b'0') {
             None
+        } else if let Some(active) =
+            crate::ci::settings::active(&mut tx, &repository.resource_id, branch).await?
+        {
+            Some(active.definition.0)
         } else {
             read_pipeline_config(binary, token, checkout, revision).await?
         };
@@ -1267,6 +1271,14 @@ pub(crate) async fn sparse_view_snapshot(
     resource_id: &str,
     requested_name: Option<&str>,
 ) -> Result<(Option<String>, Option<String>)> {
+    sparse_view_snapshot_conn(tx, resource_id, requested_name).await
+}
+
+pub(crate) async fn sparse_view_snapshot_conn(
+    conn: &mut sqlx::PgConnection,
+    resource_id: &str,
+    requested_name: Option<&str>,
+) -> Result<(Option<String>, Option<String>)> {
     let Some(requested_name) = requested_name else {
         return Ok((None, None));
     };
@@ -1275,7 +1287,7 @@ pub(crate) async fn sparse_view_snapshot(
     )
     .bind(resource_id)
     .bind(requested_name)
-    .fetch_all(&mut **tx)
+    .fetch_all(conn)
     .await?;
     ensure!(
         !views.is_empty(),
@@ -1293,7 +1305,7 @@ pub(crate) async fn sparse_view_snapshot(
     Ok((Some(name), Some(rules)))
 }
 
-async fn sync_routes(
+pub(crate) async fn sync_routes(
     tx: &mut Transaction<'_, Postgres>,
     resource_id: &str,
     url: &str,
@@ -1366,6 +1378,43 @@ pub async fn enqueue(
     config: &PipelineFile,
     changes: &[String],
 ) -> Result<usize> {
+    if let Some(active) = crate::ci::settings::active(tx, resource_id, branch).await? {
+        let matching: Vec<_> = active
+            .definition
+            .pipelines
+            .iter()
+            .filter(|p| p.matches(changes))
+            .collect();
+        if matching.is_empty() {
+            return Ok(0);
+        }
+        let Some(group) =
+            crate::ci::settings::group(tx, resource_id, branch, revision, active.id, "push")
+                .await?
+        else {
+            return Ok(0);
+        };
+        let count = matching.len();
+        for pipeline in matching {
+            crate::ci::settings::enqueue(
+                tx,
+                crate::ci::settings::Run {
+                    group,
+                    resource: resource_id,
+                    url,
+                    branch,
+                    code_revision: revision,
+                    previous_revision: Some(previous),
+                    actor: owner,
+                    revision: &active,
+                    pipeline_name: Some(&pipeline.name),
+                    changes,
+                },
+            )
+            .await?;
+        }
+        return Ok(count);
+    }
     let mut count = 0;
     for pipeline in config.pipelines.iter().filter(|p| p.matches(changes)) {
         let (sparse_view_name, sparse_view_rules) =

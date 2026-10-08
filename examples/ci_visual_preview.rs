@@ -4,7 +4,7 @@
 //! Add --large to exercise long overview columns and a server pipeline with many jobs.
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, Query, State},
     http::{StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -13,7 +13,22 @@ use lorehub::ci::{analysis::analyze, config::PipelineFile};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-type Fixture = Arc<Mutex<String>>;
+struct Versions {
+    sources: Vec<String>,
+    active: usize,
+    lock: i64,
+    layouts: std::collections::HashMap<String, serde_json::Map<String, Value>>,
+}
+type Fixture = Arc<Mutex<Versions>>;
+fn version_id(index: usize) -> uuid::Uuid {
+    uuid::Uuid::from_u128(index as u128 + 1)
+}
+fn config_response(versions: &Versions) -> Value {
+    let content = &versions.sources[versions.active];
+    json!({"branch":"main","revision":"a".repeat(64),"content":content,
+        "configuration":PipelineFile::parse(content).unwrap(),"source_mode":"db",
+        "config_revision_id":version_id(versions.active),"config_version":versions.active+1,"lock_version":versions.lock})
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -108,8 +123,23 @@ script = ["echo {stage}"]
             post(analysis),
         )
         .route("/api/v1/repositories/demo/ci-config/parse", post(parse))
+        .route("/api/v1/repositories/demo/ci-config/history", get(history))
+        .route(
+            "/api/v1/repositories/demo/ci-config/versions/{id}",
+            get(version),
+        )
+        .route("/api/v1/repositories/demo/ci-config/restore", post(restore))
+        .route(
+            "/api/v1/repositories/demo/ci-config/layout",
+            get(layout).post(save_layout),
+        )
         .fallback(fixture)
-        .with_state(Arc::new(Mutex::new(source)));
+        .with_state(Arc::new(Mutex::new(Versions {
+            sources: vec![source.clone(), source.replace("echo test", "echo test v2")],
+            active: 1,
+            lock: 2,
+            layouts: Default::default(),
+        })));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:4180").await?;
     println!("Isolated CI fixture: http://127.0.0.1:4180/#ci-settings");
     axum::serve(listener, app).await?;
@@ -117,25 +147,95 @@ script = ["echo {stage}"]
 }
 
 async fn config(State(source): State<Fixture>) -> Json<Value> {
-    let content = source.lock().unwrap().clone();
-    Json(
-        json!({"branch": "main", "revision": "a".repeat(64), "configuration": PipelineFile::parse(&content).unwrap(), "content": content}),
-    )
+    Json(config_response(&source.lock().unwrap()))
+}
+
+async fn layout(
+    State(source): State<Fixture>,
+    Query(input): Query<std::collections::HashMap<String, String>>,
+) -> Json<Value> {
+    let key = format!("{}:{}", input["branch"], input["graph"]);
+    Json(json!({"positions":source.lock().unwrap().layouts.get(&key).cloned().unwrap_or_default()}))
+}
+
+async fn save_layout(State(source): State<Fixture>, Json(input): Json<Value>) -> Json<Value> {
+    let key = format!(
+        "{}:{}",
+        input["branch"].as_str().unwrap(),
+        input["graph"].as_str().unwrap()
+    );
+    let mut state = source.lock().unwrap();
+    let positions = state.layouts.entry(key).or_default();
+    if input["reset"] == true {
+        positions.clear();
+    }
+    if let Some(patch) = input["positions"].as_object() {
+        for (key, value) in patch {
+            if value.is_null() {
+                positions.remove(key);
+            } else {
+                positions.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    Json(json!({"positions":positions}))
 }
 
 async fn save(State(source): State<Fixture>, Json(input): Json<Value>) -> Response {
     let content = input["content"].as_str().unwrap_or("");
-    match PipelineFile::parse(content) {
-        Ok(configuration) => {
-            *source.lock().unwrap() = content.to_string();
-            Json(json!({"branch": "main", "revision": "a".repeat(64), "configuration": configuration, "content": content})).into_response()
-        }
-        Err(error) => (
+    if let Err(error) = PipelineFile::parse(content) {
+        return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": error.to_string()})),
+            Json(json!({"error":error.to_string()})),
         )
-            .into_response(),
+            .into_response();
     }
+    let mut state = source.lock().unwrap();
+    if input["expected_lock_version"].as_i64() != Some(state.lock) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":"CI settings changed"})),
+        )
+            .into_response();
+    }
+    state.sources.push(content.to_owned());
+    state.active = state.sources.len() - 1;
+    state.lock += 1;
+    Json(config_response(&state)).into_response()
+}
+
+async fn history(State(source): State<Fixture>) -> Json<Value> {
+    let state = source.lock().unwrap();
+    Json(
+        json!({"versions": (0..state.sources.len()).rev().map(|i| json!({"id":version_id(i),"version":i+1,"created_at":"2026-10-08T00:00:00Z"})).collect::<Vec<_>>(),"events":[]}),
+    )
+}
+
+async fn version(State(source): State<Fixture>, Path(id): Path<uuid::Uuid>) -> Response {
+    let state = source.lock().unwrap();
+    let Some(index) = (0..state.sources.len()).find(|&i| version_id(i) == id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(json!({"id":id,"version":index+1,"source_toml":state.sources[index],"created_at":"2026-10-08T00:00:00Z","created_by":"Preview user"})).into_response()
+}
+
+async fn restore(State(source): State<Fixture>, Json(input): Json<Value>) -> Response {
+    let mut state = source.lock().unwrap();
+    if input["expected_lock_version"].as_i64() != Some(state.lock) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":"CI settings changed"})),
+        )
+            .into_response();
+    }
+    let Some(index) =
+        (0..state.sources.len()).find(|&i| json!(version_id(i)) == input["revision_id"])
+    else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    state.active = index;
+    state.lock += 1;
+    Json(config_response(&state)).into_response()
 }
 
 async fn analysis(Json(input): Json<Value>) -> Response {
@@ -166,9 +266,14 @@ async fn fixture(uri: Uri) -> Response {
     let path = uri.path();
     let asset = match path {
         "/" => Some(("index.html", "text/html; charset=utf-8")),
+        "/assets/lore-logo.svg" => Some(("lore-logo.svg", "image/svg+xml")),
         "/assets/app.js" => Some(("app.js", "text/javascript")),
         "/assets/ci-visual.js" => Some(("ci-visual.js", "text/javascript")),
         "/assets/ci-editor.js" => Some(("ci-editor.js", "text/javascript")),
+        "/assets/ci-layout.js" => Some(("ci-layout.js", "text/javascript")),
+        "/assets/execution-detail.js" => Some(("execution-detail.js", "text/javascript")),
+        "/assets/overview.js" => Some(("overview.js", "text/javascript")),
+        "/assets/backups.js" => Some(("backups.js", "text/javascript")),
         "/assets/execution-graph.js" => Some(("execution-graph.js", "text/javascript")),
         "/assets/execution-analysis.js" => Some(("execution-analysis.js", "text/javascript")),
         "/assets/management.js" => Some(("management.js", "text/javascript")),

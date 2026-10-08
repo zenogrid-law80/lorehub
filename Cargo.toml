@@ -1,6 +1,6 @@
 [package]
 name = "lorehub"
-version = "0.2.21"
+version = "0.2.23"
 edition = "2024"
 rust-version = "1.88"
 description = "A Lore-native development platform with CI and PostgreSQL"
@@ -22,7 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
 subtle = "2"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }

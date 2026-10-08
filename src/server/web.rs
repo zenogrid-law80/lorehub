@@ -60,6 +60,14 @@ pub async fn ci_editor_script() -> Response {
     asset(CI_EDITOR_SCRIPT, "text/javascript; charset=utf-8", false)
 }
 
+pub async fn ci_layout_script() -> Response {
+    asset(
+        include_str!("../../web/ci-layout.js"),
+        "text/javascript; charset=utf-8",
+        false,
+    )
+}
+
 pub async fn execution_detail_script() -> Response {
     asset(
         EXECUTION_DETAIL_SCRIPT,

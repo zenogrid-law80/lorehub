@@ -689,6 +689,13 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
    inside this scrollport. The explicit basis also bounds stacked/mobile views. */
 .ci-graph-viewport { flex: 1 1 440px; min-height: 0; height: 440px; overflow: auto; overscroll-behavior: contain; cursor: grab; }
 .ci-graph-viewport.is-panning { cursor: grabbing; user-select: none; }
+.ci-layout-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.ci-layout-controls small { flex-basis: 100%; }
+.ci-layout-controls .button { padding: 6px 10px; font-size: 11px; }
+.ci-layout-handle { cursor: grab; touch-action: none; user-select: none; }
+.ci-layout-handle:active { cursor: grabbing; }
+.ci-free-layout .ci-overview-column h3 { visibility: hidden; }
+.ci-free-layout .config-stage-column::before, .ci-free-layout .config-stage-column::after { display: none; }
 .ci-graph-viewport .config-stage-graph { width: max-content; min-width: 100%; min-height: 380px; overflow: visible; }
 .ci-graph-viewport .ci-overview-column { flex: 0 0 210px; }
 .ci-change-review { margin-bottom: 16px; padding: 0 14px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
@@ -1218,3 +1225,11 @@ body:has(.ci-workspace-dialog[open]) { overflow: hidden; }
 .backup-field input[type="checkbox"] { justify-self: start; }
 .backup-restore-dialog .repository-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 20px; }
 @media (max-width: 700px) { .backup-card { flex-direction: column; } }
+
+/* Versioned CI settings share the existing editor and controls. */
+.ci-storage-tools { margin: 0 0 20px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.ci-storage-tools > p { margin: 0 0 12px; }
+.ci-storage-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.ci-storage-actions .field { min-width: 160px; margin: 0; }
+#ci-version-panel { margin-top: 16px; }
+.ci-version-diff { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; padding: 12px; font-size: 12px; }
